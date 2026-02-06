@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 
 namespace VibeModel.Services.Helpers
 {
@@ -76,6 +77,24 @@ namespace VibeModel.Services.Helpers
                    lower.Contains("hoogte") ||
                    lower.Contains("lengte") ||
                    lower.Contains("dikte");
+        }
+
+        /// <summary>
+        /// Gets the preferred level for element creation: active view's level first, then lowest level.
+        /// </summary>
+        public static Level GetPreferredLevel(Document doc, Autodesk.Revit.UI.UIDocument uiDoc)
+        {
+            // Prefer the active view's associated level
+            var activeView = uiDoc?.ActiveView;
+            if (activeView?.GenLevel != null)
+                return activeView.GenLevel;
+
+            // Fallback: lowest level
+            return new FilteredElementCollector(doc)
+                .OfClass(typeof(Level))
+                .Cast<Level>()
+                .OrderBy(l => l.Elevation)
+                .FirstOrDefault();
         }
 
         public static int CountElements<T>(Document doc) where T : Element

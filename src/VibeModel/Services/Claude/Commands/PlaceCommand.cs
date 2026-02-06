@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -25,12 +26,12 @@ namespace VibeModel.Services.Claude.Commands
             var familyName = parts[0];
             var typeName = parts[1];
 
-            if (!double.TryParse(parts[2], out double xMm) ||
-                !double.TryParse(parts[3], out double yMm))
+            if (!double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double xMm) ||
+                !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double yMm))
                 return "ERROR: Invalid coordinates";
 
             double zMm = 0;
-            if (parts.Length >= 5 && double.TryParse(parts[4], out double z))
+            if (parts.Length >= 5 && double.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out double z))
                 zMm = z;
 
             var symbol = new FilteredElementCollector(doc)
@@ -97,12 +98,12 @@ namespace VibeModel.Services.Claude.Commands
             if (!int.TryParse(parts[0], out int typeId))
                 return "ERROR: Invalid type ID";
 
-            if (!double.TryParse(parts[1], out double xMm) ||
-                !double.TryParse(parts[2], out double yMm))
+            if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double xMm) ||
+                !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double yMm))
                 return "ERROR: Invalid coordinates";
 
             double zMm = 0;
-            if (parts.Length >= 4 && double.TryParse(parts[3], out double z))
+            if (parts.Length >= 4 && double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double z))
                 zMm = z;
 
             var symbol = doc.GetElement(new ElementId(typeId)) as FamilySymbol;

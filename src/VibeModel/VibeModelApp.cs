@@ -3,6 +3,7 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Claude;
+using VibeModel.Services.Helpers;
 
 namespace VibeModel
 {
@@ -50,6 +51,9 @@ namespace VibeModel
                     Logger.Info("File-based fallback active (C:\\RevitClaudeLink\\)");
                 }
 
+                // Dismiss non-transaction dialogs during command execution
+                application.DialogBoxShowing += OnDialogBoxShowing;
+
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
             }
@@ -64,6 +68,8 @@ namespace VibeModel
         {
             try
             {
+                application.DialogBoxShowing -= OnDialogBoxShowing;
+
                 if (_usingFallback)
                 {
                     application.Idling -= OnIdling;
@@ -83,6 +89,27 @@ namespace VibeModel
             }
 
             return Result.Succeeded;
+        }
+
+        private void OnDialogBoxShowing(object sender, DialogBoxShowingEventArgs e)
+        {
+            // Only dismiss dialogs when a VibeModel command is actively executing.
+            // This prevents interference with normal user interaction.
+            if (!RevitCommandHandler.IsProcessingCommand)
+                return;
+
+            // Transaction warnings are already handled by WarningSwallower in TransactionHelper.
+            // This catches non-failure dialogs that Revit shows during our operations.
+            if (e is Autodesk.Revit.UI.Events.TaskDialogShowingEventArgs taskArgs)
+            {
+                Logger.Info("Auto-dismissing TaskDialog during command: " + taskArgs.DialogId);
+                e.OverrideResult((int)Autodesk.Revit.UI.TaskDialogResult.Close);
+            }
+            else if (e is Autodesk.Revit.UI.Events.MessageBoxShowingEventArgs)
+            {
+                Logger.Info("Auto-dismissing MessageBox during command");
+                e.OverrideResult(1); // IDOK
+            }
         }
 
         private void OnIdling(object sender, IdlingEventArgs e)

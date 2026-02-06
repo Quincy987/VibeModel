@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -21,16 +22,19 @@ namespace VibeModel.Services.Claude.Commands
             if (parts.Length < 4)
                 return "ERROR: Usage: wall <x1> <y1> <x2> <y2> [height_mm]\n\nCoordinates in mm. Default height is 4000mm.";
 
-            if (!double.TryParse(parts[0], out double x1mm) ||
-                !double.TryParse(parts[1], out double y1mm) ||
-                !double.TryParse(parts[2], out double x2mm) ||
-                !double.TryParse(parts[3], out double y2mm))
+            if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double x1mm) ||
+                !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double y1mm) ||
+                !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double x2mm) ||
+                !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double y2mm))
             {
                 return "ERROR: Invalid coordinates. Use numbers in mm.";
             }
 
+            if (Math.Abs(x1mm - x2mm) < 0.1 && Math.Abs(y1mm - y2mm) < 0.1)
+                return "ERROR: Start and end points are identical. Wall needs length.";
+
             double heightMm = 4000;
-            if (parts.Length >= 5 && double.TryParse(parts[4], out double h))
+            if (parts.Length >= 5 && double.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out double h))
                 heightMm = h;
 
             var wallType = new FilteredElementCollector(doc)
@@ -41,11 +45,7 @@ namespace VibeModel.Services.Claude.Commands
             if (wallType == null)
                 return "ERROR: No basic wall type found in document";
 
-            var level = new FilteredElementCollector(doc)
-                .OfClass(typeof(Level))
-                .Cast<Level>()
-                .OrderBy(l => l.Elevation)
-                .FirstOrDefault();
+            var level = FormattingHelper.GetPreferredLevel(doc, uiApp.ActiveUIDocument);
 
             if (level == null)
                 return "ERROR: No level found in document";

@@ -37,11 +37,17 @@ public static class DynamicCommand
     public static string Run(UIApplication uiApp)
     {
         var uiDoc = uiApp.ActiveUIDocument;
-        var doc = uiDoc?.Document;
+        var doc = uiDoc != null ? uiDoc.Document : null;
         var sb = new StringBuilder();
 
         using (var trans = new Transaction(doc, ""VibeModel: Exec""))
         {
+            // Suppress warnings to prevent modal dialogs blocking the main thread
+            var failOpts = trans.GetFailureHandlingOptions();
+            failOpts.SetFailuresPreprocessor(new VibeModel.Services.Helpers.WarningSwallower());
+            failOpts.SetClearAfterRollback(true);
+            trans.SetFailureHandlingOptions(failOpts);
+
             trans.Start();
             try
             {
@@ -63,27 +69,30 @@ public static class DynamicCommand
 }";
 
             // Compile
-            var provider = new CSharpCodeProvider();
-            var compilerParams = new CompilerParameters
-            {
-                GenerateInMemory = true,
-                GenerateExecutable = false
-            };
-
-            // Add references
-            compilerParams.ReferencedAssemblies.Add("System.dll");
-            compilerParams.ReferencedAssemblies.Add("System.Core.dll");
-            compilerParams.ReferencedAssemblies.Add(typeof(UIApplication).Assembly.Location);  // RevitAPIUI
-            compilerParams.ReferencedAssemblies.Add(typeof(Document).Assembly.Location);        // RevitAPI
-
             CompilerResults results;
-            try
+            using (var provider = new CSharpCodeProvider())
             {
-                results = provider.CompileAssemblyFromSource(compilerParams, fullSource);
-            }
-            catch (Exception ex)
-            {
-                return "ERROR: Compilation failed: " + ex.Message;
+                var compilerParams = new CompilerParameters
+                {
+                    GenerateInMemory = true,
+                    GenerateExecutable = false
+                };
+
+                // Add references
+                compilerParams.ReferencedAssemblies.Add("System.dll");
+                compilerParams.ReferencedAssemblies.Add("System.Core.dll");
+                compilerParams.ReferencedAssemblies.Add(typeof(UIApplication).Assembly.Location);  // RevitAPIUI
+                compilerParams.ReferencedAssemblies.Add(typeof(Document).Assembly.Location);        // RevitAPI
+                compilerParams.ReferencedAssemblies.Add(typeof(VibeModel.Services.Helpers.WarningSwallower).Assembly.Location); // VibeModel
+
+                try
+                {
+                    results = provider.CompileAssemblyFromSource(compilerParams, fullSource);
+                }
+                catch (Exception ex)
+                {
+                    return "ERROR: Compilation failed: " + ex.Message;
+                }
             }
 
             if (results.Errors.HasErrors)
@@ -117,7 +126,7 @@ public static class DynamicCommand
             }
             catch (TargetInvocationException tie)
             {
-                return "ERROR: Runtime exception: " + (tie.InnerException?.Message ?? tie.Message);
+                return "ERROR: Runtime exception: " + (tie.InnerException != null ? tie.InnerException.Message : tie.Message);
             }
             catch (Exception ex)
             {

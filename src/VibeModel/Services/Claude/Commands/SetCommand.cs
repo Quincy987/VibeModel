@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -88,7 +89,7 @@ namespace VibeModel.Services.Claude.Commands
                         }
                         break;
                     case StorageType.Double:
-                        if (double.TryParse(value, out double dblVal))
+                        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dblVal))
                         {
                             // Only convert to feet for dimension parameters
                             if (FormattingHelper.IsDimensionRelated(paramName))

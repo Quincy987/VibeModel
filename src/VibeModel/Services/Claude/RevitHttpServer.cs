@@ -61,6 +61,7 @@ namespace VibeModel.Services.Claude
                 catch (SocketException)
                 {
                     Logger.Warn("Port " + port + " in use, trying next...");
+                    try { _listener.Stop(); } catch { }
                     _listener = null;
                 }
             }
@@ -148,12 +149,39 @@ namespace VibeModel.Services.Claude
 
         private HttpRequest ReadHttpRequest(NetworkStream stream)
         {
-            var buffer = new byte[8192];
-            int bytesRead = stream.Read(buffer, 0, buffer.Length);
-            if (bytesRead == 0) return null;
+            // Read headers — accumulate until we find \r\n\r\n
+            var headerBuilder = new StringBuilder();
+            var buffer = new byte[4096];
+            int headerEnd = -1;
+            byte[] overflow = null;
+            int overflowLength = 0;
 
-            var raw = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            var lines = raw.Split(new[] { "\r\n" }, StringSplitOptions.None);
+            while (headerEnd < 0)
+            {
+                int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                if (bytesRead == 0) return null;
+
+                headerBuilder.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                var headerStr = headerBuilder.ToString();
+                headerEnd = headerStr.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+
+                if (headerEnd >= 0)
+                {
+                    // Everything after \r\n\r\n is body overflow
+                    int bodyStart = headerEnd + 4;
+                    var fullBytes = Encoding.UTF8.GetBytes(headerStr);
+                    var bodyOverflowStr = headerStr.Substring(bodyStart);
+                    overflow = Encoding.UTF8.GetBytes(bodyOverflowStr);
+                    overflowLength = overflow.Length;
+                }
+
+                if (headerBuilder.Length > 65536)
+                    return null; // Headers too large, reject
+            }
+
+            var raw = headerBuilder.ToString();
+            var headerSection = raw.Substring(0, headerEnd);
+            var lines = headerSection.Split(new[] { "\r\n" }, StringSplitOptions.None);
             if (lines.Length == 0) return null;
 
             // Parse request line: "GET /command?args=foo HTTP/1.1"
@@ -176,19 +204,33 @@ namespace VibeModel.Services.Claude
                     }
                 }
 
-                // Find body after double CRLF
-                int headerEnd = raw.IndexOf("\r\n\r\n", StringComparison.Ordinal);
-                if (headerEnd >= 0)
+                if (contentLength > 0 && contentLength <= 1048576) // 1MB max body
                 {
-                    body = raw.Substring(headerEnd + 4);
+                    // Start with any overflow from header read
+                    var bodyBytes = new byte[contentLength];
+                    int bodyRead = 0;
 
-                    // If we haven't received the full body yet, keep reading
-                    while (body.Length < contentLength && stream.DataAvailable)
+                    if (overflow != null && overflowLength > 0)
                     {
-                        bytesRead = stream.Read(buffer, 0, buffer.Length);
-                        if (bytesRead > 0)
-                            body += Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        int toCopy = Math.Min(overflowLength, contentLength);
+                        Array.Copy(overflow, 0, bodyBytes, 0, toCopy);
+                        bodyRead = toCopy;
                     }
+
+                    // Read remaining body bytes with blocking reads
+                    while (bodyRead < contentLength)
+                    {
+                        int read = stream.Read(bodyBytes, bodyRead, contentLength - bodyRead);
+                        if (read == 0) break; // Connection closed
+                        bodyRead += read;
+                    }
+
+                    body = Encoding.UTF8.GetString(bodyBytes, 0, bodyRead);
+                }
+                else if (overflow != null && overflowLength > 0)
+                {
+                    // No Content-Length but some body data arrived
+                    body = Encoding.UTF8.GetString(overflow, 0, overflowLength);
                 }
             }
 
@@ -224,8 +266,14 @@ namespace VibeModel.Services.Claude
                 return HandleBatch(request.Body);
             }
 
-            // Single command
-            var result = _commandHandler.EnqueueAndWait(path, queryArgs);
+            // Single command — use POST body as args if no query args
+            var args = queryArgs;
+            if (string.IsNullOrEmpty(args) && request.Method == "POST" && !string.IsNullOrEmpty(request.Body))
+            {
+                args = request.Body.TrimEnd('\r', '\n');
+            }
+
+            var result = _commandHandler.EnqueueAndWait(path, args);
             return new HttpResponse(200, result);
         }
 
@@ -278,7 +326,6 @@ namespace VibeModel.Services.Claude
                        + "Content-Type: text/plain; charset=utf-8\r\n"
                        + "Content-Length: " + bodyBytes.Length + "\r\n"
                        + "Connection: close\r\n"
-                       + "Access-Control-Allow-Origin: *\r\n"
                        + "\r\n";
 
             var headerBytes = Encoding.UTF8.GetBytes(header);

@@ -53,6 +53,32 @@ namespace VibeModel.Services.Claude.Commands
                 }
             }
 
+            // Key parameters
+            var mark = element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
+            var comments = element.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+            var levelParam = element.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM)
+                          ?? element.get_Parameter(BuiltInParameter.SCHEDULE_LEVEL_PARAM)
+                          ?? element.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM);
+            var phaseCreated = element.get_Parameter(BuiltInParameter.PHASE_CREATED);
+
+            if (mark != null || comments != null || levelParam != null || phaseCreated != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("KEY PARAMETERS:");
+                if (mark != null && mark.HasValue && !string.IsNullOrEmpty(mark.AsString()))
+                    sb.AppendLine("  Mark: " + mark.AsString());
+                if (comments != null && comments.HasValue && !string.IsNullOrEmpty(comments.AsString()))
+                    sb.AppendLine("  Comments: " + comments.AsString());
+                if (levelParam != null && levelParam.HasValue)
+                    sb.AppendLine("  Level: " + FormattingHelper.GetLevelName(doc, levelParam.AsElementId()));
+                if (phaseCreated != null && phaseCreated.HasValue)
+                {
+                    var phase = doc.GetElement(phaseCreated.AsElementId());
+                    if (phase != null)
+                        sb.AppendLine("  Phase: " + phase.Name);
+                }
+            }
+
             var bbox = element.get_BoundingBox(null);
             if (bbox != null)
             {

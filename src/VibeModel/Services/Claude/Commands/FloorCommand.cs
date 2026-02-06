@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -22,6 +23,15 @@ namespace VibeModel.Services.Claude.Commands
             if (points == null || points.Count < 3)
                 return "ERROR: Need at least 3 points.\nUsage: floor <x1,y1> <x2,y2> <x3,y3> [<x4,y4>] ...\nCoordinates in mm, e.g.: floor 0,0 5000,0 5000,5000 0,5000";
 
+            // Validate no consecutive duplicate points (would create zero-length lines)
+            for (int i = 0; i < points.Count; i++)
+            {
+                var p1 = points[i];
+                var p2 = points[(i + 1) % points.Count];
+                if (Math.Abs(p1.X - p2.X) < 0.1 && Math.Abs(p1.Y - p2.Y) < 0.1)
+                    return "ERROR: Points " + (i + 1) + " and " + ((i + 1) % points.Count + 1) + " are identical or too close.";
+            }
+
             var floorType = new FilteredElementCollector(doc)
                 .OfClass(typeof(FloorType))
                 .Cast<FloorType>()
@@ -30,11 +40,7 @@ namespace VibeModel.Services.Claude.Commands
             if (floorType == null)
                 return "ERROR: No floor type found in document";
 
-            var level = new FilteredElementCollector(doc)
-                .OfClass(typeof(Level))
-                .Cast<Level>()
-                .OrderBy(l => l.Elevation)
-                .FirstOrDefault();
+            var level = FormattingHelper.GetPreferredLevel(doc, uiApp.ActiveUIDocument);
 
             if (level == null)
                 return "ERROR: No level found in document";
@@ -86,8 +92,8 @@ namespace VibeModel.Services.Claude.Commands
             {
                 var coords = token.Split(',');
                 if (coords.Length == 2 &&
-                    double.TryParse(coords[0], out double x) &&
-                    double.TryParse(coords[1], out double y))
+                    double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double x) &&
+                    double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double y))
                 {
                     points.Add(new PointXY(x, y));
                 }

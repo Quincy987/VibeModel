@@ -15,6 +15,12 @@ namespace VibeModel.Services.Claude
         private const int MaxQueueSize = 50;
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
+        /// <summary>
+        /// True while the Execute method is processing commands on the main thread.
+        /// Used by DialogBoxShowing handler to only dismiss dialogs during command execution.
+        /// </summary>
+        public static volatile bool IsProcessingCommand;
+
         private readonly ConcurrentQueue<CommandRequest> _queue = new ConcurrentQueue<CommandRequest>();
         private readonly ClaudeCommandRegistry _registry;
         private ExternalEvent _externalEvent;
@@ -80,28 +86,37 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public void Execute(UIApplication app)
         {
-            while (_queue.TryDequeue(out var request))
+            IsProcessingCommand = true;
+            try
             {
-                if (request.IsCancelled)
+                while (_queue.TryDequeue(out var request))
                 {
-                    request.Dispose();
-                    continue;
-                }
+                    if (request.IsCancelled)
+                    {
+                        request.Dispose();
+                        continue;
+                    }
 
-                try
-                {
-                    Logger.Info("Executing: " + request.Command + " " + request.Args);
-                    request.Result = _registry.Execute(request.Command, request.Args, app);
+                    try
+                    {
+                        Logger.Info("Executing: " + request.Command + " " + request.Args);
+                        request.Result = _registry.Execute(request.Command, request.Args, app);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Command execution failed: " + request.Command, ex);
+                        request.Result = "ERROR: " + ex.Message;
+                    }
+                    finally
+                    {
+                        try { request.ResponseReady.Set(); }
+                        catch (ObjectDisposedException) { /* Timed-out request already disposed by HTTP thread */ }
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error("Command execution failed: " + request.Command, ex);
-                    request.Result = "ERROR: " + ex.Message;
-                }
-                finally
-                {
-                    request.ResponseReady.Set();
-                }
+            }
+            finally
+            {
+                IsProcessingCommand = false;
             }
         }
 
