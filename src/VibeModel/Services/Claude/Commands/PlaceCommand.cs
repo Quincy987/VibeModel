@@ -16,9 +16,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var parts = (args ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4)
@@ -35,7 +33,6 @@ namespace VibeModel.Services.Claude.Commands
             if (parts.Length >= 5 && double.TryParse(parts[4], out double z))
                 zMm = z;
 
-            // Find matching FamilySymbol
             var symbol = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
@@ -46,32 +43,29 @@ namespace VibeModel.Services.Claude.Commands
             if (symbol == null)
                 return "ERROR: Family/type not found matching '" + familyName + "' / '" + typeName + "'.\nUse 'familytypes' to see available families.";
 
+            return PlaceSymbol(doc, symbol, xMm, yMm, zMm);
+        }
+
+        internal static string PlaceSymbol(Document doc, FamilySymbol symbol, double xMm, double yMm, double zMm)
+        {
             var point = new XYZ(
                 RevitUnitHelper.MmToFeet(xMm),
                 RevitUnitHelper.MmToFeet(yMm),
                 RevitUnitHelper.MmToFeet(zMm));
 
             FamilyInstance instance = null;
-            using (var trans = new Transaction(doc, "VibeModel: Place Family"))
+            var error = TransactionHelper.Execute(doc, "VibeModel: Place Family", () =>
             {
-                trans.Start();
-                try
+                if (!symbol.IsActive)
                 {
-                    if (!symbol.IsActive)
-                    {
-                        symbol.Activate();
-                        doc.Regenerate();
-                    }
+                    symbol.Activate();
+                    doc.Regenerate();
+                }
 
-                    instance = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
-                    trans.Commit();
-                }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    return "ERROR: Failed to place family: " + ex.Message;
-                }
-            }
+                instance = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
+            });
+
+            if (error != null) return error;
 
             var sb = new StringBuilder();
             sb.AppendLine("FAMILY PLACED");
@@ -94,9 +88,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var parts = (args ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 3)
@@ -117,43 +109,7 @@ namespace VibeModel.Services.Claude.Commands
             if (symbol == null)
                 return "ERROR: Element ID " + typeId + " is not a FamilySymbol";
 
-            var point = new XYZ(
-                RevitUnitHelper.MmToFeet(xMm),
-                RevitUnitHelper.MmToFeet(yMm),
-                RevitUnitHelper.MmToFeet(zMm));
-
-            FamilyInstance instance = null;
-            using (var trans = new Transaction(doc, "VibeModel: Place Family"))
-            {
-                trans.Start();
-                try
-                {
-                    if (!symbol.IsActive)
-                    {
-                        symbol.Activate();
-                        doc.Regenerate();
-                    }
-
-                    instance = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
-                    trans.Commit();
-                }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    return "ERROR: Failed to place family: " + ex.Message;
-                }
-            }
-
-            var sb = new StringBuilder();
-            sb.AppendLine("FAMILY PLACED");
-            sb.AppendLine("=============");
-            sb.AppendLine();
-            sb.AppendLine("ID: " + instance.Id.IntegerValue);
-            sb.AppendLine("Family: " + symbol.Family.Name);
-            sb.AppendLine("Type: " + symbol.Name);
-            sb.AppendLine("Location: (" + xMm + ", " + yMm + ", " + zMm + ") mm");
-
-            return sb.ToString();
+            return PlaceCommand.PlaceSymbol(doc, symbol, xMm, yMm, zMm);
         }
     }
 }

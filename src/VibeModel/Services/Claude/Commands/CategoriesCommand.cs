@@ -13,9 +13,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var sb = new StringBuilder();
             sb.AppendLine("DOCUMENT CATEGORIES");

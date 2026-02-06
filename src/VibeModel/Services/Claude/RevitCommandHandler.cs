@@ -12,19 +12,19 @@ namespace VibeModel.Services.Claude
     /// </summary>
     public class RevitCommandHandler : IExternalEventHandler
     {
+        private const int MaxQueueSize = 50;
+        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
+
         private readonly ConcurrentQueue<CommandRequest> _queue = new ConcurrentQueue<CommandRequest>();
         private readonly ClaudeCommandRegistry _registry;
         private ExternalEvent _externalEvent;
+        private volatile bool _disposed;
 
         public RevitCommandHandler(ClaudeCommandRegistry registry)
         {
             _registry = registry;
         }
 
-        /// <summary>
-        /// Must be called after construction to create the ExternalEvent.
-        /// Cannot be done in constructor because ExternalEvent.Create requires Revit context.
-        /// </summary>
         public void Initialize()
         {
             _externalEvent = ExternalEvent.Create(this);
@@ -37,27 +37,57 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public string EnqueueAndWait(string command, string args)
         {
+            if (_disposed)
+                return "ERROR: VibeModel is shutting down";
+
+            if (_queue.Count >= MaxQueueSize)
+                return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
+
             var request = new CommandRequest(command, args);
             _queue.Enqueue(request);
-            _externalEvent.Raise();
 
-            if (!request.ResponseReady.Wait(TimeSpan.FromSeconds(30)))
+            try
             {
-                Logger.Warn("Command timed out: " + command);
-                return "ERROR: Revit did not respond within 30 seconds. Is Revit in a modal dialog?";
+                _externalEvent.Raise();
+            }
+            catch (Exception)
+            {
+                // ExternalEvent already disposed during shutdown
+                request.Cancel();
+                return "ERROR: VibeModel is shutting down";
             }
 
-            return request.Result;
+            try
+            {
+                if (!request.ResponseReady.Wait(CommandTimeout))
+                {
+                    request.Cancel();
+                    Logger.Warn("Command timed out: " + command);
+                    return "ERROR: Revit did not respond within 30 seconds. Is Revit in a modal dialog?";
+                }
+
+                return request.Result;
+            }
+            finally
+            {
+                request.Dispose();
+            }
         }
 
         /// <summary>
         /// Called by Revit on the main thread via ExternalEvent.
-        /// Processes all queued commands.
+        /// Processes all queued commands, skipping cancelled/timed-out ones.
         /// </summary>
         public void Execute(UIApplication app)
         {
             while (_queue.TryDequeue(out var request))
             {
+                if (request.IsCancelled)
+                {
+                    request.Dispose();
+                    continue;
+                }
+
                 try
                 {
                     Logger.Info("Executing: " + request.Command + " " + request.Args);
@@ -80,8 +110,21 @@ namespace VibeModel.Services.Claude
             return "VibeModel Command Handler";
         }
 
+        /// <summary>
+        /// Drain remaining requests before disposing ExternalEvent.
+        /// </summary>
         public void Dispose()
         {
+            _disposed = true;
+
+            // Drain queue — unblock any waiting HTTP threads
+            while (_queue.TryDequeue(out var request))
+            {
+                request.Result = "ERROR: VibeModel is shutting down";
+                request.ResponseReady.Set();
+                request.Dispose();
+            }
+
             _externalEvent?.Dispose();
         }
     }
@@ -89,17 +132,30 @@ namespace VibeModel.Services.Claude
     /// <summary>
     /// Represents a single command request with its synchronization primitive.
     /// </summary>
-    public class CommandRequest
+    public class CommandRequest : IDisposable
     {
         public string Command { get; }
         public string Args { get; }
         public string Result { get; set; }
         public ManualResetEventSlim ResponseReady { get; } = new ManualResetEventSlim(false);
 
+        private volatile bool _cancelled;
+        public bool IsCancelled => _cancelled;
+
         public CommandRequest(string command, string args)
         {
             Command = command;
             Args = args;
+        }
+
+        public void Cancel()
+        {
+            _cancelled = true;
+        }
+
+        public void Dispose()
+        {
+            ResponseReady.Dispose();
         }
     }
 }

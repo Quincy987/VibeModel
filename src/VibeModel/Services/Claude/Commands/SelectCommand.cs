@@ -15,9 +15,7 @@ namespace VibeModel.Services.Claude.Commands
         public string Execute(string args, UIApplication uiApp)
         {
             var uiDoc = uiApp.ActiveUIDocument;
-            var doc = uiDoc?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiDoc.Document;
 
             var idString = args?.Trim() ?? "";
             var idStrings = idString.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);

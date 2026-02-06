@@ -16,9 +16,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var points = ParsePoints(args);
             if (points == null || points.Count < 3)
@@ -42,32 +40,23 @@ namespace VibeModel.Services.Claude.Commands
                 return "ERROR: No level found in document";
 
             Floor newFloor = null;
-            using (var trans = new Transaction(doc, "VibeModel: Create Floor"))
+            var error = TransactionHelper.Execute(doc, "VibeModel: Create Floor", () =>
             {
-                trans.Start();
-                try
+                var curveLoop = new CurveLoop();
+                for (int i = 0; i < points.Count; i++)
                 {
-                    var curveLoop = new CurveLoop();
-                    for (int i = 0; i < points.Count; i++)
-                    {
-                        var p1 = points[i];
-                        var p2 = points[(i + 1) % points.Count];
-                        curveLoop.Append(Line.CreateBound(
-                            new XYZ(RevitUnitHelper.MmToFeet(p1.X), RevitUnitHelper.MmToFeet(p1.Y), level.Elevation),
-                            new XYZ(RevitUnitHelper.MmToFeet(p2.X), RevitUnitHelper.MmToFeet(p2.Y), level.Elevation)
-                        ));
-                    }
+                    var p1 = points[i];
+                    var p2 = points[(i + 1) % points.Count];
+                    curveLoop.Append(Line.CreateBound(
+                        new XYZ(RevitUnitHelper.MmToFeet(p1.X), RevitUnitHelper.MmToFeet(p1.Y), level.Elevation),
+                        new XYZ(RevitUnitHelper.MmToFeet(p2.X), RevitUnitHelper.MmToFeet(p2.Y), level.Elevation)
+                    ));
+                }
 
-                    var curveLoops = new List<CurveLoop> { curveLoop };
-                    newFloor = Floor.Create(doc, curveLoops, floorType.Id, level.Id);
-                    trans.Commit();
-                }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    return "ERROR: Failed to create floor: " + ex.Message;
-                }
-            }
+                newFloor = Floor.Create(doc, new List<CurveLoop> { curveLoop }, floorType.Id, level.Id);
+            });
+
+            if (error != null) return error;
 
             var sb = new StringBuilder();
             sb.AppendLine("FLOOR CREATED");

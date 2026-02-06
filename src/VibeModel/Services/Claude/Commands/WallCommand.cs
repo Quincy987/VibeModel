@@ -15,9 +15,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var parts = (args ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4)
@@ -34,12 +32,6 @@ namespace VibeModel.Services.Claude.Commands
             double heightMm = 4000;
             if (parts.Length >= 5 && double.TryParse(parts[4], out double h))
                 heightMm = h;
-
-            double x1 = RevitUnitHelper.MmToFeet(x1mm);
-            double y1 = RevitUnitHelper.MmToFeet(y1mm);
-            double x2 = RevitUnitHelper.MmToFeet(x2mm);
-            double y2 = RevitUnitHelper.MmToFeet(y2mm);
-            double height = RevitUnitHelper.MmToFeet(heightMm);
 
             var wallType = new FilteredElementCollector(doc)
                 .OfClass(typeof(WallType))
@@ -58,25 +50,22 @@ namespace VibeModel.Services.Claude.Commands
             if (level == null)
                 return "ERROR: No level found in document";
 
-            Wall newWall = null;
-            using (var trans = new Transaction(doc, "VibeModel: Create Wall"))
-            {
-                trans.Start();
-                try
-                {
-                    var startPoint = new XYZ(x1, y1, level.Elevation);
-                    var endPoint = new XYZ(x2, y2, level.Elevation);
-                    var line = Line.CreateBound(startPoint, endPoint);
+            double x1 = RevitUnitHelper.MmToFeet(x1mm);
+            double y1 = RevitUnitHelper.MmToFeet(y1mm);
+            double x2 = RevitUnitHelper.MmToFeet(x2mm);
+            double y2 = RevitUnitHelper.MmToFeet(y2mm);
+            double height = RevitUnitHelper.MmToFeet(heightMm);
 
-                    newWall = Wall.Create(doc, line, wallType.Id, level.Id, height, 0, false, false);
-                    trans.Commit();
-                }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    return "ERROR: Failed to create wall: " + ex.Message;
-                }
-            }
+            Wall newWall = null;
+            var error = TransactionHelper.Execute(doc, "VibeModel: Create Wall", () =>
+            {
+                var startPoint = new XYZ(x1, y1, level.Elevation);
+                var endPoint = new XYZ(x2, y2, level.Elevation);
+                var line = Line.CreateBound(startPoint, endPoint);
+                newWall = Wall.Create(doc, line, wallType.Id, level.Id, height, 0, false, false);
+            });
+
+            if (error != null) return error;
 
             var sb = new StringBuilder();
             sb.AppendLine("WALL CREATED");

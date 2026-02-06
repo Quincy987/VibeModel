@@ -30,14 +30,11 @@ namespace VibeModel
 
             try
             {
-                // 1. Create command registry (auto-discovers all IClaudeCommand implementations)
                 var registry = new ClaudeCommandRegistry();
 
-                // 2. Create command handler (bridges HTTP thread → Revit main thread)
                 _commandHandler = new RevitCommandHandler(registry);
                 _commandHandler.Initialize();
 
-                // 3. Try to start HTTP server
                 _httpServer = new RevitHttpServer(_commandHandler);
                 if (_httpServer.Start())
                 {
@@ -46,7 +43,6 @@ namespace VibeModel
                 }
                 else
                 {
-                    // 4. Fall back to file-based polling
                     Logger.Warn("HTTP server failed to start - falling back to file-based polling");
                     _fallback = new FileBasedFallback(registry);
                     _usingFallback = true;
@@ -73,6 +69,8 @@ namespace VibeModel
                     application.Idling -= OnIdling;
                 }
 
+                // Order matters: stop accepting new connections first,
+                // then drain pending requests, then dispose ExternalEvent.
                 _httpServer?.Stop();
                 _httpServer?.Dispose();
                 _commandHandler?.Dispose();
@@ -87,9 +85,6 @@ namespace VibeModel
             return Result.Succeeded;
         }
 
-        /// <summary>
-        /// Idling handler — only used when HTTP server fails and we fall back to file polling.
-        /// </summary>
         private void OnIdling(object sender, IdlingEventArgs e)
         {
             try

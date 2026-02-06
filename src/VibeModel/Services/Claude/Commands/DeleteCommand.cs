@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -15,9 +16,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var parts = (args ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0)
@@ -31,8 +30,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (int.TryParse(part.Trim(), out int idValue))
                 {
                     var elemId = new ElementId(idValue);
-                    var elem = doc.GetElement(elemId);
-                    if (elem != null)
+                    if (doc.GetElement(elemId) != null)
                         idsToDelete.Add(elemId);
                     else
                         notFound.Add(part);
@@ -46,28 +44,16 @@ namespace VibeModel.Services.Claude.Commands
             if (idsToDelete.Count == 0)
                 return "ERROR: No valid element IDs found";
 
-            int deletedCount = 0;
-            using (var trans = new Transaction(doc, "VibeModel: Delete Elements"))
+            var error = TransactionHelper.Execute(doc, "VibeModel: Delete Elements", () =>
             {
-                trans.Start();
-                try
-                {
-                    foreach (var id in idsToDelete)
-                    {
-                        doc.Delete(id);
-                        deletedCount++;
-                    }
-                    trans.Commit();
-                }
-                catch (Exception ex)
-                {
-                    trans.RollBack();
-                    return "ERROR: Failed to delete elements: " + ex.Message;
-                }
-            }
+                foreach (var id in idsToDelete)
+                    doc.Delete(id);
+            });
+
+            if (error != null) return error;
 
             var sb = new StringBuilder();
-            sb.AppendLine("DELETED " + deletedCount + " ELEMENT(S)");
+            sb.AppendLine("DELETED " + idsToDelete.Count + " ELEMENT(S)");
             sb.AppendLine("IDs: " + string.Join(", ", idsToDelete.Select(id => id.IntegerValue)));
 
             if (notFound.Count > 0)

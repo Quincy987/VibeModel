@@ -13,6 +13,9 @@ namespace VibeModel.Services.Claude
     /// </summary>
     public class ClaudeCommandRegistry
     {
+        private static readonly HashSet<string> NoDocRequired =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health" };
+
         private readonly Dictionary<string, IClaudeCommand> _commands =
             new Dictionary<string, IClaudeCommand>(StringComparer.OrdinalIgnoreCase);
 
@@ -25,9 +28,19 @@ namespace VibeModel.Services.Claude
         {
             if (_commands.TryGetValue(command, out var cmd))
             {
+                // Guard: most commands need an open document
+                if (!NoDocRequired.Contains(command) && uiApp.ActiveUIDocument?.Document == null)
+                    return "ERROR: No document open";
+
                 try
                 {
                     return cmd.Execute(args, uiApp);
+                }
+                catch (Autodesk.Revit.Exceptions.InvalidOperationException ex)
+                {
+                    // Revit-specific: document closing, view switching, etc.
+                    Logger.Error("Revit operation failed for '" + command + "'", ex);
+                    return "ERROR: Revit operation failed: " + ex.Message;
                 }
                 catch (Exception ex)
                 {
@@ -56,7 +69,6 @@ namespace VibeModel.Services.Claude
                 {
                     var instance = (IClaudeCommand)Activator.CreateInstance(type);
 
-                    // Special case: HelpCommand needs the registry reference
                     if (instance is Commands.HelpCommand helpCmd)
                     {
                         helpCmd.SetRegistry(this);

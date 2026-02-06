@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 
@@ -11,7 +12,7 @@ namespace VibeModel.Services.Helpers
         public static string FormatLength(double feetValue)
         {
             double mm = feetValue * 304.8;
-            return mm.ToString("F1") + " mm";
+            return mm.ToString("F1", CultureInfo.InvariantCulture) + " mm";
         }
 
         public static string FormatPoint(XYZ point)
@@ -41,7 +42,7 @@ namespace VibeModel.Services.Helpers
                     var doubleVal = param.AsDouble();
                     if (IsDimensionRelated(param.Definition.Name))
                         return FormatLength(doubleVal);
-                    return doubleVal.ToString("F4");
+                    return doubleVal.ToString("F4", CultureInfo.InvariantCulture);
 
                 case StorageType.Integer:
                     return param.AsInteger().ToString();

@@ -45,7 +45,16 @@ namespace VibeModel.Services.Claude
 
                 _lastCommandTime = lastWriteTime;
 
-                var commandText = File.ReadAllText(CommandFile).Trim();
+                string commandText;
+                try
+                {
+                    commandText = File.ReadAllText(CommandFile).Trim();
+                }
+                catch (IOException)
+                {
+                    // File deleted or locked between exists-check and read
+                    return;
+                }
                 if (string.IsNullOrEmpty(commandText))
                     return;
 

@@ -15,9 +15,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument?.Document;
-            if (doc == null)
-                return "ERROR: No document open";
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var parts = (args ?? "").Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 3)
@@ -60,70 +58,59 @@ namespace VibeModel.Services.Claude.Commands
             if (param.IsReadOnly)
                 return "ERROR: Parameter '" + paramName + "' is read-only";
 
-            using (var trans = new Transaction(doc, "VibeModel: Set Parameter"))
+            bool success = false;
+            var error = TransactionHelper.Execute(doc, "VibeModel: Set Parameter", () =>
             {
-                trans.Start();
+                // Try SetValueString first — handles unit conversion automatically
                 try
                 {
-                    bool success = false;
-
-                    // Try SetValueString first (handles unit conversion automatically)
-                    try
-                    {
-                        success = param.SetValueString(value);
-                    }
-                    catch { }
-
-                    // Fallback to typed set
-                    if (!success)
-                    {
-                        switch (param.StorageType)
-                        {
-                            case StorageType.String:
-                                param.Set(value);
-                                success = true;
-                                break;
-                            case StorageType.Integer:
-                                if (int.TryParse(value, out int intVal))
-                                {
-                                    param.Set(intVal);
-                                    success = true;
-                                }
-                                break;
-                            case StorageType.Double:
-                                if (double.TryParse(value, out double dblVal))
-                                {
-                                    // Assume mm for dimension parameters, convert to feet
-                                    if (FormattingHelper.IsDimensionRelated(paramName))
-                                        dblVal = RevitUnitHelper.MmToFeet(dblVal);
-                                    param.Set(dblVal);
-                                    success = true;
-                                }
-                                break;
-                            case StorageType.ElementId:
-                                if (int.TryParse(value, out int elemIdVal))
-                                {
-                                    param.Set(new ElementId(elemIdVal));
-                                    success = true;
-                                }
-                                break;
-                        }
-                    }
-
-                    if (!success)
-                    {
-                        trans.RollBack();
-                        return "ERROR: Could not set parameter '" + paramName + "' to '" + value + "'";
-                    }
-
-                    trans.Commit();
+                    success = param.SetValueString(value);
                 }
                 catch (Exception ex)
                 {
-                    trans.RollBack();
-                    return "ERROR: Failed to set parameter: " + ex.Message;
+                    Infrastructure.Logger.Info("SetValueString failed for '" + paramName + "': " + ex.Message);
                 }
-            }
+
+                if (success) return;
+
+                // Fallback to typed set
+                switch (param.StorageType)
+                {
+                    case StorageType.String:
+                        param.Set(value);
+                        success = true;
+                        break;
+                    case StorageType.Integer:
+                        if (int.TryParse(value, out int intVal))
+                        {
+                            param.Set(intVal);
+                            success = true;
+                        }
+                        break;
+                    case StorageType.Double:
+                        if (double.TryParse(value, out double dblVal))
+                        {
+                            // Only convert to feet for dimension parameters
+                            if (FormattingHelper.IsDimensionRelated(paramName))
+                                dblVal = RevitUnitHelper.MmToFeet(dblVal);
+                            param.Set(dblVal);
+                            success = true;
+                        }
+                        break;
+                    case StorageType.ElementId:
+                        if (int.TryParse(value, out int elemIdVal))
+                        {
+                            param.Set(new ElementId(elemIdVal));
+                            success = true;
+                        }
+                        break;
+                }
+
+                if (!success)
+                    throw new InvalidOperationException("Could not set parameter '" + paramName + "' to '" + value + "'");
+            });
+
+            if (error != null) return error;
 
             var sb = new StringBuilder();
             sb.AppendLine("PARAMETER SET");
