@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VibeModel - AI Integration for Autodesk Revit
+
+  This add-in provides an embedded HTTP server that allows AI assistants
+  (Claude, etc.) to inspect and modify Revit models via simple curl commands.
+
+  Deployment:
+    Copy this file and VibeModel.dll to:
+    %APPDATA%\Autodesk\Revit\Addins\{version}\
+
+  Where {version} is 2023, 2024, or 2025.
+-->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <!-- Unique GUID for this add-in -->
+    <ClientId>B2C3D4E5-F6A7-8901-BCDE-F12345678901</ClientId>
+
+    <!-- Display name in Revit's Add-In Manager -->
+    <Name>VibeModel - AI Integration</Name>
+
+    <!-- DLL containing the add-in code -->
+    <Assembly>VibeModel.dll</Assembly>
+
+    <!-- Full class name of IExternalApplication implementation -->
+    <FullClassName>VibeModel.VibeModelApp</FullClassName>
+
+    <!-- Vendor identification -->
+    <VendorId>VIBEMODEL</VendorId>
+    <VendorDescription>VibeModel - AI-powered Revit modelling</VendorDescription>
+  </AddIn>
+</RevitAddIns>

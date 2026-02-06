@@ -1,0 +1,26 @@
+## .NET / Visual Studio
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.exe
+.vs/
+
+## NuGet
+packages/
+*.nupkg
+project.lock.json
+
+## Build outputs
+TestResults/
+
+## OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Claude
+.claude/
