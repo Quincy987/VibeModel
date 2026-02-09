@@ -32,6 +32,17 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Class: " + element.GetType().Name);
             sb.AppendLine("Category: " + (element.Category?.Name ?? "N/A"));
 
+            if (!(element is FamilyInstance))
+            {
+                var typeId = element.GetTypeId();
+                if (typeId != ElementId.InvalidElementId)
+                {
+                    var elemType = doc.GetElement(typeId);
+                    if (elemType != null)
+                        sb.AppendLine("Type: " + elemType.Name);
+                }
+            }
+
             if (element.Category?.Parent != null)
                 sb.AppendLine("Parent Category: " + element.Category.Parent.Name);
 

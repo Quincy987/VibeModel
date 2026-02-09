@@ -45,7 +45,16 @@ namespace VibeModel.Services.Claude.Commands
                 { "Roofs", FormattingHelper.CountElements<RoofBase>(doc) },
                 { "Columns", FormattingHelper.CountElements<FamilyInstance>(doc, BuiltInCategory.OST_StructuralColumns) },
                 { "Beams", FormattingHelper.CountElements<FamilyInstance>(doc, BuiltInCategory.OST_StructuralFraming) },
-                { "Views", new FilteredElementCollector(doc).OfClass(typeof(View)).Count() }
+                { "Foundations", FormattingHelper.CountElements<Element>(doc, BuiltInCategory.OST_StructuralFoundation) },
+                { "Grids", FormattingHelper.CountElements<Grid>(doc) },
+                { "Doors", FormattingHelper.CountElements<FamilyInstance>(doc, BuiltInCategory.OST_Doors) },
+                { "Windows", FormattingHelper.CountElements<FamilyInstance>(doc, BuiltInCategory.OST_Windows) },
+                { "Rooms", FormattingHelper.CountElements<Element>(doc, BuiltInCategory.OST_Rooms) },
+                { "Generic Models", FormattingHelper.CountElements<FamilyInstance>(doc, BuiltInCategory.OST_GenericModel) },
+                { "Levels", FormattingHelper.CountElements<Level>(doc) },
+                { "Sheets", FormattingHelper.CountElements<ViewSheet>(doc) },
+                { "Views", new FilteredElementCollector(doc).OfClass(typeof(View)).Count() },
+                { "Family Instances", FormattingHelper.CountElements<FamilyInstance>(doc) }
             };
             foreach (var kvp in counts)
             {

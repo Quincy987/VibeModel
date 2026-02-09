@@ -9,7 +9,7 @@ using Microsoft.CSharp;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class ExecCommand : IClaudeCommand
+    public class ExecCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "exec";
         public string Description => "Execute C# code at runtime (use 'doc', 'uiDoc', 'uiApp')";

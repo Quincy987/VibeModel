@@ -9,7 +9,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class FloorCommand : IClaudeCommand
+    public class FloorCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "floor";
         public string Description => "Create a floor from points (coordinates in mm)";

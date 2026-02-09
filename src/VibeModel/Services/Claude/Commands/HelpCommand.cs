@@ -38,14 +38,14 @@ namespace VibeModel.Services.Claude.Commands
             int maxName = commands.Max(c => c.Usage.Length);
 
             sb.AppendLine("QUERY COMMANDS:");
-            foreach (var cmd in commands.Where(c => !IsModificationCommand(c.Name)))
+            foreach (var cmd in commands.Where(c => !(c is IModificationCommand)))
             {
                 sb.AppendLine("  " + cmd.Usage.PadRight(maxName + 2) + " - " + cmd.Description);
             }
 
             sb.AppendLine();
             sb.AppendLine("MODIFICATION COMMANDS:");
-            foreach (var cmd in commands.Where(c => IsModificationCommand(c.Name)))
+            foreach (var cmd in commands.Where(c => c is IModificationCommand))
             {
                 sb.AppendLine("  " + cmd.Usage.PadRight(maxName + 2) + " - " + cmd.Description);
             }
@@ -57,24 +57,6 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("  curl -s http://localhost:18884/list?args=walls");
 
             return sb.ToString();
-        }
-
-        private static bool IsModificationCommand(string name)
-        {
-            switch (name)
-            {
-                case "wall":
-                case "floor":
-                case "delete":
-                case "set":
-                case "color":
-                case "place":
-                case "placeid":
-                case "exec":
-                    return true;
-                default:
-                    return false;
-            }
         }
     }
 }

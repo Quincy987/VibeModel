@@ -2,8 +2,10 @@ using System;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using VibeModel.Infrastructure;
+using VibeModel.Services.Chat;
 using VibeModel.Services.Claude;
 using VibeModel.Services.Helpers;
+using VibeModel.UI;
 
 namespace VibeModel
 {
@@ -20,7 +22,11 @@ namespace VibeModel
         private RevitHttpServer _httpServer;
         private RevitCommandHandler _commandHandler;
         private FileBasedFallback _fallback;
+        private ChatPane _chatPane;
+        private IChatBackend _chatBackend;
         private bool _usingFallback;
+
+        public static ClaudeCommandRegistry Registry { get; private set; }
 
         public Result OnStartup(UIControlledApplication application)
         {
@@ -32,15 +38,27 @@ namespace VibeModel
             try
             {
                 var registry = new ClaudeCommandRegistry();
+                Registry = registry;
+
+                // Register dockable chat pane (must happen before Revit UI is fully loaded)
+                _chatPane = new ChatPane();
+                application.RegisterDockablePane(ChatPane.PaneId, "VibeModel Chat", _chatPane);
+                Logger.Info("Chat pane registered");
+
+                // Create ribbon tab and button
+                RibbonBuilder.CreateRibbon(application);
 
                 _commandHandler = new RevitCommandHandler(registry);
                 _commandHandler.Initialize();
 
+                // Start HTTP server before creating chat backend (backend needs the port)
                 _httpServer = new RevitHttpServer(_commandHandler);
+                int httpPort = 18884;
                 if (_httpServer.Start())
                 {
-                    Logger.Info("VibeModel HTTP server active on port " + _httpServer.ActivePort);
-                    Logger.Info("Usage: curl -s http://localhost:" + _httpServer.ActivePort + "/help");
+                    httpPort = _httpServer.ActivePort;
+                    Logger.Info("VibeModel HTTP server active on port " + httpPort);
+                    Logger.Info("Usage: curl -s http://localhost:" + httpPort + "/help");
                 }
                 else
                 {
@@ -50,6 +68,10 @@ namespace VibeModel
                     application.Idling += OnIdling;
                     Logger.Info("File-based fallback active (C:\\RevitClaudeLink\\)");
                 }
+
+                // Create chat backend with the actual HTTP port and inject into pane
+                _chatBackend = new ClaudeCodeBackend(registry.GetCommands(), httpPort);
+                _chatPane.InitializeBackend(_chatBackend);
 
                 // Dismiss non-transaction dialogs during command execution
                 application.DialogBoxShowing += OnDialogBoxShowing;
@@ -74,6 +96,11 @@ namespace VibeModel
                 {
                     application.Idling -= OnIdling;
                 }
+
+                // Cleanup chat pane (cancels running generation)
+                _chatPane?.Cleanup();
+                // Dispose backend (kills any lingering claude process)
+                _chatBackend?.Dispose();
 
                 // Order matters: stop accepting new connections first,
                 // then drain pending requests, then dispose ExternalEvent.

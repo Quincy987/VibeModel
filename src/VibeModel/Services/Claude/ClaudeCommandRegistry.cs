@@ -14,7 +14,7 @@ namespace VibeModel.Services.Claude
     public class ClaudeCommandRegistry
     {
         private static readonly HashSet<string> NoDocRequired =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health" };
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health", "chatlog" };
 
         private readonly Dictionary<string, IClaudeCommand> _commands =
             new Dictionary<string, IClaudeCommand>(StringComparer.OrdinalIgnoreCase);
@@ -59,8 +59,21 @@ namespace VibeModel.Services.Claude
 
         private void DiscoverCommands()
         {
-            var commandTypes = Assembly.GetExecutingAssembly()
-                .GetTypes()
+            Type[] allTypes;
+            try
+            {
+                allTypes = Assembly.GetExecutingAssembly().GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                // Some types may fail to load (e.g. missing dependency DLLs).
+                // Use the types that did load successfully.
+                allTypes = ex.Types.Where(t => t != null).ToArray();
+                foreach (var loaderEx in ex.LoaderExceptions?.Distinct() ?? Enumerable.Empty<Exception>())
+                    Logger.Warn("Type load warning: " + loaderEx.Message);
+            }
+
+            var commandTypes = allTypes
                 .Where(t => typeof(IClaudeCommand).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
 
             foreach (var type in commandTypes)

@@ -8,7 +8,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class SetCommand : IClaudeCommand
+    public class SetCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "set";
         public string Description => "Set a parameter value on an element";

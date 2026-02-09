@@ -9,7 +9,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class PlaceCommand : IClaudeCommand
+    public class PlaceCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "place";
         public string Description => "Place a family instance by family/type name";
@@ -44,15 +44,29 @@ namespace VibeModel.Services.Claude.Commands
             if (symbol == null)
                 return "ERROR: Family/type not found matching '" + familyName + "' / '" + typeName + "'.\nUse 'familytypes' to see available families.";
 
-            return PlaceSymbol(doc, symbol, xMm, yMm, zMm);
+            return PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm);
         }
 
-        internal static string PlaceSymbol(Document doc, FamilySymbol symbol, double xMm, double yMm, double zMm)
+        internal static string PlaceSymbol(Document doc, UIDocument uiDoc, FamilySymbol symbol, double xMm, double yMm, double zMm)
         {
             var point = new XYZ(
                 RevitUnitHelper.MmToFeet(xMm),
                 RevitUnitHelper.MmToFeet(yMm),
                 RevitUnitHelper.MmToFeet(zMm));
+
+            // Detect structural type from family category
+            var structuralType = StructuralType.NonStructural;
+            try
+            {
+                var familyCatId = symbol.Family.FamilyCategory?.Id?.IntegerValue ?? 0;
+                if (familyCatId == (int)BuiltInCategory.OST_StructuralColumns)
+                    structuralType = StructuralType.Column;
+                else if (familyCatId == (int)BuiltInCategory.OST_StructuralFraming)
+                    structuralType = StructuralType.Beam;
+                else if (familyCatId == (int)BuiltInCategory.OST_StructuralFoundation)
+                    structuralType = StructuralType.Footing;
+            }
+            catch { /* fallback to NonStructural */ }
 
             FamilyInstance instance = null;
             var error = TransactionHelper.Execute(doc, "VibeModel: Place Family", () =>
@@ -63,7 +77,17 @@ namespace VibeModel.Services.Claude.Commands
                     doc.Regenerate();
                 }
 
-                instance = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
+                if (structuralType != StructuralType.NonStructural)
+                {
+                    var level = FormattingHelper.GetPreferredLevel(doc, uiDoc);
+                    if (level != null)
+                    {
+                        instance = doc.Create.NewFamilyInstance(point, symbol, level, structuralType);
+                        return;
+                    }
+                }
+
+                instance = doc.Create.NewFamilyInstance(point, symbol, structuralType);
             });
 
             if (error != null) return error;
@@ -76,12 +100,14 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Family: " + symbol.Family.Name);
             sb.AppendLine("Type: " + symbol.Name);
             sb.AppendLine("Location: (" + xMm + ", " + yMm + ", " + zMm + ") mm");
+            if (structuralType != StructuralType.NonStructural)
+                sb.AppendLine("Structural Type: " + structuralType);
 
             return sb.ToString();
         }
     }
 
-    public class PlaceIdCommand : IClaudeCommand
+    public class PlaceIdCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "placeid";
         public string Description => "Place a family instance by type ID";
@@ -110,7 +136,7 @@ namespace VibeModel.Services.Claude.Commands
             if (symbol == null)
                 return "ERROR: Element ID " + typeId + " is not a FamilySymbol";
 
-            return PlaceCommand.PlaceSymbol(doc, symbol, xMm, yMm, zMm);
+            return PlaceCommand.PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm);
         }
     }
 }

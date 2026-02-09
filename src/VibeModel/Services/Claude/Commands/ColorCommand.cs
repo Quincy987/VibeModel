@@ -7,7 +7,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class ColorCommand : IClaudeCommand
+    public class ColorCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "color";
         public string Description => "Set element color override in active view";
@@ -29,7 +29,9 @@ namespace VibeModel.Services.Claude.Commands
             if (element == null)
                 return "ERROR: Element " + idValue + " not found";
 
-            var activeView = uiDoc.ActiveView;
+            var activeView = FormattingHelper.GetActiveGraphicalView(uiDoc);
+            if (activeView == null)
+                return "ERROR: No graphical view active. Switch to a plan, section, or 3D view.";
             if (!activeView.AreGraphicsOverridesAllowed())
                 return "ERROR: Active view does not support graphic overrides";
 

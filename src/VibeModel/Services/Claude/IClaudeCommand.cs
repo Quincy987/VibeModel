@@ -23,4 +23,10 @@ namespace VibeModel.Services.Claude
         /// <returns>Plain-text result string.</returns>
         string Execute(string args, Autodesk.Revit.UI.UIApplication uiApp);
     }
+
+    /// <summary>
+    /// Marker interface for commands that modify the document.
+    /// Used by HelpCommand to auto-categorize query vs modification commands.
+    /// </summary>
+    public interface IModificationCommand { }
 }

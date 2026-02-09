@@ -17,7 +17,11 @@ namespace VibeModel.Services.Claude.Commands
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc.Document;
 
-            var view = uiDoc.ActiveView;
+            View view;
+            try { view = uiDoc.ActiveGraphicalView; }
+            catch { view = null; }
+            if (view == null)
+                view = uiDoc.ActiveView;
             if (view == null)
                 return "ERROR: No active view";
 

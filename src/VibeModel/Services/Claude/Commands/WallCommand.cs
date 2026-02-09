@@ -8,7 +8,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class WallCommand : IClaudeCommand
+    public class WallCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "wall";
         public string Description => "Create a wall (coordinates in mm)";

@@ -63,12 +63,24 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- WPF references for Clipboard -->
+  <!-- Markdown rendering -->
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.44.0" />
+  </ItemGroup>
+
+  <!-- WPF references for Clipboard and UI -->
   <ItemGroup>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <!-- Embedded resources for ribbon icons -->
+  <ItemGroup>
+    <EmbeddedResource Include="UI\Resources\chat-32.png" LogicalName="VibeModel.UI.Resources.chat-32.png" />
+    <EmbeddedResource Include="UI\Resources\chat-16.png" LogicalName="VibeModel.UI.Resources.chat-16.png" />
   </ItemGroup>
 
   <!-- Post-build deployment -->
@@ -78,11 +90,16 @@
     <!-- Create target folder if it doesn't exist -->
     <MakeDir Directories="$(RevitAddinFolder)" Condition="!Exists('$(RevitAddinFolder)')" />
 
-    <!-- Copy DLL -->
+    <!-- Copy DLL and dependency assemblies -->
     <Copy
       SourceFiles="$(TargetPath)"
       DestinationFolder="$(RevitAddinFolder)"
       SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="$(TargetDir)Markdig.dll"
+      DestinationFolder="$(RevitAddinFolder)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(TargetDir)Markdig.dll')" />
 
     <!-- Copy .addin manifest (from solution root) -->
     <Copy

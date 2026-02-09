@@ -8,7 +8,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class DeleteCommand : IClaudeCommand
+    public class DeleteCommand : IClaudeCommand, IModificationCommand
     {
         public string Name => "delete";
         public string Description => "Delete elements by ID";
