@@ -143,3 +143,56 @@ public class MyCommand : IClaudeCommand
     }
 }
 ```
+
+---
+
+## Task Management with Ralphy
+
+This project uses `ralphy` CLI for autonomous AI coding loops. Ralphy orchestrates AI agents (including Claude Code) to complete coding tasks.
+
+### Usage
+
+**Single Task Mode** - Execute a one-off instruction:
+```
+ralphy "add login button"
+```
+
+**Task List Mode** - Process multiple items from PRD.md:
+```
+ralphy --prd PRD.md
+```
+
+Or simply run `ralphy` (looks for PRD.md in current directory by default).
+
+### PRD.md Format
+
+Tasks are defined using markdown checkboxes:
+
+```markdown
+## Tasks
+- [ ] create auth
+- [ ] add dashboard
+- [x] done task (skipped)
+```
+
+### Key Flags
+
+- `--prd PATH`: Specify task source file
+- `--fast`: Skip testing and linting
+- `--max-retries N`: Set retry attempts
+- `--dry-run`: Preview without execution
+- `--parallel`: Run multiple agents simultaneously
+- `--branch-per-task`: Create branches per task
+- `--create-pr`: Generate pull requests
+
+### Initialize Project Config
+
+```
+ralphy --init
+```
+
+This generates `.ralphy/config.yaml` with project settings, commands, and execution rules.
+
+### More Info
+
+https://github.com/michaelshimeles/ralphy
