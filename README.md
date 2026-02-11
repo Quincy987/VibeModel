@@ -1,6 +1,6 @@
 # VibeModel
 
-Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets you use AI (Claude) to inspect and modify your building model through a simple chat interface.
+Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets you use AI (Claude) to inspect and modify your model through a simple chat interface.
 
 <!-- TODO: Add screenshot/demo GIF here -->
 
