@@ -17,7 +17,7 @@ Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets
    ```
    npm install -g @anthropic-ai/claude-code
    ```
-3. Set your API key:
+3. Set your API key for pay per usage (or pay for a subscription and follow the instructions within claude code):
    ```
    setx ANTHROPIC_API_KEY sk-ant-...your-key-here...
    ```
