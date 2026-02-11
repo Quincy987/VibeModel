@@ -7,7 +7,7 @@ Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets
 ## What You Need
 
 - **Autodesk Revit** (2022+)
-- **An Anthropic API key** — get one from [console.anthropic.com](https://console.anthropic.com/)
+- **An Anthropic API key or a claude subscription** — get an API key from [console.anthropic.com](https://console.anthropic.com/)
 - **Claude Code** (recommended) — provides full agentic capabilities (bash, file access, context management)
 
 ### Installing Claude Code (recommended)
