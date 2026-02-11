@@ -7,24 +7,29 @@ Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets
 ## What You Need
 
 - **Autodesk Revit** (2022+)
-- **An Anthropic API key or a claude subscription** — get an API key from [console.anthropic.com](https://console.anthropic.com/)
-- **Claude Code** (recommended) — provides full agentic capabilities (bash, file access, context management)
+- **One of the two options below** to connect to Claude:
 
-### Installing Claude Code (recommended)
+### Option A: Claude Code subscription (recommended)
 
-1. Install [Node.js](https://nodejs.org/) (download the LTS version and run the installer)
-2. Open a terminal (press `Win + R`, type `cmd`, press Enter) and run:
+A [Claude Pro/Team subscription](https://claude.ai) includes Claude Code — a full AI coding agent with context management, token tracking, file access, and bash execution. Best experience, flat monthly fee.
+
+1. Install [Node.js](https://nodejs.org/) (LTS version)
+2. Open a terminal and run:
    ```
    npm install -g @anthropic-ai/claude-code
    ```
-3. Set your API key for pay per usage (or pay for a subscription and follow the instructions within claude code):
-   ```
-   setx ANTHROPIC_API_KEY sk-ant-...your-key-here...
-   ```
+3. Run `claude` once in a terminal and follow the login prompts to connect your subscription
 
-VibeModel will automatically detect Claude Code when Revit starts. Claude Code gives you the best experience — context window management, token tracking, file access, and bash execution.
+VibeModel automatically detects Claude Code when Revit starts.
 
-**Don't want to install Node.js?** You can skip Claude Code and use the built-in direct API mode instead. Click **Settings** in the chat panel to enter your API key. This works but has some limitations (no context window management, no cost tracking).
+### Option B: Anthropic API key (pay-per-use)
+
+If you prefer pay-per-use billing or don't want to install Node.js, you can use the built-in direct API mode. You only pay for what you use — no subscription needed.
+
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com/)
+2. In Revit, click **Settings** in the VibeModel chat panel and paste your key
+
+This works well but has some limitations compared to Claude Code (no context window management, no cost tracking, no file access).
 
 ## Installation
 
@@ -34,7 +39,7 @@ VibeModel will automatically detect Claude Code when Revit starts. Claude Code g
 2. **Unzip** the downloaded file
 3. **Run `install.ps1`** (right-click → "Run with PowerShell", or from a terminal: `.\install.ps1`)
    - It auto-detects your Revit version(s) and copies the files
-   - Optionally saves an API key for direct mode (you can skip this if using Claude Code)
+   - If using Option B (API key), it can save your key during install
 4. **Open Revit** — you should see a new **VibeModel** tab in the ribbon
 
 ### Manual installation
@@ -123,8 +128,8 @@ This section is for developers who want to modify VibeModel.
 - Try restarting Revit
 
 **Chat not connected**
-- **With Claude Code (recommended):** Make sure Claude Code is installed (`npm install -g @anthropic-ai/claude-code`) and your `ANTHROPIC_API_KEY` environment variable is set. Try running `claude --version` in a terminal to verify.
-- **With direct API mode:** Click **Settings** in the chat panel header and enter your Anthropic API key. Get a key from [console.anthropic.com](https://console.anthropic.com/).
+- **Option A (Claude Code):** Make sure Claude Code is installed (`npm install -g @anthropic-ai/claude-code`) and logged in. Try running `claude --version` in a terminal to verify.
+- **Option B (API key):** Click **Settings** in the chat panel header and enter your Anthropic API key. Get a key from [console.anthropic.com](https://console.anthropic.com/).
 
 **Connection refused / port blocked**
 - VibeModel uses port 18884 — make sure nothing else is using it
