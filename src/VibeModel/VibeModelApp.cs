@@ -70,7 +70,7 @@ namespace VibeModel
                 }
 
                 // Create chat backend with the actual HTTP port and inject into pane
-                _chatBackend = new ClaudeCodeBackend(registry.GetCommands(), httpPort);
+                _chatBackend = CreateChatBackend(registry.GetCommands(), httpPort);
                 _chatPane.InitializeBackend(_chatBackend);
 
                 // Dismiss non-transaction dialogs during command execution
@@ -116,6 +116,40 @@ namespace VibeModel
             }
 
             return Result.Succeeded;
+        }
+
+        private IChatBackend CreateChatBackend(System.Collections.Generic.IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+        {
+            // Debug: set VIBEMODEL_FORCE_DIRECT=1 to skip Claude Code CLI detection
+            var forceDirect = Environment.GetEnvironmentVariable("VIBEMODEL_FORCE_DIRECT") == "1";
+
+            // 1. Claude Code CLI is the recommended backend (full agentic capabilities)
+            if (!forceDirect)
+            {
+                var cliBackend = new ClaudeCodeBackend(commands, httpPort);
+                if (cliBackend.IsAvailable)
+                {
+                    Logger.Info("Using ClaudeCodeBackend (CLI detected)");
+                    return cliBackend;
+                }
+                cliBackend.Dispose();
+            }
+            else
+            {
+                Logger.Info("VIBEMODEL_FORCE_DIRECT=1, skipping Claude Code CLI detection");
+            }
+
+            // 2. Fall back to direct API if user has configured an API key
+            var apiKey = SettingsManager.GetApiKey();
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                Logger.Info("Using AnthropicDirectBackend (API key configured, CLI not found)");
+                return new AnthropicDirectBackend(commands, httpPort);
+            }
+
+            // 3. Nothing configured — return direct backend, it will show setup instructions
+            Logger.Info("No backend configured — will prompt user for setup");
+            return new AnthropicDirectBackend(commands, httpPort);
         }
 
         private void OnDialogBoxShowing(object sender, DialogBoxShowingEventArgs e)

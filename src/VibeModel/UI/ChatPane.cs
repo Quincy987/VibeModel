@@ -26,6 +26,7 @@ namespace VibeModel.UI
         private Button _sendButton;
         private Button _cancelButton;
         private Button _newChatButton;
+        private Button _settingsButton;
         private TextBlock _statusText;
 
         // Streaming state — direct references avoid O(n) visual tree search
@@ -102,6 +103,7 @@ namespace VibeModel.UI
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
 
             var title = new TextBlock
             {
@@ -130,6 +132,11 @@ namespace VibeModel.UI
             _newChatButton.Click += OnNewChatClick;
             Grid.SetColumn(_newChatButton, 2);
             headerGrid.Children.Add(_newChatButton);
+
+            _settingsButton = CreateHeaderButton("Settings");
+            _settingsButton.Click += OnSettingsClick;
+            Grid.SetColumn(_settingsButton, 3);
+            headerGrid.Children.Add(_settingsButton);
 
             return new Border
             {
@@ -245,11 +252,21 @@ namespace VibeModel.UI
         {
             if (_backend == null) return;
 
+            string statusLine;
+            if (_backend.IsAvailable)
+            {
+                statusLine = "Connected to Claude. You can now talk to Claude directly inside Revit.\n\n";
+            }
+            else
+            {
+                statusLine = "To get started, either:\n" +
+                    "- **Recommended:** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and set your `ANTHROPIC_API_KEY` environment variable\n" +
+                    "- **Lightweight:** Click **Settings** to enter your Anthropic API key directly\n\n";
+            }
+
             var welcome = new ChatMessage(ChatRole.System,
                 "Welcome to VibeModel Chat!\n\n" +
-                (_backend.IsAvailable
-                    ? "Claude Code detected. You can now talk to Claude directly inside Revit.\n\n"
-                    : _backend.StatusMessage + "\n\n") +
+                statusLine +
                 "Examples:\n" +
                 "  - \"What document is open?\"\n" +
                 "  - \"List all walls\"\n" +
@@ -302,9 +319,13 @@ namespace VibeModel.UI
             if (string.IsNullOrEmpty(text) || _isGenerating)
                 return;
 
+            // Re-check availability (API key may have been configured via Settings)
+            if (_backend != null && _backend.IsAvailable)
+                UpdateStatus();
+
             if (_backend == null || !_backend.IsAvailable)
             {
-                var msg = _backend?.StatusMessage ?? "Chat backend not initialized.";
+                var msg = _backend?.StatusMessage ?? "Chat backend not initialized. Click Settings to configure your API key.";
                 AddMessage(new ChatMessage(ChatRole.System, msg));
                 ChatHistory.Add("System", msg);
                 return;
@@ -423,6 +444,13 @@ namespace VibeModel.UI
             _backend?.ResetSession();
             ChatHistory.Clear();
             ShowWelcomeMessage();
+        }
+
+        private void OnSettingsClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new SettingsDialog();
+            dialog.ShowDialog();
+            UpdateStatus();
         }
 
         private void SetGenerating(bool generating)

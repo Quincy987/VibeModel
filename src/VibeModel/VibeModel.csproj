@@ -75,6 +75,7 @@
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
 
   <!-- Embedded resources for ribbon icons -->
