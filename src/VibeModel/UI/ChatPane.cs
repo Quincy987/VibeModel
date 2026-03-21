@@ -7,6 +7,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Autodesk.Revit.UI;
+using VibeModel.Infrastructure;
 using VibeModel.Markdown;
 using VibeModel.Services.Chat;
 using TextBox = System.Windows.Controls.TextBox;
@@ -20,6 +21,8 @@ namespace VibeModel.UI
 
         private const int MaxMessages = 200;
 
+        public event EventHandler BackendChangeRequested;
+
         private StackPanel _messagePanel;
         private ScrollViewer _scrollViewer;
         private TextBox _inputBox;
@@ -28,6 +31,7 @@ namespace VibeModel.UI
         private Button _newChatButton;
         private Button _settingsButton;
         private TextBlock _statusText;
+        private Border _infoBanner;
 
         // Streaming state — direct references avoid O(n) visual tree search
         private TextBlock _streamingTextBlock;
@@ -244,7 +248,11 @@ namespace VibeModel.UI
         public void InitializeBackend(IChatBackend backend)
         {
             _backend = backend;
+            _messagePanel.Children.Clear();
+            ClearStreamingState();
+            ChatHistory.Clear();
             UpdateStatus();
+            ShowInfoBanner();
             ShowWelcomeMessage();
         }
 
@@ -255,13 +263,17 @@ namespace VibeModel.UI
             string statusLine;
             if (_backend.IsAvailable)
             {
-                statusLine = "Connected to Claude. You can now talk to Claude directly inside Revit.\n\n";
+                if (_backend is LocalLlmBackend)
+                    statusLine = "Connected to local LLM. You can now chat directly inside Revit.\n\n";
+                else
+                    statusLine = "Connected to Claude. You can now talk to Claude directly inside Revit.\n\n";
             }
             else
             {
                 statusLine = "To get started, either:\n" +
                     "- **Recommended:** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and set your `ANTHROPIC_API_KEY` environment variable\n" +
-                    "- **Lightweight:** Click **Settings** to enter your Anthropic API key directly\n\n";
+                    "- **Lightweight:** Click **Settings** to enter your Anthropic API key directly\n" +
+                    "- **Local:** Connect a local LLM server (llama.cpp, Ollama, LM Studio) via **Settings**\n\n";
             }
 
             var welcome = new ChatMessage(ChatRole.System,
@@ -275,11 +287,84 @@ namespace VibeModel.UI
             AddMessage(welcome);
         }
 
+        private void ShowInfoBanner()
+        {
+            // Remove previous banner if any
+            if (_infoBanner != null)
+            {
+                _messagePanel.Children.Remove(_infoBanner);
+                _infoBanner = null;
+            }
+
+            // Show chat-only banner for local LLM without tool use
+            if (_backend is LocalLlmBackend && !SettingsManager.GetLocalLlmToolUse())
+            {
+                var bannerGrid = new Grid();
+                bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+
+                bannerGrid.Children.Add(new TextBlock
+                {
+                    Text = "Chat only — Revit commands require enabling tool use in Settings.",
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB7, 0x4D)),
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                var dismissBtn = new Button
+                {
+                    Content = "X",
+                    Foreground = FgSecondary,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand,
+                    FontSize = 10,
+                    Padding = new Thickness(4, 0, 4, 0)
+                };
+                dismissBtn.Click += (s, e) =>
+                {
+                    _messagePanel.Children.Remove(_infoBanner);
+                    _infoBanner = null;
+                };
+                Grid.SetColumn(dismissBtn, 1);
+                bannerGrid.Children.Add(dismissBtn);
+
+                _infoBanner = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x33, 0x1E)),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(10, 6, 10, 6),
+                    Margin = new Thickness(0, 4, 0, 4),
+                    Child = bannerGrid
+                };
+
+                _messagePanel.Children.Insert(0, _infoBanner);
+            }
+        }
+
         private void UpdateStatus()
         {
             if (_backend == null) return;
-            _statusText.Text = _backend.IsAvailable ? "Connected" : "Not Connected";
-            _statusText.Foreground = _backend.IsAvailable ? AccentBlue : FgError;
+
+            if (_backend.IsAvailable)
+            {
+                string label;
+                if (_backend is LocalLlmBackend)
+                    label = "Local LLM";
+                else if (_backend is ClaudeCodeBackend)
+                    label = "Claude CLI";
+                else
+                    label = "Anthropic API";
+
+                _statusText.Text = label;
+                _statusText.Foreground = AccentBlue;
+            }
+            else
+            {
+                _statusText.Text = "Not Connected";
+                _statusText.Foreground = FgError;
+            }
         }
 
         // --- Input handling ---
@@ -441,16 +526,28 @@ namespace VibeModel.UI
 
             _messagePanel.Children.Clear();
             ClearStreamingState();
+            _infoBanner = null;
             _backend?.ResetSession();
             ChatHistory.Clear();
+            ShowInfoBanner();
             ShowWelcomeMessage();
         }
 
         private void OnSettingsClick(object sender, RoutedEventArgs e)
         {
             var dialog = new SettingsDialog();
-            dialog.ShowDialog();
-            UpdateStatus();
+            var result = dialog.ShowDialog();
+
+            if (result == true && dialog.BackendChanged)
+            {
+                // Backend was changed — request parent to recreate and reinject
+                BackendChangeRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                // Settings may have changed (e.g. API key) without switching backend
+                UpdateStatus();
+            }
         }
 
         private void SetGenerating(bool generating)

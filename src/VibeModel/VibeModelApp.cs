@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using VibeModel.Infrastructure;
@@ -25,6 +26,7 @@ namespace VibeModel
         private ChatPane _chatPane;
         private IChatBackend _chatBackend;
         private bool _usingFallback;
+        private int _httpPort = 18884;
 
         public static ClaudeCommandRegistry Registry { get; private set; }
 
@@ -53,12 +55,11 @@ namespace VibeModel
 
                 // Start HTTP server before creating chat backend (backend needs the port)
                 _httpServer = new RevitHttpServer(_commandHandler);
-                int httpPort = 18884;
                 if (_httpServer.Start())
                 {
-                    httpPort = _httpServer.ActivePort;
-                    Logger.Info("VibeModel HTTP server active on port " + httpPort);
-                    Logger.Info("Usage: curl -s http://localhost:" + httpPort + "/help");
+                    _httpPort = _httpServer.ActivePort;
+                    Logger.Info("VibeModel HTTP server active on port " + _httpPort);
+                    Logger.Info("Usage: curl -s http://localhost:" + _httpPort + "/help");
                 }
                 else
                 {
@@ -70,8 +71,9 @@ namespace VibeModel
                 }
 
                 // Create chat backend with the actual HTTP port and inject into pane
-                _chatBackend = CreateChatBackend(registry.GetCommands(), httpPort);
+                _chatBackend = CreateChatBackend(registry.GetCommands(), _httpPort);
                 _chatPane.InitializeBackend(_chatBackend);
+                _chatPane.BackendChangeRequested += OnBackendChangeRequested;
 
                 // Dismiss non-transaction dialogs during command execution
                 application.DialogBoxShowing += OnDialogBoxShowing;
@@ -118,38 +120,96 @@ namespace VibeModel
             return Result.Succeeded;
         }
 
-        private IChatBackend CreateChatBackend(System.Collections.Generic.IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+        private IChatBackend CreateChatBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
         {
-            // Debug: set VIBEMODEL_FORCE_DIRECT=1 to skip Claude Code CLI detection
+            var preferred = SettingsManager.GetPreferredBackend();
+            // Normalize legacy value
+            if (preferred == "direct") preferred = "anthropic-api";
+
+            Logger.Info("Preferred backend: " + preferred);
+
+            // Explicit selection
+            if (preferred == "claude-cli")
+                return TryCreateCliBackend(commands, httpPort) ?? TryCreateFallback(commands, httpPort);
+
+            if (preferred == "anthropic-api")
+                return new AnthropicDirectBackend(commands, httpPort);
+
+            if (preferred == "local-llm")
+                return new LocalLlmBackend(commands, httpPort);
+
+            // Auto mode: try CLI → API → Local → default
             var forceDirect = Environment.GetEnvironmentVariable("VIBEMODEL_FORCE_DIRECT") == "1";
 
-            // 1. Claude Code CLI is the recommended backend (full agentic capabilities)
             if (!forceDirect)
             {
-                var cliBackend = new ClaudeCodeBackend(commands, httpPort);
-                if (cliBackend.IsAvailable)
-                {
-                    Logger.Info("Using ClaudeCodeBackend (CLI detected)");
-                    return cliBackend;
-                }
-                cliBackend.Dispose();
+                var cli = TryCreateCliBackend(commands, httpPort);
+                if (cli != null) return cli;
             }
             else
             {
                 Logger.Info("VIBEMODEL_FORCE_DIRECT=1, skipping Claude Code CLI detection");
             }
 
-            // 2. Fall back to direct API if user has configured an API key
             var apiKey = SettingsManager.GetApiKey();
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                Logger.Info("Using AnthropicDirectBackend (API key configured, CLI not found)");
+                Logger.Info("Using AnthropicDirectBackend (API key configured)");
                 return new AnthropicDirectBackend(commands, httpPort);
             }
 
-            // 3. Nothing configured — return direct backend, it will show setup instructions
+            // Check if local LLM endpoint is reachable
+            var localBackend = new LocalLlmBackend(commands, httpPort);
+            if (localBackend.IsAvailable)
+            {
+                Logger.Info("Using LocalLlmBackend (server reachable)");
+                return localBackend;
+            }
+            localBackend.Dispose();
+
             Logger.Info("No backend configured — will prompt user for setup");
             return new AnthropicDirectBackend(commands, httpPort);
+        }
+
+        private ClaudeCodeBackend TryCreateCliBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+        {
+            var cliBackend = new ClaudeCodeBackend(commands, httpPort);
+            if (cliBackend.IsAvailable)
+            {
+                Logger.Info("Using ClaudeCodeBackend (CLI detected)");
+                return cliBackend;
+            }
+            cliBackend.Dispose();
+            return null;
+        }
+
+        private IChatBackend TryCreateFallback(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+        {
+            var apiKey = SettingsManager.GetApiKey();
+            if (!string.IsNullOrWhiteSpace(apiKey))
+                return new AnthropicDirectBackend(commands, httpPort);
+
+            var local = new LocalLlmBackend(commands, httpPort);
+            if (local.IsAvailable) return local;
+            local.Dispose();
+
+            return new AnthropicDirectBackend(commands, httpPort);
+        }
+
+        private void OnBackendChangeRequested(object sender, EventArgs e)
+        {
+            try
+            {
+                var commands = Registry.GetCommands();
+                _chatBackend?.Dispose();
+                _chatBackend = CreateChatBackend(commands, _httpPort);
+                _chatPane.InitializeBackend(_chatBackend);
+                Logger.Info("Backend switched to: " + _chatBackend.GetType().Name);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Failed to switch backend", ex);
+            }
         }
 
         private void OnDialogBoxShowing(object sender, DialogBoxShowingEventArgs e)
