@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.1.0 — Local LLM Support (2026-03-21)
+
 ### Added
 - Local LLM backend (`LocalLlmBackend`) — connects to any OpenAI-compatible server (llama.cpp, Ollama, LM Studio)
 - Shared `ToolDefinitionBuilder` for generating tool definitions in both Anthropic and OpenAI formats
