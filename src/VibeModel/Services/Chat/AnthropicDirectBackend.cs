@@ -350,7 +350,7 @@ namespace VibeModel.Services.Chat
 
         private Dictionary<string, object> BuildRequestBody(string apiKey)
         {
-            var tools = BuildToolDefinitions();
+            var tools = ToolDefinitionBuilder.Build(_commands, ToolFormat.Anthropic);
             var systemPrompt = BuildSystemPrompt();
 
             var body = new Dictionary<string, object>
@@ -389,51 +389,6 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             sb.AppendLine("- For complex operations, use revit_exec to run arbitrary C# code against the Revit API.");
             return sb.ToString();
-        }
-
-        private object[] BuildToolDefinitions()
-        {
-            var tools = new List<object>();
-
-            // Skip help/health/chatlog as they're not useful for the AI to call
-            var skipCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health", "chatlog" };
-
-            foreach (var cmd in _commands.Values.OrderBy(c => c.Name))
-            {
-                if (skipCommands.Contains(cmd.Name))
-                    continue;
-
-                var toolName = "revit_" + cmd.Name;
-                var description = cmd.Description;
-                if (!string.IsNullOrEmpty(cmd.Usage))
-                    description += "\nUsage: " + cmd.Usage;
-
-                var inputSchema = new Dictionary<string, object>
-                {
-                    { "type", "object" },
-                    { "properties", new Dictionary<string, object>
-                        {
-                            { "args", new Dictionary<string, object>
-                                {
-                                    { "type", "string" },
-                                    { "description", "Arguments to pass to the command. " +
-                                        (!string.IsNullOrEmpty(cmd.Usage) ? "Format: " + cmd.Usage : "Leave empty if no arguments needed.") }
-                                }
-                            }
-                        }
-                    },
-                    { "required", new string[0] }
-                };
-
-                tools.Add(new Dictionary<string, object>
-                {
-                    { "name", toolName },
-                    { "description", description },
-                    { "input_schema", inputSchema }
-                });
-            }
-
-            return tools.ToArray();
         }
 
         private List<SseEvent> StreamRequest(string apiKey, Dictionary<string, object> body, CancellationToken ct)

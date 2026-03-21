@@ -49,7 +49,85 @@ namespace VibeModel.Infrastructure
             object val;
             if (settings.TryGetValue("PreferredBackend", out val) && val is string backend)
                 return backend;
-            return "direct";
+            return "auto";
+        }
+
+        public static void SetPreferredBackend(string backend)
+        {
+            var settings = Load();
+            settings["PreferredBackend"] = backend ?? "auto";
+            Save(settings);
+        }
+
+        public static string GetLocalLlmEndpoint()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("LocalLlmEndpoint", out val) && val is string ep && !string.IsNullOrWhiteSpace(ep))
+                return ep;
+            return "http://localhost:8080";
+        }
+
+        public static void SetLocalLlmEndpoint(string endpoint)
+        {
+            var settings = Load();
+            settings["LocalLlmEndpoint"] = endpoint ?? "";
+            Save(settings);
+        }
+
+        public static string GetLocalLlmModel()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("LocalLlmModel", out val) && val is string model)
+                return model;
+            return "";
+        }
+
+        public static void SetLocalLlmModel(string model)
+        {
+            var settings = Load();
+            settings["LocalLlmModel"] = model ?? "";
+            Save(settings);
+        }
+
+        public static bool GetLocalLlmToolUse()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("LocalLlmToolUse", out val))
+            {
+                if (val is bool b) return b;
+                if (val is string s) return s.Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+
+        public static void SetLocalLlmToolUse(bool enabled)
+        {
+            var settings = Load();
+            settings["LocalLlmToolUse"] = enabled;
+            Save(settings);
+        }
+
+        public static int GetLocalLlmTimeout()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("LocalLlmTimeout", out val))
+            {
+                if (val is int i) return Math.Max(30, Math.Min(300, i));
+                if (val is string s && int.TryParse(s, out int parsed))
+                    return Math.Max(30, Math.Min(300, parsed));
+            }
+            return 120;
+        }
+
+        public static void SetLocalLlmTimeout(int seconds)
+        {
+            var settings = Load();
+            settings["LocalLlmTimeout"] = Math.Max(30, Math.Min(300, seconds));
+            Save(settings);
         }
 
         public static Dictionary<string, object> Load()
