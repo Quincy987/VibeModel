@@ -56,7 +56,9 @@ This works well but has some limitations compared to Claude Code (no context win
 
    **How to find this folder:** Open File Explorer, click the address bar at the top, paste the path above (with your year), and press Enter. If the folder doesn't exist, create it.
 
-3. **Restart Revit** — you should see a new **VibeModel** tab in the ribbon
+3. **Unblock the DLL files:** Right-click each `.dll` file → **Properties** → check **"Unblock"** at the bottom → **OK**. (Windows blocks DLLs downloaded from the internet; without this, Revit will fail to load the add-in.)
+
+4. **Restart Revit** — you should see a new **VibeModel** tab in the ribbon
 
 ## Usage
 
@@ -126,6 +128,12 @@ This section is for developers who want to modify VibeModel.
 - Make sure all three files (`VibeModel.dll`, `VibeModel.addin`, `Markdig.dll`) are in the correct folder
 - Double-check the year in the folder path matches your Revit version
 - Try restarting Revit
+
+**"External Tool Failure" / FileLoadException / HRESULT: 0x80131515**
+- This means Windows blocked the DLL because it was downloaded from the internet
+- **If you used `install.ps1`:** Update to the latest installer (this is now handled automatically)
+- **If you installed manually:** Right-click each `.dll` file in the Addins folder → **Properties** → check **"Unblock"** → **OK**, then restart Revit
+- **Alternative:** Open PowerShell and run: `Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll" | Unblock-File`
 
 **Chat not connected**
 - **Option A (Claude Code):** Make sure Claude Code is installed (`npm install -g @anthropic-ai/claude-code`) and logged in. Try running `claude --version` in a terminal to verify.

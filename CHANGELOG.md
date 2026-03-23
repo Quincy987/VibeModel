@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- Installer now automatically unblocks DLLs downloaded from the internet (`Unblock-File`) — prevents "External Tool Failure" / HRESULT: 0x80131515 on first load
+- Added DLL unblock step to manual installation instructions in README
+- Added troubleshooting entry for FileLoadException / blocked DLL error
+
 ## v1.1.0 — Local LLM Support (2026-03-21)
 
 ### Added

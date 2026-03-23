@@ -113,6 +113,8 @@ foreach ($version in $revitVersions) {
     foreach ($file in $sourceFiles) {
         if ($resolvedFiles.ContainsKey($file)) {
             Copy-Item $resolvedFiles[$file] $targetDir -Force
+            # Remove Windows "downloaded from internet" block that prevents .NET from loading the DLL
+            Unblock-File -Path (Join-Path $targetDir $file) -ErrorAction SilentlyContinue
             Write-Host "    Copied $file" -ForegroundColor Gray
         } else {
             Write-Host "    WARNING: $file not found, skipping" -ForegroundColor Yellow
@@ -121,7 +123,7 @@ foreach ($version in $revitVersions) {
 }
 
 Write-Host ""
-Write-Host "  Files installed successfully!" -ForegroundColor Green
+Write-Host "  Files installed and unblocked successfully!" -ForegroundColor Green
 
 # --- API key ---
 
