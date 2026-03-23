@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.1.1 — Fix DLL Blocked by Windows (2026-03-23)
+
 ### Fixed
 - Installer now automatically unblocks DLLs downloaded from the internet (`Unblock-File`) — prevents "External Tool Failure" / HRESULT: 0x80131515 on first load
 - Added DLL unblock step to manual installation instructions in README
