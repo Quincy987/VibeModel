@@ -596,7 +596,9 @@ namespace VibeModel.UI
                                     try
                                     {
                                         var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(body);
-                                        var data = obj.ContainsKey("data") ? obj["data"] as object[] : null;
+                                        var dataRaw = obj.ContainsKey("data") ? obj["data"] : null;
+                                        var data = dataRaw as object[]
+                                            ?? (dataRaw as System.Collections.ArrayList)?.ToArray();
                                         if (data != null && data.Length > 0)
                                         {
                                             var first = data[0] as Dictionary<string, object>;

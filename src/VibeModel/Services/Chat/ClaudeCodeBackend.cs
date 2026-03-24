@@ -481,7 +481,8 @@ namespace VibeModel.Services.Chat
                     object contentObj;
                     if (!message.TryGetValue("content", out contentObj))
                         return;
-                    var contentArray = contentObj as object[];
+                    var contentArray = contentObj as object[]
+                        ?? (contentObj as System.Collections.ArrayList)?.ToArray();
                     if (contentArray == null)
                         return;
 

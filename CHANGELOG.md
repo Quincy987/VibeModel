@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## v1.1.2 — Fix Local LLM Empty Response (2026-03-24)
+
+### Fixed
+- Local LLM backend returned empty responses — `JavaScriptSerializer` deserializes JSON arrays as `ArrayList`, not `object[]`, causing silent cast failures in stream parsing
+- Same latent bug fixed in Claude Code backend (`ClaudeCodeBackend.cs`) and Settings "Test Connection" (`SettingsDialog.cs`)
+
 ## v1.1.1 — Fix DLL Blocked by Windows (2026-03-23)
 
 ### Fixed

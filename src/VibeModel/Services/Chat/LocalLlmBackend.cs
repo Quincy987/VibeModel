@@ -241,7 +241,8 @@ namespace VibeModel.Services.Chat
                         if (chunk == null) continue;
 
                         // Extract choices[0]
-                        var choices = chunk.ContainsKey("choices") ? chunk["choices"] as object[] : null;
+                        var choicesRaw = chunk.ContainsKey("choices") ? chunk["choices"] : null;
+                        var choices = ToObjectArray(choicesRaw);
                         if (choices == null || choices.Length == 0) continue;
                         var choice = choices[0] as Dictionary<string, object>;
                         if (choice == null) continue;
@@ -270,7 +271,7 @@ namespace VibeModel.Services.Chat
                         // Tool calls (streamed as deltas)
                         if (delta.ContainsKey("tool_calls"))
                         {
-                            var tcArray = delta["tool_calls"] as object[];
+                            var tcArray = ToObjectArray(delta["tool_calls"]);
                             if (tcArray != null)
                             {
                                 foreach (var tcObj in tcArray)
@@ -410,6 +411,13 @@ namespace VibeModel.Services.Chat
                 Logger.Error("Tool execution failed: " + toolName, ex);
                 return "ERROR: Failed to execute " + commandName + ": " + ex.Message;
             }
+        }
+
+        private static object[] ToObjectArray(object raw)
+        {
+            if (raw is object[] arr) return arr;
+            if (raw is System.Collections.ArrayList al) return al.ToArray();
+            return null;
         }
 
         private Dictionary<string, object> BuildRequestBody(bool includeTools)
