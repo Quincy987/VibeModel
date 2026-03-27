@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## v1.1.3 — Upgrade Recommended Model to Qwen 3.5 9B (2026-03-27)
+## [v1.1.3] — Upgrade Recommended Model to Qwen 3.5 9B (2026-03-27)
 
 ### Changed
 - Recommended local LLM model updated from Qwen 2.5 7B to Qwen 3.5 9B across docs and UI
