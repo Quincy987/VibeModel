@@ -20,7 +20,7 @@ Best performance, most control. Download from: https://github.com/ggerganov/llam
 ```bash
 # Download a model (e.g., from huggingface.co)
 # Start the server with GPU acceleration
-./llama-server.exe -m qwen2.5-7b-instruct-q4_k_m.gguf --port 8080 -ngl 99
+./llama-server.exe -m qwen3.5-9b-q4_k_m.gguf --port 8080 -ngl 99
 ```
 
 **Endpoint:** `http://localhost:8080`
@@ -32,7 +32,7 @@ One-click install, automatic model management. Download from: https://ollama.com
 
 ```bash
 # Pull a model
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:9b
 
 # Server starts automatically, or:
 ollama serve
@@ -56,10 +56,10 @@ Visual interface for downloading and running models. Download from: https://lmst
 
 | Model | Download Size | Tool Use | Quality | Speed |
 |-------|:------------:|:--------:|:-------:|:-----:|
-| Qwen 2.5 1.5B Instruct | ~1 GB | No | Basic chat | Fast |
-| Qwen 2.5 7B Instruct | ~4 GB | Yes | Good | Medium |
+| Qwen 3.5 0.8B | ~0.5 GB | No | Basic chat | Fast |
+| Qwen 3.5 4B | ~2.5 GB | No | Good chat | Fast |
+| **Qwen 3.5 9B** | **~5 GB** | **Yes** | **Recommended** | **Medium** |
 | Mistral 7B Instruct | ~4 GB | Yes | Good | Medium |
-| Qwen 2.5 14B Instruct | ~8 GB | Yes | Great | Slower |
 
 **For Revit commands** (creating walls, modifying elements, etc.), you need a model that supports function/tool calling — typically 7B parameters or larger. Smaller models work fine for general chat and Q&A.
 
@@ -87,9 +87,9 @@ Running Revit and a local LLM simultaneously requires decent hardware:
 
 | Model Size | Min VRAM | Min RAM (CPU only) |
 |:----------:|:--------:|:------------------:|
-| 1.5B (Q4) | 2 GB | 4 GB |
-| 7B (Q4) | 6 GB | 8 GB |
-| 14B (Q4) | 10 GB | 16 GB |
+| 0.8B (Q4) | 1 GB | 2 GB |
+| 4B (Q4) | 3 GB | 6 GB |
+| 9B (Q4) | 6 GB | 10 GB |
 
 **Tip:** If your GPU VRAM is limited, use a smaller quantization (Q4_K_M) or run a smaller model. Revit itself uses significant RAM, so leave headroom.
 
@@ -107,5 +107,5 @@ Running Revit and a local LLM simultaneously requires decent hardware:
 
 **Tool calls not working**
 - Verify tool use is enabled in Settings
-- Try a model known to support function calling (Qwen 2.5 7B+)
+- Try a model known to support function calling (Qwen 3.5 9B+)
 - Check VibeModel logs at `%LOCALAPPDATA%\VibeModel\logs\` for errors

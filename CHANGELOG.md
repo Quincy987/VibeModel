@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## v1.1.3 — Upgrade Recommended Model to Qwen 3.5 9B (2026-03-27)
+
+### Changed
+- Recommended local LLM model updated from Qwen 2.5 7B to Qwen 3.5 9B across docs and UI
+- Model table in `LOCAL_LLM_SETUP.md` now lists Qwen 3.5 family (0.8B, 4B, 9B)
+- Hardware requirements table updated for new model sizes
+- Settings dialog tool-use hint updated to reference Qwen 3.5 9B+
+
 ## v1.1.2 — Fix Local LLM Empty Response (2026-03-24)
 
 ### Fixed

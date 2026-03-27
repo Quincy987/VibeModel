@@ -342,7 +342,7 @@ namespace VibeModel.UI
 
             panel.Children.Add(new TextBlock
             {
-                Text = "Only enable if your model supports function calling (Qwen 2.5 7B+, Mistral 7B+).",
+                Text = "Only enable if your model supports function calling (Qwen 3.5 9B+, Mistral 7B+).",
                 Foreground = FgSecondary,
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
