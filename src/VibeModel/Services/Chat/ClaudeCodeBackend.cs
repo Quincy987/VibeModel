@@ -18,7 +18,9 @@ namespace VibeModel.Services.Chat
             "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code";
 
         private const int DetectTimeoutMs = 2000;
-        private const int ProcessTimeoutMs = 120000;
+        // Idle timeout: kill the process if no NDJSON line is read for this long.
+        // Reset on every non-empty stdout line so streaming tasks aren't cut off.
+        private const int ProcessTimeoutMs = 180000;
 
         private readonly int _httpPort;
         private readonly string _systemPromptPath;
@@ -30,6 +32,11 @@ namespace VibeModel.Services.Chat
         private Process _currentProcess;
         private bool _isSending;
         private bool _disposed;
+
+        // Set by the idle-timer callback (other thread) -> must be volatile.
+        // _lastBlockWasToolUse is touched only on the read-loop thread, no volatile needed.
+        private volatile bool _killedByIdleTimeout;
+        private bool _lastBlockWasToolUse;
 
         public bool IsAvailable { get; private set; }
         public string StatusMessage { get; private set; }
@@ -274,14 +281,25 @@ namespace VibeModel.Services.Chat
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool isResumeRetry = false)
         {
+            // Per-request state reset - must happen before each invocation so a
+            // previous turn's flags never leak into this one (e.g., wrongly clearing
+            // _sessionId on a clean turn because the prior turn was killed mid-tool).
+            _killedByIdleTimeout = false;
+            _lastBlockWasToolUse = false;
+
+            // Capture whether this invocation tries to resume - used after WaitForExit
+            // to detect stale-session failures and retry without --resume.
+            bool resumeAttempted = !string.IsNullOrEmpty(_sessionId);
+
             var args = new StringBuilder();
             args.Append("-p ");
             args.Append(EscapeArg(prompt));
             args.Append(" --output-format stream-json --verbose --allowedTools Bash,Read");
 
-            if (!string.IsNullOrEmpty(_sessionId))
+            if (resumeAttempted)
             {
                 args.Append(" --resume ");
                 args.Append(EscapeArg(_sessionId));
@@ -358,8 +376,12 @@ namespace VibeModel.Services.Chat
                 };
                 process.BeginErrorReadLine();
 
-                var timeoutTimer = new Timer(
-                    _ => KillProcess(process), null, ProcessTimeoutMs, Timeout.Infinite);
+                var timeoutTimer = new Timer(_ =>
+                {
+                    _killedByIdleTimeout = true;
+                    Logger.Warn("Claude process killed: idle timeout (" + ProcessTimeoutMs + " ms) exceeded");
+                    KillProcess(process);
+                }, null, ProcessTimeoutMs, Timeout.Infinite);
 
                 try
                 {
@@ -373,6 +395,10 @@ namespace VibeModel.Services.Chat
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
 
+                        // Reset idle timer on every non-empty line - streaming tasks
+                        // with continuous tool calls should never be cut off.
+                        timeoutTimer.Change(ProcessTimeoutMs, Timeout.Infinite);
+
                         ProcessNdjsonLine(line, onToken, fullResponse, ref lastWasText);
                     }
                 }
@@ -383,13 +409,59 @@ namespace VibeModel.Services.Chat
 
                 process.WaitForExit(5000);
 
+                // Post-WaitForExit ordered branches (see plan Change 5).
+                // Order is load-bearing: idle-kill notice must populate fullResponse
+                // before the stale-resume check evaluates Length == 0; stale-resume
+                // must intercept before the existing exit-code error path.
+
+                // 1. Cancellation
                 if (cancellationToken.IsCancellationRequested)
                 {
                     onComplete("[Cancelled]");
                     return;
                 }
 
+                // 2. Idle-kill notice - emit via BOTH onToken (so the streaming chat
+                //    bubble shows it; ChatPane prefers _streamingContent over fullText)
+                //    AND fullResponse (so chat history captures it).
+                if (_killedByIdleTimeout)
+                {
+                    string notice;
+                    if (_lastBlockWasToolUse)
+                    {
+                        notice = "\n\n[Stopped: task went idle for 3 min mid-tool. " +
+                                 "Session was reset to avoid a broken transcript - " +
+                                 "please rephrase your request.]";
+                        _sessionId = null;
+                    }
+                    else
+                    {
+                        notice = "\n\n[Stopped: task went idle for 3 min. " +
+                                 "Say \"continue\" to resume.]";
+                    }
+                    onToken(notice);
+                    fullResponse.Append(notice);
+                }
+
                 var stderr = stderrBuilder.ToString().Trim();
+
+                // 3. Stale-resume retry - silent failure of a --resume invocation
+                //    means the session ID is no longer valid in the CLI's store.
+                //    Clear it and retry once as a fresh chat.
+                if (resumeAttempted && !isResumeRetry
+                    && process.ExitCode != 0 && fullResponse.Length == 0)
+                {
+                    Logger.Warn("Resume failed (exit " + process.ExitCode +
+                                "), retrying as fresh chat. stderr: " + stderr);
+                    _sessionId = null;
+                    var prefix = "[Resumed session was stale - starting fresh chat.]\n\n";
+                    onToken(prefix);
+                    RunClaudeProcess(prompt, onToken, onComplete, onError,
+                        cancellationToken, isResumeRetry: true);
+                    return;
+                }
+
+                // 4. Exit-code error (no output at all)
                 if (process.ExitCode != 0 && fullResponse.Length == 0)
                 {
                     onError(!string.IsNullOrEmpty(stderr)
@@ -398,6 +470,7 @@ namespace VibeModel.Services.Chat
                     return;
                 }
 
+                // 5. Normal completion
                 onComplete(fullResponse.ToString());
             }
             finally
@@ -427,6 +500,20 @@ namespace VibeModel.Services.Chat
 
                 var type = typeObj as string;
 
+                if (type == "system")
+                {
+                    // Capture session_id from the FIRST event of the stream so we keep
+                    // it even if the process is killed before emitting `result`.
+                    object sysSessionObj;
+                    if (obj.TryGetValue("session_id", out sysSessionObj) && sysSessionObj is string sysSid
+                        && !string.IsNullOrEmpty(sysSid) && sysSid != _sessionId)
+                    {
+                        _sessionId = sysSid;
+                        Logger.Info("Session ID (from system init): " + _sessionId);
+                    }
+                    return;
+                }
+
                 if (type == "result")
                 {
                     lastWasText = false;
@@ -435,6 +522,41 @@ namespace VibeModel.Services.Chat
                     {
                         _sessionId = sid;
                         Logger.Info("Session ID: " + _sessionId);
+                    }
+                    return;
+                }
+
+                if (type == "user")
+                {
+                    // User events carry tool_result blocks back from the CLI.
+                    // Seeing one means the assistant's most recent tool_use has been
+                    // answered, so the transcript is no longer "mid-tool".
+                    object userMsgObj;
+                    if (!obj.TryGetValue("message", out userMsgObj))
+                        return;
+                    var userMsg = userMsgObj as Dictionary<string, object>;
+                    if (userMsg == null)
+                        return;
+                    object userContentObj;
+                    if (!userMsg.TryGetValue("content", out userContentObj))
+                        return;
+                    var userContentArray = userContentObj as object[]
+                        ?? (userContentObj as System.Collections.ArrayList)?.ToArray();
+                    if (userContentArray == null)
+                        return;
+
+                    foreach (var item in userContentArray)
+                    {
+                        if (item is Dictionary<string, object> block)
+                        {
+                            object blockType;
+                            if (block.TryGetValue("type", out blockType)
+                                && (string)blockType == "tool_result")
+                            {
+                                _lastBlockWasToolUse = false;
+                                break;
+                            }
+                        }
                     }
                     return;
                 }
@@ -486,12 +608,16 @@ namespace VibeModel.Services.Chat
                     if (contentArray == null)
                         return;
 
+                    string lastBlockType = null;
                     foreach (var item in contentArray)
                     {
                         if (item is Dictionary<string, object> block)
                         {
                             object blockType;
-                            if (block.TryGetValue("type", out blockType) && (string)blockType == "text")
+                            if (block.TryGetValue("type", out blockType))
+                                lastBlockType = blockType as string;
+
+                            if (lastBlockType == "text")
                             {
                                 object textObj;
                                 if (block.TryGetValue("text", out textObj) && textObj is string text)
@@ -508,6 +634,11 @@ namespace VibeModel.Services.Chat
                             }
                         }
                     }
+
+                    // After processing all blocks: if the final block is a tool_use,
+                    // we are now "awaiting a tool_result". An idle kill in this state
+                    // would orphan the tool_use and break --resume.
+                    _lastBlockWasToolUse = (lastBlockType == "tool_use");
                     return;
                 }
 
