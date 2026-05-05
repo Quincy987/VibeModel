@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [v1.1.4] — Chat Session Continuity (2026-05-05)
+
+### Fixed
+- Chat session no longer goes amnesiac when the Claude CLI subprocess is killed mid-task — `ClaudeCodeBackend.cs` now captures `session_id` from the first `system` init NDJSON event instead of waiting for the terminal `result` event, so a follow-up like "ja?" continues the prior conversation via `--resume` rather than starting fresh
+- Replaced 2-min absolute process timeout with a 3-min idle timeout that resets on every NDJSON line — multi-step modeling tasks with continuous tool calls are no longer cut off prematurely
+- Idle kills now produce a visible chat-bubble notice (via both `onToken` and `fullResponse`) instead of silent termination; mid-tool kills also clear `_sessionId` to prevent broken `--resume` transcripts (orphan `tool_use` without matching `tool_result`)
+- Stale `--resume` failures (e.g., CLI session store rotated) auto-retry once as a fresh chat with a `[Resumed session was stale — starting fresh chat.]` prefix instead of silently dying
+
+### Changed
+- Clarified `assistant`-block iteration in `ProcessNdjsonLine` by separating `currentBlockType` (per-iteration) from `lastBlockType` (post-loop), removing a dual-use variable that could reuse a stale type when a block lacked a `type` field
+
 ## [v1.1.3] — Upgrade Recommended Model to Qwen 3.5 9B (2026-03-27)
 
 ### Changed
