@@ -613,11 +613,13 @@ namespace VibeModel.Services.Chat
                     {
                         if (item is Dictionary<string, object> block)
                         {
+                            string currentBlockType = null;
                             object blockType;
                             if (block.TryGetValue("type", out blockType))
-                                lastBlockType = blockType as string;
+                                currentBlockType = blockType as string;
+                            lastBlockType = currentBlockType;
 
-                            if (lastBlockType == "text")
+                            if (currentBlockType == "text")
                             {
                                 object textObj;
                                 if (block.TryGetValue("text", out textObj) && textObj is string text)
