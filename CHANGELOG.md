@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [v1.1.4] — Chat Session Continuity (2026-05-05)
+
 ### Fixed
 - Chat session no longer goes amnesiac when the Claude CLI subprocess is killed mid-task — `ClaudeCodeBackend.cs` now captures `session_id` from the first `system` init NDJSON event instead of waiting for the terminal `result` event, so a follow-up like "ja?" continues the prior conversation via `--resume` rather than starting fresh
 - Replaced 2-min absolute process timeout with a 3-min idle timeout that resets on every NDJSON line — multi-step modeling tasks with continuous tool calls are no longer cut off prematurely
