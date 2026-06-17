@@ -285,12 +285,14 @@ namespace VibeModel.Services.Chat
                         var toolId = GetString(block, "id");
                         var input = block.ContainsKey("input") ? block["input"] as Dictionary<string, object> : null;
 
-                        var result = ExecuteTool(toolName, input);
-
-                        // Show tool activity to user
-                        var toolLabel = "\n\n[" + toolName + "]\n\n";
+                        // Show tool activity BEFORE running it, so the user sees what's
+                        // happening during the (blocking) call rather than after. UI-only —
+                        // not added to _conversationHistory.
+                        var toolLabel = "\n\n" + StatusVerbs.Describe(toolName) + "\n\n";
                         onToken(toolLabel);
                         fullResponse.Append(toolLabel);
+
+                        var result = ExecuteTool(toolName, input);
 
                         toolResults.Add(new Dictionary<string, object>
                         {

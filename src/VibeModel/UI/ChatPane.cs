@@ -432,7 +432,9 @@ namespace VibeModel.UI
             _streamingContentPanel = contentPanel;
             _streamingTextBlock = new TextBlock
             {
-                Text = " ...",
+                // Immediate feedback the instant the user sends — replaced by the first
+                // streamed token (onToken overwrites this with the real content).
+                Text = "Looking at the model…",
                 Foreground = FgPrimary,
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap

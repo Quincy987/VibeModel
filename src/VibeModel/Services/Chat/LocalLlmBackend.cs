@@ -367,12 +367,13 @@ namespace VibeModel.Services.Chat
                         argsValue = argsJson;
                     }
 
-                    var result = ExecuteTool(toolName, argsValue);
-
-                    // Show tool activity
-                    var toolLabel = "\n\n[" + toolName + "]\n\n";
+                    // Show tool activity BEFORE running it, so the user sees what's happening
+                    // during the (blocking) call rather than after. UI-only — not added to history.
+                    var toolLabel = "\n\n" + StatusVerbs.Describe(toolName) + "\n\n";
                     onToken(toolLabel);
                     fullResponse.Append(toolLabel);
+
+                    var result = ExecuteTool(toolName, argsValue);
 
                     // Add tool result to history (OpenAI format)
                     _conversationHistory.Add(new Dictionary<string, object>
