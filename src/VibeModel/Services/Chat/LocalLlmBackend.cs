@@ -478,58 +478,22 @@ namespace VibeModel.Services.Chat
 
         private string GatherModelContext()
         {
-            var baseUrl = "http://localhost:" + _httpPort;
-            var sb = new StringBuilder();
-
+            // Single round-trip: /context composes info + active view + selection server-side,
+            // replacing three serial calls across the ExternalEvent boundary (lowers TTFT).
             try
             {
                 using (var client = new WebClient())
                 {
                     client.Encoding = Encoding.UTF8;
-
-                    try
-                    {
-                        var info = client.DownloadString(baseUrl + "/info");
-                        if (!string.IsNullOrWhiteSpace(info))
-                        {
-                            sb.AppendLine("CURRENT REVIT CONTEXT:");
-                            sb.AppendLine(info.Trim());
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /info failed — " + ex.Message);
-                    }
-
-                    try
-                    {
-                        var view = client.DownloadString(baseUrl + "/activeview");
-                        if (!string.IsNullOrWhiteSpace(view))
-                            sb.AppendLine("Active view: " + view.Trim());
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /activeview failed — " + ex.Message);
-                    }
-
-                    try
-                    {
-                        var selected = client.DownloadString(baseUrl + "/selected");
-                        if (!string.IsNullOrWhiteSpace(selected))
-                            sb.AppendLine("Selection: " + selected.Trim());
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /selected failed — " + ex.Message);
-                    }
+                    var context = client.DownloadString("http://localhost:" + _httpPort + "/context");
+                    return (context ?? string.Empty).Trim();
                 }
             }
             catch (Exception ex)
             {
                 Logger.Info("GatherModelContext failed — " + ex.Message);
+                return string.Empty;
             }
-
-            return sb.ToString().Trim();
         }
 
         public void Cancel()
