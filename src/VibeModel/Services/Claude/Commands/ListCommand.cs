@@ -8,7 +8,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class ListCommand : IClaudeCommand
+    public class ListCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "list";
         public string Description => "List elements by category (supports any category + --view flag)";
@@ -16,12 +16,19 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
+            return ExecuteStructured(args, uiApp).RenderText();
+        }
+
+        public CommandResult ExecuteStructured(string args, UIApplication uiApp)
+        {
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc.Document;
 
             var rawArgs = args?.Trim() ?? "";
             if (string.IsNullOrEmpty(rawArgs))
-                return "ERROR: Specify element category. Examples: walls, floors, foundations, grids, doors, windows, rooms, families, views, sheets\n\nUse --view flag to filter to active view only.";
+                return CommandResult.Error("BAD_ARGS",
+                    "Specify element category. Examples: walls, floors, foundations, grids, doors, windows, rooms, families, views, sheets",
+                    "Add --view to filter to the active view only.");
 
             // Parse --view flag
             bool viewScoped = false;
@@ -34,20 +41,21 @@ namespace VibeModel.Services.Claude.Commands
 
             var elementType = string.Join(" ", argParts).Trim().ToLower();
             if (string.IsNullOrEmpty(elementType))
-                return "ERROR: Specify element category.";
+                return CommandResult.Error("BAD_ARGS", "Specify element category.", Usage);
 
             View activeView = null;
             if (viewScoped)
             {
                 activeView = FormattingHelper.GetActiveGraphicalView(uiDoc);
                 if (activeView == null)
-                    return "ERROR: No graphical view active. Switch to a plan, section, or 3D view to use --view.";
+                    return CommandResult.Error("NO_ACTIVE_VIEW",
+                        "No graphical view active. Switch to a plan, section, or 3D view to use --view.",
+                        "Switch to a plan, section, or 3D view.");
             }
 
             IEnumerable<Element> elements;
             string label = elementType.ToUpper();
 
-            // Special cases that use OfClass (not OfCategory)
             switch (elementType)
             {
                 case "families":
@@ -67,10 +75,10 @@ namespace VibeModel.Services.Claude.Commands
                     label = "SHEETS";
                     break;
                 default:
-                    // Resolve via shared category resolution
                     var (cat, error) = FormattingHelper.ResolveCategory(elementType, doc);
                     if (cat == null)
-                        return error;
+                        // Preserve the resolver's exact text/guidance verbatim.
+                        return CommandResult.Legacy(error);
 
                     elements = GetCollector(doc, activeView)
                         .OfCategory(cat.Value)
@@ -83,42 +91,66 @@ namespace VibeModel.Services.Claude.Commands
 
             var list = elements.Take(100).ToList();
             var total = list.Count;
+            bool truncated = total >= 100;
 
             var sb = new StringBuilder();
-            sb.AppendLine(label + " (" + total + " shown" + (total >= 100 ? ", may be more" : "") + ")" + (viewScoped ? " [view: " + activeView.Name + "]" : ""));
+            sb.AppendLine(label + " (" + total + " shown" + (truncated ? ", may be more" : "") + ")" +
+                          (viewScoped ? " [view: " + activeView.Name + "]" : ""));
             sb.AppendLine("=".PadRight(40, '='));
             sb.AppendLine();
 
+            var elementsData = new List<object>();
             foreach (var elem in list)
             {
                 sb.Append("ID: " + elem.Id.IntegerValue + " | ");
+
+                var elemData = new Dictionary<string, object> { { "id", elem.Id.IntegerValue } };
 
                 if (elem is FamilyInstance fi)
                 {
                     sb.Append(fi.Symbol?.Family?.Name ?? "?");
                     sb.Append(" : ");
                     sb.Append(fi.Symbol?.Name ?? "?");
+                    elemData["family"] = fi.Symbol?.Family?.Name;
+                    elemData["symbol"] = fi.Symbol?.Name;
                 }
                 else
                 {
                     sb.Append(elem.Name);
+                    elemData["name"] = elem.Name;
                     var tid = elem.GetTypeId();
                     if (tid != ElementId.InvalidElementId)
                     {
                         var et = doc.GetElement(tid);
                         if (et != null)
+                        {
                             sb.Append(" | Type: " + et.Name);
+                            elemData["type"] = et.Name;
+                        }
                     }
                 }
 
                 var mark = elem.get_Parameter(BuiltInParameter.ALL_MODEL_MARK);
                 if (mark != null && mark.HasValue && !string.IsNullOrEmpty(mark.AsString()))
+                {
                     sb.Append(" | Mark: " + mark.AsString());
+                    elemData["mark"] = mark.AsString();
+                }
 
                 sb.AppendLine();
+                elementsData.Add(elemData);
             }
 
-            return sb.ToString();
+            var data = new Dictionary<string, object>
+            {
+                { "category", label },
+                { "view", viewScoped ? activeView.Name : null },
+                { "total", total },
+                { "truncated", truncated },
+                { "elements", elementsData }
+            };
+
+            return CommandResult.Ok(sb.ToString(), data);
         }
 
         private static FilteredElementCollector GetCollector(Document doc, View view)

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -5,7 +6,7 @@ using Autodesk.Revit.UI;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class ViewsCommand : IClaudeCommand
+    public class ViewsCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "views";
         public string Description => "List all views in document";
@@ -13,12 +14,12 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument.Document;
+            return ExecuteStructured(args, uiApp).RenderText();
+        }
 
-            var sb = new StringBuilder();
-            sb.AppendLine("VIEWS IN DOCUMENT");
-            sb.AppendLine("=================");
-            sb.AppendLine();
+        public CommandResult ExecuteStructured(string args, UIApplication uiApp)
+        {
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var views = new FilteredElementCollector(doc)
                 .OfClass(typeof(View))
@@ -28,8 +29,12 @@ namespace VibeModel.Services.Claude.Commands
                 .ThenBy(v => v.Name)
                 .ToList();
 
-            var groupedViews = views.GroupBy(v => v.ViewType);
+            var sb = new StringBuilder();
+            sb.AppendLine("VIEWS IN DOCUMENT");
+            sb.AppendLine("=================");
+            sb.AppendLine();
 
+            var groupedViews = views.GroupBy(v => v.ViewType);
             foreach (var group in groupedViews)
             {
                 sb.AppendLine(group.Key.ToString() + " (" + group.Count() + "):");
@@ -41,10 +46,20 @@ namespace VibeModel.Services.Claude.Commands
                     sb.AppendLine("  ... and " + (group.Count() - 20) + " more");
                 sb.AppendLine();
             }
-
             sb.AppendLine("Total views: " + views.Count);
 
-            return sb.ToString();
+            var data = new Dictionary<string, object>
+            {
+                { "total", views.Count },
+                { "views", views.Select(v => new Dictionary<string, object>
+                    {
+                        { "id", v.Id.IntegerValue },
+                        { "name", v.Name },
+                        { "type", v.ViewType.ToString() }
+                    }).ToList<object>() }
+            };
+
+            return CommandResult.Ok(sb.ToString(), data);
         }
     }
 }

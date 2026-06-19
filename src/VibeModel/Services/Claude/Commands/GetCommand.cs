@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -6,7 +7,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class GetCommand : IClaudeCommand
+    public class GetCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "get";
         public string Description => "Get element by ID";
@@ -14,15 +15,30 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
+            return ExecuteStructured(args, uiApp).RenderText();
+        }
+
+        public CommandResult ExecuteStructured(string args, UIApplication uiApp)
+        {
             var doc = uiApp.ActiveUIDocument.Document;
 
             var idString = args?.Trim() ?? "";
             if (!int.TryParse(idString, out int idValue))
-                return "ERROR: Invalid element ID '" + idString + "'";
+                return CommandResult.Error("BAD_ARGS", "Invalid element ID '" + idString + "'",
+                    "Provide a numeric element ID, e.g. 'get 12345'.");
 
             var element = doc.GetElement(new ElementId(idValue));
             if (element == null)
-                return "ERROR: Element with ID " + idValue + " not found";
+                return CommandResult.Error("ELEMENT_NOT_FOUND", "Element with ID " + idValue + " not found",
+                    "Run 'list <category>' to find valid element IDs.");
+
+            var data = new Dictionary<string, object>
+            {
+                { "id", element.Id.IntegerValue },
+                { "name", element.Name },
+                { "class", element.GetType().Name },
+                { "category", element.Category?.Name }
+            };
 
             var sb = new StringBuilder();
             sb.AppendLine("ELEMENT: " + element.Name);
@@ -39,7 +55,10 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     var elemType = doc.GetElement(typeId);
                     if (elemType != null)
+                    {
                         sb.AppendLine("Type: " + elemType.Name);
+                        data["type"] = elemType.Name;
+                    }
                 }
             }
 
@@ -53,6 +72,9 @@ namespace VibeModel.Services.Claude.Commands
                 sb.AppendLine("  Family: " + (fi.Symbol?.Family?.Name ?? "N/A"));
                 sb.AppendLine("  Type: " + (fi.Symbol?.Name ?? "N/A"));
                 sb.AppendLine("  Host: " + (fi.Host?.Name ?? "N/A"));
+                data["family"] = fi.Symbol?.Family?.Name;
+                data["type"] = fi.Symbol?.Name;
+                data["host"] = fi.Host?.Name;
 
                 if (fi.SuperComponent != null)
                     sb.AppendLine("  Super Component: " + fi.SuperComponent.Id.IntegerValue);
@@ -77,16 +99,29 @@ namespace VibeModel.Services.Claude.Commands
                 sb.AppendLine();
                 sb.AppendLine("KEY PARAMETERS:");
                 if (mark != null && mark.HasValue && !string.IsNullOrEmpty(mark.AsString()))
+                {
                     sb.AppendLine("  Mark: " + mark.AsString());
+                    data["mark"] = mark.AsString();
+                }
                 if (comments != null && comments.HasValue && !string.IsNullOrEmpty(comments.AsString()))
+                {
                     sb.AppendLine("  Comments: " + comments.AsString());
+                    data["comments"] = comments.AsString();
+                }
                 if (levelParam != null && levelParam.HasValue)
-                    sb.AppendLine("  Level: " + FormattingHelper.GetLevelName(doc, levelParam.AsElementId()));
+                {
+                    var levelName = FormattingHelper.GetLevelName(doc, levelParam.AsElementId());
+                    sb.AppendLine("  Level: " + levelName);
+                    data["level"] = levelName;
+                }
                 if (phaseCreated != null && phaseCreated.HasValue)
                 {
                     var phase = doc.GetElement(phaseCreated.AsElementId());
                     if (phase != null)
+                    {
                         sb.AppendLine("  Phase: " + phase.Name);
+                        data["phase"] = phase.Name;
+                    }
                 }
             }
 
@@ -98,7 +133,8 @@ namespace VibeModel.Services.Claude.Commands
                 sb.AppendLine("  Min: " + FormattingHelper.FormatPoint(bbox.Min));
                 sb.AppendLine("  Max: " + FormattingHelper.FormatPoint(bbox.Max));
                 var size = bbox.Max - bbox.Min;
-                sb.AppendLine("  Size: " + FormattingHelper.FormatLength(size.X) + " x " + FormattingHelper.FormatLength(size.Y) + " x " + FormattingHelper.FormatLength(size.Z));
+                sb.AppendLine("  Size: " + FormattingHelper.FormatLength(size.X) + " x " +
+                              FormattingHelper.FormatLength(size.Y) + " x " + FormattingHelper.FormatLength(size.Z));
             }
 
             if (element.Location is LocationPoint lp)
@@ -115,7 +151,7 @@ namespace VibeModel.Services.Claude.Commands
                 sb.AppendLine("  Length: " + FormattingHelper.FormatLength(lc.Curve.Length));
             }
 
-            return sb.ToString();
+            return CommandResult.Ok(sb.ToString(), data);
         }
     }
 }

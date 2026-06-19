@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -6,7 +7,7 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class ParamsCommand : IClaudeCommand
+    public class ParamsCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "params";
         public string Description => "Show parameters of selected element";
@@ -14,16 +15,22 @@ namespace VibeModel.Services.Claude.Commands
 
         public string Execute(string args, UIApplication uiApp)
         {
+            return ExecuteStructured(args, uiApp).RenderText();
+        }
+
+        public CommandResult ExecuteStructured(string args, UIApplication uiApp)
+        {
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc.Document;
 
             var selectedIds = uiDoc.Selection.GetElementIds();
             if (selectedIds.Count == 0)
-                return "ERROR: No element selected";
+                return CommandResult.Error("NO_SELECTION", "No element selected",
+                    "Select an element in Revit, then run params again.");
 
             var element = doc.GetElement(selectedIds.First());
             if (element == null)
-                return "ERROR: Could not get element";
+                return CommandResult.Error("INTERNAL", "Could not get element", null);
 
             var filter = args?.Trim() ?? "";
 
@@ -37,16 +44,25 @@ namespace VibeModel.Services.Claude.Commands
                 .OrderBy(p => p.Definition.Name)
                 .ToList();
 
-            sb.AppendLine("Instance Parameters (" + parameters.Count + " " + (string.IsNullOrEmpty(filter) ? "total" : "matching '" + filter + "'") + "):");
+            sb.AppendLine("Instance Parameters (" + parameters.Count + " " +
+                          (string.IsNullOrEmpty(filter) ? "total" : "matching '" + filter + "'") + "):");
             sb.AppendLine();
 
+            var instanceData = new List<object>();
             foreach (var param in parameters)
             {
                 var value = FormattingHelper.GetParameterValue(param);
                 var readOnly = param.IsReadOnly ? " [RO]" : "";
                 sb.AppendLine("  " + param.Definition.Name + ": " + value + readOnly);
+                instanceData.Add(new Dictionary<string, object>
+                {
+                    { "name", param.Definition.Name },
+                    { "value", value },
+                    { "isReadOnly", param.IsReadOnly }
+                });
             }
 
+            var typeData = new List<object>();
             var typeId = element.GetTypeId();
             if (typeId != ElementId.InvalidElementId)
             {
@@ -67,11 +83,25 @@ namespace VibeModel.Services.Claude.Commands
                         var value = FormattingHelper.GetParameterValue(param);
                         var readOnly = param.IsReadOnly ? " [RO]" : "";
                         sb.AppendLine("  " + param.Definition.Name + ": " + value + readOnly);
+                        typeData.Add(new Dictionary<string, object>
+                        {
+                            { "name", param.Definition.Name },
+                            { "value", value },
+                            { "isReadOnly", param.IsReadOnly }
+                        });
                     }
                 }
             }
 
-            return sb.ToString();
+            var data = new Dictionary<string, object>
+            {
+                { "elementId", element.Id.IntegerValue },
+                { "name", element.Name },
+                { "instanceParameters", instanceData },
+                { "typeParameters", typeData }
+            };
+
+            return CommandResult.Ok(sb.ToString(), data);
         }
     }
 }
