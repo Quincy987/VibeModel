@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Added
+- `POST /batch` now runs as **one undo unit** — the whole batch wraps in a single Revit
+  `TransactionGroup` and collapses to one Ctrl+Z (undo label e.g. `"VibeModel: 4× wall"`).
+  Resilient by default (a mid-batch failure keeps the commands that succeeded and reports the
+  per-command `ERROR`); opt-in atomic mode (`#atomic` first line or `?atomic=1`) rolls back the
+  entire batch on any failure. Read-only batches create no undo entry.
+- Combined `/context` endpoint composing `info` + `activeview` + `selected` in one call.
+- Friendly status lines streamed during chat tool calls (`StatusVerbs`) — "Creating wall…",
+  "Looking at the model…", etc.
+
+### Changed
+- Chat backends gather model context via a single `/context` round-trip instead of three serial
+  HTTP calls, each of which crossed the ExternalEvent boundary. Measured ~2–3× faster
+  steady-state and ~2.2s→95ms on the cold first turn of a session (lower time-to-first-token).
+- Batch is now handled as a single main-thread request (`EnqueueBatchAndWait` → `ExecuteBatch`)
+  rather than a blocking `EnqueueAndWait` per line, with a batch-size-scaled timeout
+  (`max(30s, 5s + 2s×N)`, capped at 5 min) and a matching socket send-timeout.
+- Chat tool-activity labels now appear **before** the tool runs (was after) and use a friendly
+  verb instead of the raw `[toolName]`; the streaming placeholder shows "Looking at the model…"
+  the instant a message is sent. Status lines are UI-only — never added to conversation history.
+
 ## [v1.1.4] — Chat Session Continuity (2026-05-05)
 
 ### Fixed

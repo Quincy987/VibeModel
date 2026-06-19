@@ -89,12 +89,26 @@ curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
 ```
 
 ### Batch Commands (POST)
+A batch runs as **one undo unit** — the whole batch collapses to a single Ctrl+Z in Revit.
+Send a multi-step "vibe" as one `/batch` to get one-undo behavior (rather than many single calls).
 ```bash
 curl -s -X POST http://localhost:18884/batch -d "wall 0 0 5000 0
 wall 5000 0 5000 5000
 wall 5000 5000 0 5000
 wall 0 5000 0 0"
 ```
+
+**Failure handling (default: resilient).** If a command fails mid-batch, the others still
+succeed and are kept as one undo unit; the response shows the per-command `ERROR`. Each command
+self-rolls-back, so a failure never leaves half-built geometry.
+
+**Atomic mode (opt-in, all-or-nothing).** Any failure rolls back the entire batch. Trigger with a
+leading `#atomic` line or `?atomic=1`:
+```bash
+curl -s -X POST "http://localhost:18884/batch?atomic=1" -d "wall 0 0 5000 0
+wall 5000 0 5000 5000"
+```
+A read-only batch (no modifications) creates no undo entry.
 
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:

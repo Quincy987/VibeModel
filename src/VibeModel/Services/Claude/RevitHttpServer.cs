@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -133,6 +134,14 @@ namespace VibeModel.Services.Claude
                         return;
                     }
 
+                    // A batch executes as one request and uses a size-scaled timeout (up to ~5 min).
+                    // Give the response socket headroom to match (batch timeout 300s + buffer).
+                    if (request.Method == "POST" &&
+                        request.Path.TrimStart('/').StartsWith("batch"))
+                    {
+                        client.SendTimeout = 305000;
+                    }
+
                     var response = ProcessRequest(request);
                     SendResponse(stream, response.StatusCode, response.Body);
                 }
@@ -242,13 +251,14 @@ namespace VibeModel.Services.Claude
             // Parse path and query string
             var path = request.Path;
             var queryArgs = "";
+            var rawQuery = "";
 
             int qmark = path.IndexOf('?');
             if (qmark >= 0)
             {
-                var query = path.Substring(qmark + 1);
+                rawQuery = path.Substring(qmark + 1);
                 path = path.Substring(0, qmark);
-                queryArgs = ParseQueryArgs(query);
+                queryArgs = ParseQueryArgs(rawQuery);
             }
 
             // Strip leading slash
@@ -263,7 +273,7 @@ namespace VibeModel.Services.Claude
 
             if (path == "batch" && request.Method == "POST")
             {
-                return HandleBatch(request.Body);
+                return HandleBatch(request.Body, rawQuery);
             }
 
             // Single command — use POST body as args if no query args
@@ -277,30 +287,43 @@ namespace VibeModel.Services.Claude
             return new HttpResponse(200, result);
         }
 
-        private HttpResponse HandleBatch(string body)
+        private HttpResponse HandleBatch(string body, string rawQuery)
         {
             if (string.IsNullOrEmpty(body))
                 return new HttpResponse(400, "ERROR: Empty batch body");
 
+            // Atomic (all-or-nothing) is opt-in: ?atomic=1 on the POST, or a leading #atomic line.
+            bool atomic = rawQuery != null &&
+                          rawQuery.IndexOf("atomic=1", StringComparison.OrdinalIgnoreCase) >= 0;
+
             var lines = body.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            var sb = new StringBuilder();
+            var commands = new List<BatchCommand>();
 
             foreach (var line in lines)
             {
                 var trimmed = line.Trim();
                 if (string.IsNullOrEmpty(trimmed)) continue;
 
+                // Directive / comment lines start with '#'. Recognise #atomic; skip the rest.
+                if (trimmed.StartsWith("#"))
+                {
+                    if (trimmed.Equals("#atomic", StringComparison.OrdinalIgnoreCase))
+                        atomic = true;
+                    continue;
+                }
+
                 var parts = trimmed.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
                 var cmd = parts[0];
                 var args = parts.Length > 1 ? parts[1] : "";
-
-                sb.AppendLine(">>> " + trimmed);
-                var result = _commandHandler.EnqueueAndWait(cmd, args);
-                sb.AppendLine(result);
-                sb.AppendLine();
+                commands.Add(new BatchCommand(cmd, args));
             }
 
-            return new HttpResponse(200, sb.ToString());
+            if (commands.Count == 0)
+                return new HttpResponse(400, "ERROR: No commands in batch");
+
+            // One request → one TransactionGroup → one undo entry.
+            var result = _commandHandler.EnqueueBatchAndWait(commands, atomic);
+            return new HttpResponse(200, result);
         }
 
         private string ParseQueryArgs(string query)

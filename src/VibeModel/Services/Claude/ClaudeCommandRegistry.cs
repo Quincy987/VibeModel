@@ -57,6 +57,15 @@ namespace VibeModel.Services.Claude
             return _commands;
         }
 
+        /// <summary>
+        /// True if the command modifies the document (marked with IModificationCommand).
+        /// Used by batch grouping to decide whether the group has anything worth assimilating.
+        /// </summary>
+        public bool IsModification(string command)
+        {
+            return _commands.TryGetValue(command, out var c) && c is IModificationCommand;
+        }
+
         private void DiscoverCommands()
         {
             Type[] allTypes;
