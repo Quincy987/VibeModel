@@ -51,8 +51,9 @@ curl -s -H "Accept: application/json" http://localhost:18884/info
 JSON envelope: `{"ok": true, "data": {...}}` on success (or `{"ok": true, "text": "..."}` for
 commands not yet migrated to structured data), and on failure
 `{"ok": false, "error": {"code": "...", "message": "...", "suggestion": "..."}}`. In text mode,
-errors are unchanged except for an additive `Hint: <suggestion>` line. (Batch JSON output is a
-follow-up; `/batch` currently returns text.)
+errors are unchanged except for an additive `Hint: <suggestion>` line. `POST /batch?format=json`
+returns `{"ok": <all-ok>, "atomic": bool, "rolledBack": bool, "results": [{command, args, result}]}`.
+The Anthropic and Local LLM chat backends request JSON automatically (except `screenshot`).
 
 ### Query Commands
 ```bash

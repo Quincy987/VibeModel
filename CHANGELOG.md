@@ -13,8 +13,13 @@
   instead of string-sniffing `"ERROR"`. Query commands migrated to structured output:
   `info`, `list`, `selected`, `get`, `params`, `levels`, `views` — each emits structured `data`
   in JSON mode (byte-identical text in text mode) and precise error codes (`BAD_ARGS`,
-  `ELEMENT_NOT_FOUND`, `NO_SELECTION`, `NO_ACTIVE_VIEW`, …). Batch JSON output and backend
-  `&format=json` consumption are a follow-up.
+  `ELEMENT_NOT_FOUND`, `NO_SELECTION`, `NO_ACTIVE_VIEW`, …).
+- `POST /batch?format=json` returns a structured envelope:
+  `{"ok":<all-ok>,"atomic":bool,"rolledBack":bool,"results":[{command,args,result}]}`
+  (default batch output stays text).
+- The Anthropic and Local LLM chat backends now request JSON for tool calls (`&format=json`,
+  except `screenshot`), so the model reads structured `{ok,data}` / `{ok,error}` and self-corrects
+  from the error `suggestion` instead of scraping text.
 - **Vision** — new `/screenshot` command exports the active view to a PNG (default 1536px long
   edge, `screenshot [pixels]`) and returns its path. `AnthropicDirectBackend` reads the file and
   inlines it as an image block so the model can SEE the model; both Anthropic and Claude-CLI

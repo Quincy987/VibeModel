@@ -395,9 +395,15 @@ namespace VibeModel.Services.Chat
 
             try
             {
+                // Request JSON so the model reads structured fields ({ok,data} / {ok,error}).
                 var url = "http://localhost:" + _httpPort + "/" + commandName;
+                var query = new List<string>();
                 if (!string.IsNullOrEmpty(args))
-                    url += "?args=" + Uri.EscapeDataString(args);
+                    query.Add("args=" + Uri.EscapeDataString(args));
+                if (commandName != "screenshot")
+                    query.Add("format=json");
+                if (query.Count > 0)
+                    url += "?" + string.Join("&", query);
 
                 using (var client = new WebClient())
                 {
@@ -471,6 +477,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do.");
             sb.AppendLine();
             sb.AppendLine("TIPS:");
+            sb.AppendLine("- Tool results are JSON: {\"ok\":true,\"data\":{...}} on success or {\"ok\":false,\"error\":{\"code\",\"message\",\"suggestion\"}} on failure. Read the fields; on an error, follow the suggestion.");
             sb.AppendLine("- All dimensions are in millimeters (mm).");
             sb.AppendLine("- Always check revit_info first to understand the current document.");
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");

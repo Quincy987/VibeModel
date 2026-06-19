@@ -291,8 +291,7 @@ namespace VibeModel.Services.Claude
 
             if (path == "batch" && request.Method == "POST")
             {
-                // Batch JSON output is a follow-up (03b); batch stays text for now.
-                return HandleBatch(request.Body, rawQuery);
+                return HandleBatch(request.Body, rawQuery, fmt);
             }
 
             // Single command — use POST body as args if no query args
@@ -322,7 +321,7 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
-        private HttpResponse HandleBatch(string body, string rawQuery)
+        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt)
         {
             if (string.IsNullOrEmpty(body))
                 return new HttpResponse(400, "ERROR: Empty batch body");
@@ -357,8 +356,9 @@ namespace VibeModel.Services.Claude
                 return new HttpResponse(400, "ERROR: No commands in batch");
 
             // One request → one TransactionGroup → one undo entry.
-            var result = _commandHandler.EnqueueBatchAndWait(commands, atomic);
-            return new HttpResponse(200, result);
+            var result = _commandHandler.EnqueueBatchAndWait(commands, atomic, fmt);
+            return new HttpResponse(200, result,
+                fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
 
         private string ParseQueryArgs(string query)

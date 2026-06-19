@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Web.Script.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
@@ -26,6 +27,8 @@ namespace VibeModel.Services.Claude
 
         private readonly ConcurrentQueue<CommandRequest> _queue = new ConcurrentQueue<CommandRequest>();
         private readonly ClaudeCommandRegistry _registry;
+        private readonly JavaScriptSerializer _json =
+            new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         private ExternalEvent _externalEvent;
         private volatile bool _disposed;
 
@@ -88,7 +91,8 @@ namespace VibeModel.Services.Claude
         /// Enqueues the whole command list as ONE request so a single TransactionGroup can
         /// wrap the entire loop (one undo entry). Uses a timeout scaled to the batch size.
         /// </summary>
-        public string EnqueueBatchAndWait(IReadOnlyList<BatchCommand> commands, bool atomic)
+        public string EnqueueBatchAndWait(IReadOnlyList<BatchCommand> commands, bool atomic,
+            ResponseFormat fmt = ResponseFormat.Text)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -96,7 +100,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(commands, atomic);
+            var request = new CommandRequest(commands, atomic, fmt);
             _queue.Enqueue(request);
 
             try
@@ -192,12 +196,27 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private string ExecuteBatch(UIApplication app, CommandRequest req)
         {
+            bool json = req.Format == ResponseFormat.Json;
+
             var doc = app.ActiveUIDocument?.Document;
             if (doc == null)
-                return "ERROR: No document open";
+                return json
+                    ? _json.Serialize(new Dictionary<string, object>
+                        {
+                            { "ok", false },
+                            { "error", new Dictionary<string, object>
+                                {
+                                    { "code", "NO_DOCUMENT" },
+                                    { "message", "No document open" },
+                                    { "suggestion", "Open a Revit project before running commands." }
+                                }
+                            }
+                        })
+                    : "ERROR: No document open";
 
-            var sb = new StringBuilder();
-            bool anyModified = false, anyError = false;
+            var sb = new StringBuilder();          // text form (byte-identical)
+            var entries = new List<object>();      // json form (per-command results)
+            bool anyModified = false, anyError = false, rolledBack = false;
 
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
@@ -206,13 +225,21 @@ namespace VibeModel.Services.Claude
                 {
                     foreach (var item in req.Batch)
                     {
-                        sb.AppendLine(">>> " + item.Command +
-                                      (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
                         // ExecuteCore returns the structured result; decide on .Success, not a
                         // string prefix. Text output stays byte-identical via RenderText().
                         var cr = _registry.ExecuteCore(item.Command, item.Args, app);
+
+                        sb.AppendLine(">>> " + item.Command +
+                                      (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
                         sb.AppendLine(cr.RenderText());
                         sb.AppendLine();
+
+                        entries.Add(new Dictionary<string, object>
+                        {
+                            { "command", item.Command },
+                            { "args", item.Args },
+                            { "result", cr.ToJsonObject() }
+                        });
 
                         if (!cr.Success) anyError = true;
                         else if (_registry.IsModification(item.Command)) anyModified = true;
@@ -221,6 +248,7 @@ namespace VibeModel.Services.Claude
                     if (req.Atomic && anyError)
                     {
                         tg.RollBack();
+                        rolledBack = true;
                         sb.AppendLine("[atomic] rolled back — a command failed.");
                     }
                     else if (anyModified)
@@ -238,6 +266,15 @@ namespace VibeModel.Services.Claude
                     throw;
                 }
             }
+
+            if (json)
+                return _json.Serialize(new Dictionary<string, object>
+                    {
+                        { "ok", !anyError },
+                        { "atomic", req.Atomic },
+                        { "rolledBack", rolledBack },
+                        { "results", entries }
+                    });
 
             return sb.ToString();
         }
@@ -326,11 +363,12 @@ namespace VibeModel.Services.Claude
             Format = format;
         }
 
-        public CommandRequest(IReadOnlyList<BatchCommand> batch, bool atomic)
+        public CommandRequest(IReadOnlyList<BatchCommand> batch, bool atomic,
+            ResponseFormat format = ResponseFormat.Text)
         {
             Batch = batch;
             Atomic = atomic;
-            Format = ResponseFormat.Text; // batch JSON output is a follow-up (03b)
+            Format = format;
         }
 
         public void Cancel()

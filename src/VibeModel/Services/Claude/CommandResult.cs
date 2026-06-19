@@ -65,7 +65,14 @@ namespace VibeModel.Services.Claude
                 return t;
             }
 
-            object payload = Success
+            return json.Serialize(ToJsonObject());
+        }
+
+        // The JSON envelope as an object graph (not serialized) — lets the batch path embed
+        // per-command results in an array and serialize the whole thing once.
+        public object ToJsonObject()
+        {
+            return Success
                 ? (object)new Dictionary<string, object>
                   {
                       { "ok", true },
@@ -83,7 +90,6 @@ namespace VibeModel.Services.Claude
                           }
                       }
                   };
-            return json.Serialize(payload);
         }
 
         // Text-mode render without needing a serializer (for callers like the batch path).
