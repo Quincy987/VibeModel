@@ -16,7 +16,7 @@ namespace VibeModel.Services.Claude.Commands
         // Legacy text path delegates to the structured form — one source of truth for the text.
         public string Execute(string args, UIApplication uiApp)
         {
-            return ExecuteStructured(args, uiApp).Text;
+            return ExecuteStructured(args, uiApp).RenderText();
         }
 
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)

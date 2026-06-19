@@ -28,14 +28,14 @@ namespace VibeModel.Services.Claude.Commands
             var levelName = parts.Length >= 2 ? parts[1].Trim() : null;
 
             if (kind == "plan")
-                return CreatePlan(doc, levelName);
+                return CreatePlan(doc, levelName, uiApp.ActiveUIDocument);
             if (kind == "3d")
                 return Create3D(doc);
 
             return CommandResult.Error("BAD_ARGS", "Unknown view type '" + parts[0] + "'.", Usage);
         }
 
-        private CommandResult CreatePlan(Document doc, string levelName)
+        private CommandResult CreatePlan(Document doc, string levelName, UIDocument uiDoc)
         {
             var vft = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewFamilyType))
@@ -61,7 +61,8 @@ namespace VibeModel.Services.Claude.Commands
             }
             else
             {
-                level = levels.OrderBy(l => l.Elevation).First();
+                // Prefer the active view's level (matches WallCommand); fall back to lowest.
+                level = FormattingHelper.GetPreferredLevel(doc, uiDoc) ?? levels.OrderBy(l => l.Elevation).First();
             }
 
             View view = null;
