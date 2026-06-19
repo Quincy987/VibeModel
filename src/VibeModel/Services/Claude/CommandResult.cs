@@ -95,6 +95,14 @@ namespace VibeModel.Services.Claude
         // Text-mode render without needing a serializer (for callers like the batch path).
         public string RenderText() => Render(ResponseFormat.Text, null);
 
+        // Convert a TransactionHelper result ("ERROR: msg" on failure) into a structured error.
+        // Modification commands call this to turn the helper's string into a CommandResult.
+        public static CommandResult FromTransactionError(string error, string code = "TRANSACTION_FAILED",
+            string suggestion = null)
+        {
+            return Error(code, StripErrorPrefix(error), suggestion);
+        }
+
         // "ERROR: foo" -> "foo"; tolerant of "ERROR foo".
         private static string StripErrorPrefix(string text)
         {

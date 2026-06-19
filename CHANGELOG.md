@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Modeling breadth** — six new creation commands, each a thin wrapper over a stable Revit
+  factory API following the `WallCommand` template: `grid`, `level`, `view` (floor plan + 3D),
+  `room`, `sheet` (optional title block + placed view), and `tag`. All are born structured
+  (`IStructuredCommand` — JSON `data` with the created element ID + name, structured errors with
+  codes), and use `TransactionHelper` + the `IModificationCommand` marker so they assimilate into
+  the batch undo group automatically. `tag` resolves the element→tag category via an explicit map
+  and degrades gracefully (`TYPE_NOT_LOADED`) when no tag family is loaded.
 - **Structured I/O (foundation)** — commands can return JSON via `?format=json` or an explicit
   `Accept: application/json` header (curl's default `*/*` stays text). Success envelope
   `{"ok":true,"data":{...}}` (or `{"ok":true,"text":"..."}` for unmigrated commands); failure

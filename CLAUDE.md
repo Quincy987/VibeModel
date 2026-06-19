@@ -87,6 +87,15 @@ curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"
 # Create a floor from points (mm)
 curl -s "http://localhost:18884/floor?args=0,0 5000,0 5000,5000 0,5000"
 
+# Create a grid line (mm) / level (mm) / view / room / sheet / tag
+curl -s "http://localhost:18884/grid?args=0 0 10000 0 A"
+curl -s "http://localhost:18884/level?args=3000 Level 2"
+curl -s "http://localhost:18884/view?args=plan Level 2"
+curl -s "http://localhost:18884/view?args=3d"
+curl -s "http://localhost:18884/room?args=2500 2500 Office 101"
+curl -s "http://localhost:18884/sheet?args=A1 Title Block 12345"
+curl -s "http://localhost:18884/tag?args=12345"
+
 # Delete elements
 curl -s "http://localhost:18884/delete?args=12345 12346"
 
