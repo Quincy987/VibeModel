@@ -56,6 +56,9 @@ curl -s "http://localhost:18884/subcats?args=Structural"     # Subcategories
 curl -s http://localhost:18884/views                         # All views
 curl -s http://localhost:18884/levels                        # All levels
 curl -s http://localhost:18884/activeview                    # Active view info
+curl -s http://localhost:18884/context                       # Combined info + active view + selection (one call)
+curl -s http://localhost:18884/screenshot                    # Export active view to PNG (default 1536px)
+curl -s "http://localhost:18884/screenshot?args=1024"        # Custom long-edge pixels
 curl -s http://localhost:18884/bbox                          # Bounding box of selected
 curl -s http://localhost:18884/geometry                      # Geometry of selected
 curl -s http://localhost:18884/familytypes                   # List available family types

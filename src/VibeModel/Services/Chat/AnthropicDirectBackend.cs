@@ -277,6 +277,7 @@ namespace VibeModel.Services.Chat
                 // Execute tools and add results
                 lastWasText = false;
                 var toolResults = new List<Dictionary<string, object>>();
+                bool addedImage = false;
                 foreach (var block in assistantContent)
                 {
                     if (GetString(block, "type") == "tool_use")
@@ -294,14 +295,22 @@ namespace VibeModel.Services.Chat
 
                         var result = ExecuteTool(toolName, input);
 
+                        // Screenshot results carry an image; everything else is a plain string.
+                        var content = BuildToolResultContent(toolName, result);
+                        if (content is object[]) addedImage = true;
+
                         toolResults.Add(new Dictionary<string, object>
                         {
                             { "type", "tool_result" },
                             { "tool_use_id", toolId },
-                            { "content", result }
+                            { "content", content }
                         });
                     }
                 }
+
+                // Keep only the newest screenshot as an actual image — drop older base64
+                // blocks to text so we don't re-ship every image on every turn.
+                if (addedImage) DropOldScreenshotImages();
 
                 _conversationHistory.Add(new Dictionary<string, object>
                 {
@@ -350,6 +359,91 @@ namespace VibeModel.Services.Chat
             }
         }
 
+        // Builds the tool_result content. Default is the plain string (unchanged behavior).
+        // The screenshot tool returns an image-bearing path: read + base64 the PNG and emit a
+        // mixed text+image content array so the model can SEE the view.
+        private object BuildToolResultContent(string toolName, string result)
+        {
+            if (toolName == "revit_screenshot" && result != null && !result.StartsWith("ERROR"))
+            {
+                var path = ExtractPath(result);
+                if (path != null && File.Exists(path))
+                {
+                    try
+                    {
+                        var b64 = Convert.ToBase64String(File.ReadAllBytes(path));
+                        return new object[]
+                        {
+                            new Dictionary<string, object>
+                            {
+                                { "type", "text" },
+                                { "text", result }
+                            },
+                            new Dictionary<string, object>
+                            {
+                                { "type", "image" },
+                                { "source", new Dictionary<string, object>
+                                    {
+                                        { "type", "base64" },
+                                        { "media_type", "image/png" },
+                                        { "data", b64 }
+                                    }
+                                }
+                            }
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Screenshot inline failed", ex);
+                        return result + "\n[Could not attach image: " + ex.Message + "]";
+                    }
+                }
+            }
+            return result; // default: plain string, unchanged
+        }
+
+        // Parses the "Path:" line out of a screenshot result. Text-contract bridge until
+        // Plan 03 (structured I/O) exposes the path as a field.
+        private static string ExtractPath(string result)
+        {
+            foreach (var line in result.Split('\n'))
+                if (line.StartsWith("Path:", StringComparison.OrdinalIgnoreCase))
+                    return line.Substring(5).Trim();
+            return null;
+        }
+
+        // Replaces image blocks in older tool_results with a short text note, so only the
+        // most recent screenshot keeps its (large) base64 payload in the re-sent history.
+        private void DropOldScreenshotImages()
+        {
+            foreach (var msg in _conversationHistory)
+            {
+                if (!msg.TryGetValue("content", out var contentObj) || !(contentObj is object[] blocks))
+                    continue;
+
+                foreach (var b in blocks)
+                {
+                    if (!(b is Dictionary<string, object> block)) continue;
+                    if (!(block.TryGetValue("type", out var bt) && (bt as string) == "tool_result")) continue;
+                    if (!(block.TryGetValue("content", out var trContent) && trContent is object[] trBlocks)) continue;
+
+                    bool hasImage = false;
+                    string text = null;
+                    foreach (var ob in trBlocks)
+                    {
+                        if (!(ob is Dictionary<string, object> ib) || !ib.TryGetValue("type", out var it)) continue;
+                        var its = it as string;
+                        if (its == "image") hasImage = true;
+                        else if (its == "text" && ib.TryGetValue("text", out var tv)) text = tv as string;
+                    }
+
+                    if (hasImage)
+                        block["content"] = (text ?? "[screenshot]") +
+                                           "\n[Earlier screenshot image dropped to save context.]";
+                }
+            }
+        }
+
         private Dictionary<string, object> BuildRequestBody(string apiKey)
         {
             var tools = ToolDefinitionBuilder.Build(_commands, ToolFormat.Anthropic);
@@ -389,6 +483,8 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- All dimensions are in millimeters (mm).");
             sb.AppendLine("- Always check revit_info first to understand the current document.");
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
+            sb.AppendLine("- You can SEE the model with revit_screenshot. Decide on your own when looking helps — you do not need to be asked. Take one after creating/moving/deleting visible geometry to verify it looks right, when the user asks how something looks or where things are, or when a spatial/layout decision needs visual context.");
+            sb.AppendLine("- Do NOT screenshot for pure data queries (counts, parameters, IDs) or when nothing changed visually — it wastes time and tokens. Use judgement.");
             sb.AppendLine("- For complex operations, use revit_exec to run arbitrary C# code against the Revit API.");
             return sb.ToString();
         }

@@ -143,6 +143,7 @@ namespace VibeModel.Services.Chat
                 sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST http://localhost:" + _httpPort + "/batch -d \"command1 args\\ncommand2 args\"");
                 sb.AppendLine("- Always check /info first to understand the current document");
                 sb.AppendLine("- Use /selected to inspect what the user has selected");
+                sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
                 sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
                 sb.AppendLine();
                 sb.AppendLine("BEHAVIOR:");
@@ -310,7 +311,8 @@ namespace VibeModel.Services.Chat
 
             var appendPrompt = new StringBuilder();
             appendPrompt.Append("You are inside Revit. Read " + _systemPromptPath +
-                " for available commands. Always use curl to interact with Revit.");
+                " for available commands. Always use curl to interact with Revit. " +
+                "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
 
             if (!string.IsNullOrEmpty(context))
             {

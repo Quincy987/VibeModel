@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Vision** — new `/screenshot` command exports the active view to a PNG (default 1536px long
+  edge, `screenshot [pixels]`) and returns its path. `AnthropicDirectBackend` reads the file and
+  inlines it as an image block so the model can SEE the model; both Anthropic and Claude-CLI
+  backends are nudged to screenshot **autonomously** (after visible changes / layout questions,
+  not for pure data queries). Only the most recent screenshot is kept as an image in history
+  (older ones downgrade to text) to avoid re-shipping base64 every turn; old temp PNGs are pruned
+  to the last 20. Local LLM backend gets the path as text only (most local models aren't vision-capable).
 - `POST /batch` now runs as **one undo unit** — the whole batch wraps in a single Revit
   `TransactionGroup` and collapses to one Ctrl+Z (undo label e.g. `"VibeModel: 4× wall"`).
   Resilient by default (a mid-batch failure keeps the commands that succeeded and reports the

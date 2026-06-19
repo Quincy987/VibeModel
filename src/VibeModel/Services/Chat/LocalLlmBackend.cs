@@ -474,6 +474,11 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- All dimensions are in millimeters (mm).");
             sb.AppendLine("- Always check revit_info first to understand the current document.");
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
+            // NOTE: revit_screenshot returns a PNG path as text. Unlike AnthropicDirectBackend,
+            // this backend does NOT inline the image — most local models aren't vision-capable.
+            // The model only sees the path string. (Vision wiring for llava-class models is a
+            // future enhancement.)
+            sb.AppendLine("- revit_screenshot saves a PNG of the active view and returns its path (the image itself can't be viewed here).");
             return sb.ToString();
         }
 
