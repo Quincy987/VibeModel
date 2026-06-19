@@ -143,7 +143,7 @@ namespace VibeModel.Services.Claude
                     }
 
                     var response = ProcessRequest(request);
-                    SendResponse(stream, response.StatusCode, response.Body);
+                    SendResponse(stream, response.StatusCode, response.Body, response.ContentType);
                 }
             }
             catch (Exception ex)
@@ -200,6 +200,17 @@ namespace VibeModel.Services.Claude
             var method = requestLine[0];
             var rawPath = requestLine[1];
 
+            // Capture Accept (used to decide text vs JSON response format).
+            string accept = null;
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
+                {
+                    accept = line.Substring(7).Trim();
+                    break;
+                }
+            }
+
             // Find Content-Length for POST body
             string body = null;
             if (method == "POST")
@@ -243,7 +254,7 @@ namespace VibeModel.Services.Claude
                 }
             }
 
-            return new HttpRequest(method, rawPath, body);
+            return new HttpRequest(method, rawPath, body, accept);
         }
 
         private HttpResponse ProcessRequest(HttpRequest request)
@@ -265,6 +276,13 @@ namespace VibeModel.Services.Claude
             if (path.StartsWith("/"))
                 path = path.Substring(1);
 
+            // Response format: ?format=json or an explicit Accept: application/json.
+            // Curl's default Accept (*/*) must NOT trigger JSON — text stays the default.
+            bool wantsJson = QueryHasFormatJson(rawQuery)
+                          || (request.Accept != null &&
+                              request.Accept.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0);
+            var fmt = wantsJson ? ResponseFormat.Json : ResponseFormat.Text;
+
             // Route
             if (string.IsNullOrEmpty(path) || path == "health")
             {
@@ -273,6 +291,7 @@ namespace VibeModel.Services.Claude
 
             if (path == "batch" && request.Method == "POST")
             {
+                // Batch JSON output is a follow-up (03b); batch stays text for now.
                 return HandleBatch(request.Body, rawQuery);
             }
 
@@ -283,8 +302,24 @@ namespace VibeModel.Services.Claude
                 args = request.Body.TrimEnd('\r', '\n');
             }
 
-            var result = _commandHandler.EnqueueAndWait(path, args);
-            return new HttpResponse(200, result);
+            var result = _commandHandler.EnqueueAndWait(path, args, fmt);
+            return new HttpResponse(200, result,
+                fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
+        }
+
+        // Scans the query string for an explicit format=json pair (ignored by ParseQueryArgs).
+        private static bool QueryHasFormatJson(string query)
+        {
+            if (string.IsNullOrEmpty(query)) return false;
+            foreach (var param in query.Split('&'))
+            {
+                var kv = param.Split(new[] { '=' }, 2);
+                if (kv.Length == 2 &&
+                    kv[0].Equals("format", StringComparison.OrdinalIgnoreCase) &&
+                    kv[1].Equals("json", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private HttpResponse HandleBatch(string body, string rawQuery)
@@ -340,13 +375,14 @@ namespace VibeModel.Services.Claude
             return "";
         }
 
-        private void SendResponse(NetworkStream stream, int statusCode, string body)
+        private void SendResponse(NetworkStream stream, int statusCode, string body,
+            string contentType = "text/plain; charset=utf-8")
         {
             var statusText = statusCode == 200 ? "OK" : "Bad Request";
             var bodyBytes = Encoding.UTF8.GetBytes(body ?? "");
 
             var header = "HTTP/1.1 " + statusCode + " " + statusText + "\r\n"
-                       + "Content-Type: text/plain; charset=utf-8\r\n"
+                       + "Content-Type: " + contentType + "\r\n"
                        + "Content-Length: " + bodyBytes.Length + "\r\n"
                        + "Connection: close\r\n"
                        + "\r\n";
@@ -363,12 +399,14 @@ namespace VibeModel.Services.Claude
             public string Method { get; }
             public string Path { get; }
             public string Body { get; }
+            public string Accept { get; }
 
-            public HttpRequest(string method, string path, string body)
+            public HttpRequest(string method, string path, string body, string accept = null)
             {
                 Method = method;
                 Path = path;
                 Body = body;
+                Accept = accept;
             }
         }
 
@@ -376,11 +414,14 @@ namespace VibeModel.Services.Claude
         {
             public int StatusCode { get; }
             public string Body { get; }
+            public string ContentType { get; }
 
-            public HttpResponse(int statusCode, string body)
+            public HttpResponse(int statusCode, string body,
+                string contentType = "text/plain; charset=utf-8")
             {
                 StatusCode = statusCode;
                 Body = body;
+                ContentType = contentType;
             }
         }
     }

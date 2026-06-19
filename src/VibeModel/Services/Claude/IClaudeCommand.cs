@@ -29,4 +29,16 @@ namespace VibeModel.Services.Claude
     /// Used by HelpCommand to auto-categorize query vs modification commands.
     /// </summary>
     public interface IModificationCommand { }
+
+    /// <summary>
+    /// Optional richer contract a command can implement IN ADDITION TO IClaudeCommand to
+    /// return a structured result (machine data + self-correcting errors). Commands that don't
+    /// implement it are auto-wrapped by the registry, so migration is per-command, not big-bang.
+    /// The legacy Execute(string) should delegate to ExecuteStructured(...).Text so there is one
+    /// code path producing the text form.
+    /// </summary>
+    public interface IStructuredCommand
+    {
+        CommandResult ExecuteStructured(string args, Autodesk.Revit.UI.UIApplication uiApp);
+    }
 }

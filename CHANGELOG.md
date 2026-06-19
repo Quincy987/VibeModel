@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- **Structured I/O (foundation)** — commands can return JSON via `?format=json` or an explicit
+  `Accept: application/json` header (curl's default `*/*` stays text). Success envelope
+  `{"ok":true,"data":{...}}` (or `{"ok":true,"text":"..."}` for unmigrated commands); failure
+  `{"ok":false,"error":{"code","message","suggestion"}}`. Text mode is byte-identical except
+  errors gain an additive `Hint:` line. New `CommandResult` type + optional `IStructuredCommand`
+  interface (per-command migration; `info` migrated first). Registry now runs every command
+  through one `ExecuteCore` returning a structured result; the batch path decides Assimilate vs
+  RollBack on `.Success` instead of string-sniffing `"ERROR"`. Batch JSON output and the
+  remaining query-command migrations are a follow-up.
 - **Vision** — new `/screenshot` command exports the active view to a PNG (default 1536px long
   edge, `screenshot [pixels]`) and returns its path. `AnthropicDirectBackend` reads the file and
   inlines it as an image block so the model can SEE the model; both Anthropic and Claude-CLI

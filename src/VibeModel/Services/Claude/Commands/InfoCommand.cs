@@ -7,37 +7,28 @@ using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
-    public class InfoCommand : IClaudeCommand
+    public class InfoCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "info";
         public string Description => "Document info (title, path, phases, element counts)";
         public string Usage => "info";
 
+        // Legacy text path delegates to the structured form — one source of truth for the text.
         public string Execute(string args, UIApplication uiApp)
         {
-            var doc = uiApp.ActiveUIDocument.Document;
+            return ExecuteStructured(args, uiApp).Text;
+        }
 
-            var sb = new StringBuilder();
-            sb.AppendLine("DOCUMENT INFO");
-            sb.AppendLine("=============");
-            sb.AppendLine();
-            sb.AppendLine("Title: " + doc.Title);
-            sb.AppendLine("Path: " + (doc.PathName ?? "(not saved)"));
-            sb.AppendLine("Is Family: " + doc.IsFamilyDocument);
-            sb.AppendLine("Is Workshared: " + doc.IsWorkshared);
+        public CommandResult ExecuteStructured(string args, UIApplication uiApp)
+        {
+            var doc = uiApp.ActiveUIDocument.Document;
 
             var phases = new FilteredElementCollector(doc)
                 .OfClass(typeof(Phase))
                 .Cast<Phase>()
                 .ToList();
-            sb.AppendLine("Phases: " + phases.Count);
-            foreach (var phase in phases)
-            {
-                sb.AppendLine("  - " + phase.Name + " (ID: " + phase.Id.IntegerValue + ")");
-            }
 
-            sb.AppendLine();
-            sb.AppendLine("Element Counts:");
+            // Counts: one source, used by both the text block and the structured data.
             var counts = new Dictionary<string, int>
             {
                 { "Walls", FormattingHelper.CountElements<Wall>(doc) },
@@ -56,12 +47,44 @@ namespace VibeModel.Services.Claude.Commands
                 { "Views", new FilteredElementCollector(doc).OfClass(typeof(View)).Count() },
                 { "Family Instances", FormattingHelper.CountElements<FamilyInstance>(doc) }
             };
+
+            // --- Text form (byte-identical to the previous output) ---
+            var sb = new StringBuilder();
+            sb.AppendLine("DOCUMENT INFO");
+            sb.AppendLine("=============");
+            sb.AppendLine();
+            sb.AppendLine("Title: " + doc.Title);
+            sb.AppendLine("Path: " + (doc.PathName ?? "(not saved)"));
+            sb.AppendLine("Is Family: " + doc.IsFamilyDocument);
+            sb.AppendLine("Is Workshared: " + doc.IsWorkshared);
+            sb.AppendLine("Phases: " + phases.Count);
+            foreach (var phase in phases)
+            {
+                sb.AppendLine("  - " + phase.Name + " (ID: " + phase.Id.IntegerValue + ")");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Element Counts:");
             foreach (var kvp in counts)
             {
                 sb.AppendLine("  " + kvp.Key + ": " + kvp.Value);
             }
 
-            return sb.ToString();
+            // --- Structured data (additive; JSON mode only) ---
+            var data = new Dictionary<string, object>
+            {
+                { "title", doc.Title },
+                { "path", doc.PathName ?? "" },
+                { "isFamily", doc.IsFamilyDocument },
+                { "isWorkshared", doc.IsWorkshared },
+                { "phases", phases.Select(p => new Dictionary<string, object>
+                    {
+                        { "name", p.Name },
+                        { "id", p.Id.IntegerValue }
+                    }).ToList<object>() },
+                { "counts", counts.ToDictionary(k => k.Key, v => (object)v.Value) }
+            };
+
+            return CommandResult.Ok(sb.ToString(), data);
         }
     }
 }

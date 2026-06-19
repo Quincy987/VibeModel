@@ -44,7 +44,7 @@ namespace VibeModel.Services.Claude
         /// Called by HTTP server (background thread).
         /// Enqueues a command and blocks until the main thread processes it.
         /// </summary>
-        public string EnqueueAndWait(string command, string args)
+        public string EnqueueAndWait(string command, string args, ResponseFormat fmt = ResponseFormat.Text)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -52,7 +52,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(command, args);
+            var request = new CommandRequest(command, args, fmt);
             _queue.Enqueue(request);
 
             try
@@ -163,7 +163,7 @@ namespace VibeModel.Services.Claude
                         else
                         {
                             Logger.Info("Executing: " + request.Command + " " + request.Args);
-                            request.Result = _registry.Execute(request.Command, request.Args, app);
+                            request.Result = _registry.Execute(request.Command, request.Args, app, request.Format);
                         }
                     }
                     catch (Exception ex)
@@ -208,11 +208,13 @@ namespace VibeModel.Services.Claude
                     {
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
-                        var result = _registry.Execute(item.Command, item.Args, app);
-                        sb.AppendLine(result);
+                        // ExecuteCore returns the structured result; decide on .Success, not a
+                        // string prefix. Text output stays byte-identical via RenderText().
+                        var cr = _registry.ExecuteCore(item.Command, item.Args, app);
+                        sb.AppendLine(cr.RenderText());
                         sb.AppendLine();
 
-                        if (result != null && result.StartsWith("ERROR")) anyError = true;
+                        if (!cr.Success) anyError = true;
                         else if (_registry.IsModification(item.Command)) anyModified = true;
                     }
 
@@ -304,6 +306,7 @@ namespace VibeModel.Services.Claude
     {
         public string Command { get; }
         public string Args { get; }
+        public ResponseFormat Format { get; }
 
         // Batch payload — null for single commands.
         public IReadOnlyList<BatchCommand> Batch { get; }
@@ -316,16 +319,18 @@ namespace VibeModel.Services.Claude
         private volatile bool _cancelled;
         public bool IsCancelled => _cancelled;
 
-        public CommandRequest(string command, string args)
+        public CommandRequest(string command, string args, ResponseFormat format = ResponseFormat.Text)
         {
             Command = command;
             Args = args;
+            Format = format;
         }
 
         public CommandRequest(IReadOnlyList<BatchCommand> batch, bool atomic)
         {
             Batch = batch;
             Atomic = atomic;
+            Format = ResponseFormat.Text; // batch JSON output is a follow-up (03b)
         }
 
         public void Cancel()

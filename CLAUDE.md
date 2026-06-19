@@ -41,6 +41,19 @@ curl -s http://localhost:18884/info            # Document info
 curl -s http://localhost:18884/selected        # Inspect selected elements
 ```
 
+### Output Format (text default, JSON opt-in)
+Commands return **plain text by default** (unchanged). Request JSON with `?format=json` or an
+explicit `Accept: application/json` header — curl's default `Accept: */*` stays text.
+```bash
+curl -s "http://localhost:18884/info?format=json"
+curl -s -H "Accept: application/json" http://localhost:18884/info
+```
+JSON envelope: `{"ok": true, "data": {...}}` on success (or `{"ok": true, "text": "..."}` for
+commands not yet migrated to structured data), and on failure
+`{"ok": false, "error": {"code": "...", "message": "...", "suggestion": "..."}}`. In text mode,
+errors are unchanged except for an additive `Hint: <suggestion>` line. (Batch JSON output is a
+follow-up; `/batch` currently returns text.)
+
 ### Query Commands
 ```bash
 curl -s http://localhost:18884/info                          # Document info
