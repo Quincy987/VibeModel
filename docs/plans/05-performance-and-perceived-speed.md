@@ -3,6 +3,15 @@
 > Goal: make VibeModel **fast** (real latency) and **feel fast** (perceived speed), and set
 > hard requirements the other four plans must honor so they don't regress responsiveness.
 
+> **STATUS (complete).** Combined `/context` endpoint (Win 1), status streaming (Lever 1/2),
+> and batch single-wait (Win 2, via Plan 02) all shipped. Win 4 (per-token render O(n²)) fixed
+> — `ChatPane` now flushes streamed text on a ~25fps `DispatcherTimer` instead of rebuilding the
+> whole string per token. Audited and found **already satisfied**: SettingsDialog blocking (both
+> handlers already background their HTTP via `ThreadPool.QueueUserWorkItem`), Plan 01 base64
+> encode (runs in the backend off Revit's main thread), and status-line context isolation
+> (labels go to the UI stream only, never to `_conversationHistory`). Win 5 (read-only fast path)
+> intentionally deferred as marginal.
+
 ## TL;DR (honest framing)
 
 The agentic loop makes **up to 25 Anthropic API round-trips per user turn**
