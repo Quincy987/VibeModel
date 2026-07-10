@@ -39,6 +39,11 @@ namespace VibeModel.UI
         private Border _streamingBorder;
         private ChatMessage _streamingMessage;
         private StringBuilder _streamingContent;
+        // Throttled render: tokens accrue into _streamingContent; a timer flushes to the
+        // TextBlock at a fixed cadence so render cost is bounded by wall-clock, not token
+        // count (avoids an O(n²) full-string rebuild on every token for long responses).
+        private System.Windows.Threading.DispatcherTimer _streamingRenderTimer;
+        private bool _streamingDirty;
 
         private IChatBackend _backend;
         private CancellationTokenSource _cts;
@@ -444,6 +449,7 @@ namespace VibeModel.UI
             ScrollToBottomIfNeeded();
 
             SetGenerating(true);
+            StartStreamingRenderTimer();
 
             _cts = new CancellationTokenSource();
 
@@ -455,9 +461,10 @@ namespace VibeModel.UI
                     {
                         if (_streamingTextBlock == null) return;
 
+                        // Cheap: just accrue. The render timer flushes to the UI on a
+                        // fixed cadence, so per-token work stays O(1).
                         _streamingContent.Append(delta);
-                        _streamingTextBlock.Text = _streamingContent.ToString() + " ...";
-                        ScrollToBottomIfNeeded();
+                        _streamingDirty = true;
                     }));
                 },
                 onComplete: fullText =>
@@ -501,8 +508,32 @@ namespace VibeModel.UI
                 cancellationToken: _cts.Token);
         }
 
+        // Flushes accrued stream text to the TextBlock at a fixed cadence (~25fps) rather
+        // than on every token, so a long response renders in O(length) total, not O(length²).
+        private void StartStreamingRenderTimer()
+        {
+            _streamingDirty = false;
+            if (_streamingRenderTimer == null)
+            {
+                _streamingRenderTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(40)
+                };
+                _streamingRenderTimer.Tick += (s, e) =>
+                {
+                    if (!_streamingDirty || _streamingTextBlock == null) return;
+                    _streamingDirty = false;
+                    _streamingTextBlock.Text = _streamingContent.ToString() + " ...";
+                    ScrollToBottomIfNeeded();
+                };
+            }
+            _streamingRenderTimer.Start();
+        }
+
         private void ClearStreamingState()
         {
+            _streamingRenderTimer?.Stop();
+            _streamingDirty = false;
             _streamingTextBlock = null;
             _streamingContentPanel = null;
             _streamingBorder = null;
