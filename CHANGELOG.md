@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.0 — Vision, Structured I/O & Modeling Breadth (2026-07-11)
+
 ### Added
 - **Modeling breadth** — six new creation commands, each a thin wrapper over a stable Revit
   factory API following the `WallCommand` template: `grid`, `level`, `view` (floor plan + 3D),

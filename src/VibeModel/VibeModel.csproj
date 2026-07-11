@@ -21,7 +21,7 @@
     <!-- Assembly configuration -->
     <AssemblyName>VibeModel</AssemblyName>
     <RootNamespace>VibeModel</RootNamespace>
-    <Version>1.1.4</Version>
+    <Version>1.2.0</Version>
     <Authors>VibeModel</Authors>
     <Description>AI integration for Autodesk Revit - talk to your model in natural language</Description>
 
