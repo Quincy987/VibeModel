@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Web.Script.Serialization;
 using VibeModel.Infrastructure;
 
 namespace VibeModel.Services.Claude
@@ -24,6 +25,13 @@ namespace VibeModel.Services.Claude
         private const int BasePort = 18884;
         private const int MaxPortRetries = 5;
 
+        // Optional shared-secret gate. Read once at startup from the VIBEMODEL_TOKEN env var.
+        // Null/empty => auth disabled and the server behaves exactly as before (fully open).
+        // When set, every request except /health must present a matching X-VibeModel-Token header.
+        internal const string TokenEnvVar = "VIBEMODEL_TOKEN";
+        internal const string TokenHeader = "X-VibeModel-Token";
+        private readonly string _authToken;
+
         private TcpListener _listener;
         private Thread _listenThread;
         private volatile bool _running;
@@ -35,6 +43,9 @@ namespace VibeModel.Services.Claude
         public RevitHttpServer(RevitCommandHandler commandHandler)
         {
             _commandHandler = commandHandler;
+
+            var token = Environment.GetEnvironmentVariable(TokenEnvVar);
+            _authToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
         }
 
         public bool Start()
@@ -56,7 +67,8 @@ namespace VibeModel.Services.Claude
                     };
                     _listenThread.Start();
 
-                    Logger.Info("HTTP server started on http://127.0.0.1:" + port);
+                    Logger.Info("HTTP server started on http://127.0.0.1:" + port
+                              + (_authToken != null ? " (token auth ENABLED)" : " (open, no token)"));
                     return true;
                 }
                 catch (SocketException)
@@ -200,14 +212,19 @@ namespace VibeModel.Services.Claude
             var method = requestLine[0];
             var rawPath = requestLine[1];
 
-            // Capture Accept (used to decide text vs JSON response format).
+            // Capture Accept (used to decide text vs JSON response format) and the optional
+            // auth token header (used by the shared-secret gate when a token is configured).
             string accept = null;
+            string token = null;
             foreach (var line in lines)
             {
-                if (line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
+                if (accept == null && line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
                 {
                     accept = line.Substring(7).Trim();
-                    break;
+                }
+                else if (token == null && line.StartsWith(TokenHeader + ":", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = line.Substring(TokenHeader.Length + 1).Trim();
                 }
             }
 
@@ -254,7 +271,7 @@ namespace VibeModel.Services.Claude
                 }
             }
 
-            return new HttpRequest(method, rawPath, body, accept);
+            return new HttpRequest(method, rawPath, body, accept, token);
         }
 
         private HttpResponse ProcessRequest(HttpRequest request)
@@ -284,9 +301,18 @@ namespace VibeModel.Services.Claude
             var fmt = wantsJson ? ResponseFormat.Json : ResponseFormat.Text;
 
             // Route
+            // /health (and the bare root) stays unauthenticated so liveness probes keep
+            // working regardless of whether a token is configured.
             if (string.IsNullOrEmpty(path) || path == "health")
             {
                 return new HttpResponse(200, "OK");
+            }
+
+            // Shared-secret gate: when a token is configured, every non-health request must
+            // present a matching X-VibeModel-Token header. No token configured => open (unchanged).
+            if (_authToken != null && !FixedTimeEquals(_authToken, request.Token))
+            {
+                return Unauthorized(fmt);
             }
 
             if (path == "batch" && request.Method == "POST")
@@ -306,8 +332,41 @@ namespace VibeModel.Services.Claude
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
 
+        // Builds a 401 response in the requested format. JSON uses the standard error envelope
+        // ({"ok":false,"error":{code,message,suggestion}}); text mode uses the "ERROR:" convention.
+        private HttpResponse Unauthorized(ResponseFormat fmt)
+        {
+            const string message = "Missing or invalid token.";
+            const string suggestion = "Send the configured token in the " + TokenHeader + " request header.";
+
+            if (fmt == ResponseFormat.Json)
+            {
+                var body = CommandResult.Error("unauthorized", message, suggestion)
+                    .Render(ResponseFormat.Json, new JavaScriptSerializer());
+                return new HttpResponse(401, body, "application/json; charset=utf-8");
+            }
+
+            return new HttpResponse(401, "ERROR: " + message + "\nHint: " + suggestion);
+        }
+
+        // Length-independent, short-circuit-free comparison to avoid leaking the token via timing.
+        private static bool FixedTimeEquals(string expected, string actual)
+        {
+            if (expected == null || actual == null)
+                return false;
+
+            var a = Encoding.UTF8.GetBytes(expected);
+            var b = Encoding.UTF8.GetBytes(actual);
+
+            int diff = a.Length ^ b.Length;
+            for (int i = 0; i < a.Length; i++)
+                diff |= a[i] ^ b[i < b.Length ? i : 0];
+
+            return diff == 0;
+        }
+
         // Scans the query string for an explicit format=json pair (ignored by ParseQueryArgs).
-        private static bool QueryHasFormatJson(string query)
+        internal static bool QueryHasFormatJson(string query)
         {
             if (string.IsNullOrEmpty(query)) return false;
             foreach (var param in query.Split('&'))
@@ -323,45 +382,17 @@ namespace VibeModel.Services.Claude
 
         private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt)
         {
-            if (string.IsNullOrEmpty(body))
-                return new HttpResponse(400, "ERROR: Empty batch body");
-
-            // Atomic (all-or-nothing) is opt-in: ?atomic=1 on the POST, or a leading #atomic line.
-            bool atomic = rawQuery != null &&
-                          rawQuery.IndexOf("atomic=1", StringComparison.OrdinalIgnoreCase) >= 0;
-
-            var lines = body.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            var commands = new List<BatchCommand>();
-
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (string.IsNullOrEmpty(trimmed)) continue;
-
-                // Directive / comment lines start with '#'. Recognise #atomic; skip the rest.
-                if (trimmed.StartsWith("#"))
-                {
-                    if (trimmed.Equals("#atomic", StringComparison.OrdinalIgnoreCase))
-                        atomic = true;
-                    continue;
-                }
-
-                var parts = trimmed.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                var cmd = parts[0];
-                var args = parts.Length > 1 ? parts[1] : "";
-                commands.Add(new BatchCommand(cmd, args));
-            }
-
-            if (commands.Count == 0)
-                return new HttpResponse(400, "ERROR: No commands in batch");
+            var parsed = BatchParser.Parse(body, rawQuery);
+            if (!parsed.IsValid)
+                return new HttpResponse(400, parsed.Error);
 
             // One request → one TransactionGroup → one undo entry.
-            var result = _commandHandler.EnqueueBatchAndWait(commands, atomic, fmt);
+            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
 
-        private string ParseQueryArgs(string query)
+        internal static string ParseQueryArgs(string query)
         {
             // Parse "args=hello+world&other=x" → "hello world"
             foreach (var param in query.Split('&'))
@@ -378,7 +409,13 @@ namespace VibeModel.Services.Claude
         private void SendResponse(NetworkStream stream, int statusCode, string body,
             string contentType = "text/plain; charset=utf-8")
         {
-            var statusText = statusCode == 200 ? "OK" : "Bad Request";
+            string statusText;
+            switch (statusCode)
+            {
+                case 200: statusText = "OK"; break;
+                case 401: statusText = "Unauthorized"; break;
+                default: statusText = "Bad Request"; break;
+            }
             var bodyBytes = Encoding.UTF8.GetBytes(body ?? "");
 
             var header = "HTTP/1.1 " + statusCode + " " + statusText + "\r\n"
@@ -400,13 +437,15 @@ namespace VibeModel.Services.Claude
             public string Path { get; }
             public string Body { get; }
             public string Accept { get; }
+            public string Token { get; }
 
-            public HttpRequest(string method, string path, string body, string accept = null)
+            public HttpRequest(string method, string path, string body, string accept = null, string token = null)
             {
                 Method = method;
                 Path = path;
                 Body = body;
                 Accept = accept;
+                Token = token;
             }
         }
 

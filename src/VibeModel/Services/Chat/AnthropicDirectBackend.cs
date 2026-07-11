@@ -13,24 +13,15 @@ using VibeModel.Services.Claude;
 
 namespace VibeModel.Services.Chat
 {
-    public class AnthropicDirectBackend : IChatBackend
+    public class AnthropicDirectBackend : ChatBackendBase
     {
         private const string ApiUrl = "https://api.anthropic.com/v1/messages";
         private const int MaxTokens = 8192;
         private const int MaxToolLoopIterations = 25;
 
-        private readonly int _httpPort;
-        private readonly IReadOnlyDictionary<string, IClaudeCommand> _commands;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-        private readonly object _lock = new object();
-        private readonly HttpClient _httpClient;
 
-        private List<Dictionary<string, object>> _conversationHistory = new List<Dictionary<string, object>>();
-        private bool _isSending;
-        private bool _disposed;
-        private CancellationTokenSource _internalCts;
-
-        public bool IsAvailable
+        public override bool IsAvailable
         {
             get
             {
@@ -39,7 +30,7 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        public string StatusMessage
+        public override string StatusMessage
         {
             get
             {
@@ -49,15 +40,16 @@ namespace VibeModel.Services.Chat
             }
         }
 
+        protected override string ResetLogLabel => "Direct backend";
+
         public AnthropicDirectBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+            : base(commands, httpPort)
         {
-            _commands = commands;
-            _httpPort = httpPort;
             _httpClient = new HttpClient();
             _httpClient.Timeout = TimeSpan.FromMinutes(5);
         }
 
-        public void SendMessage(
+        public override void SendMessage(
             string prompt,
             Action<string> onToken,
             Action<string> onComplete,
@@ -71,42 +63,9 @@ namespace VibeModel.Services.Chat
                 return;
             }
 
-            lock (_lock)
-            {
-                if (_isSending)
-                {
-                    onError("A message is already being processed. Please wait or cancel first.");
-                    return;
-                }
-                _isSending = true;
-                _internalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            }
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    RunAgenticLoop(apiKey, prompt, onToken, onComplete, onError, _internalCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    onComplete("[Cancelled]");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("AnthropicDirectBackend error", ex);
-                    onError(ex.Message);
-                }
-                finally
-                {
-                    lock (_lock)
-                    {
-                        _isSending = false;
-                        _internalCts?.Dispose();
-                        _internalCts = null;
-                    }
-                }
-            });
+            RunOnBackgroundThread(
+                ct => RunAgenticLoop(apiKey, prompt, onToken, onComplete, onError, ct),
+                onComplete, onError, cancellationToken, "AnthropicDirectBackend error");
         }
 
         private void RunAgenticLoop(
@@ -323,12 +282,10 @@ namespace VibeModel.Services.Chat
             onComplete(fullResponse.ToString());
         }
 
+        // Extracts args from the tool_use input Dictionary, then delegates to the shared
+        // HTTP executor. (BuildToolResultContent handles inlining the screenshot image.)
         private string ExecuteTool(string toolName, Dictionary<string, object> input)
         {
-            // Map tool name back to command name (revit_info -> info)
-            var commandName = toolName.StartsWith("revit_") ? toolName.Substring(6) : toolName;
-
-            // Extract args from input
             var args = "";
             if (input != null)
             {
@@ -336,35 +293,7 @@ namespace VibeModel.Services.Chat
                 if (input.TryGetValue("args", out argsObj) && argsObj != null)
                     args = argsObj.ToString();
             }
-
-            // Call the command via HTTP to the local server (this ensures it runs on the Revit thread)
-            try
-            {
-                // Request JSON so the model reads structured fields ({ok,data} / {ok,error}).
-                // Skip screenshot: it returns a text "Path:" line that BuildToolResultContent
-                // parses to inline the image.
-                var url = "http://localhost:" + _httpPort + "/" + commandName;
-                var query = new List<string>();
-                if (!string.IsNullOrEmpty(args))
-                    query.Add("args=" + Uri.EscapeDataString(args));
-                if (commandName != "screenshot")
-                    query.Add("format=json");
-                if (query.Count > 0)
-                    url += "?" + string.Join("&", query);
-
-                using (var client = new WebClient())
-                {
-                    client.Encoding = Encoding.UTF8;
-                    var result = client.DownloadString(url);
-                    Logger.Info("Tool " + toolName + " result: " + (result.Length > 200 ? result.Substring(0, 200) + "..." : result));
-                    return result;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Tool execution failed: " + toolName, ex);
-                return "ERROR: Failed to execute " + commandName + ": " + ex.Message;
-            }
+            return ExecuteTool(toolName, args);
         }
 
         // Builds the tool_result content. Default is the plain string (unchanged behavior).
@@ -470,32 +399,27 @@ namespace VibeModel.Services.Chat
             return body;
         }
 
-        private string BuildSystemPrompt()
+        // Anthropic-specific behavior tail: has the "outline the full sequence up front"
+        // bullet and the fuller "query it" / "suggest a workaround" wording.
+        protected override void AppendBehaviorTail(StringBuilder sb)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
-            sb.AppendLine("You can control Revit by calling the provided tools. Each tool maps to a VibeModel command.");
-            sb.AppendLine();
-            sb.AppendLine("BEHAVIOR:");
-            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
-            sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
-            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
-            sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
-            sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
             sb.AppendLine("- When a task involves multiple steps, outline the full sequence up front so the user can approve or adjust before you proceed.");
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
-            sb.AppendLine();
-            sb.AppendLine("TIPS:");
+        }
+
+        protected override void AppendJsonTip(StringBuilder sb)
+        {
             sb.AppendLine("- Tool results are JSON: {\"ok\":true,\"data\":{...}} on success (some commands return {\"ok\":true,\"text\":\"...\"}), or {\"ok\":false,\"error\":{\"code\",\"message\",\"suggestion\"}} on failure — read the fields, and on an error follow the suggestion to self-correct. (revit_screenshot is the exception: it returns text plus an image.)");
-            sb.AppendLine("- All dimensions are in millimeters (mm).");
-            sb.AppendLine("- Always check revit_info first to understand the current document.");
-            sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
+        }
+
+        // Anthropic is vision-capable: it inlines screenshots as images (see BuildToolResultContent).
+        protected override void AppendTipsTail(StringBuilder sb)
+        {
             sb.AppendLine("- You can SEE the model with revit_screenshot. Decide on your own when looking helps — you do not need to be asked. Take one after creating/moving/deleting visible geometry to verify it looks right, when the user asks how something looks or where things are, or when a spatial/layout decision needs visual context.");
             sb.AppendLine("- Do NOT screenshot for pure data queries (counts, parameters, IDs) or when nothing changed visually — it wastes time and tokens. Use judgement.");
             sb.AppendLine("- For complex operations, use revit_exec to run arbitrary C# code against the Revit API.");
-            return sb.ToString();
         }
 
         private List<SseEvent> StreamRequest(string apiKey, Dictionary<string, object> body, CancellationToken ct)
@@ -581,48 +505,6 @@ namespace VibeModel.Services.Chat
             }
 
             return events;
-        }
-
-        private string GatherModelContext()
-        {
-            // Single round-trip: /context composes info + active view + selection server-side,
-            // replacing three serial calls across the ExternalEvent boundary (lowers TTFT).
-            try
-            {
-                using (var client = new WebClient())
-                {
-                    client.Encoding = Encoding.UTF8;
-                    var context = client.DownloadString("http://localhost:" + _httpPort + "/context");
-                    return (context ?? string.Empty).Trim();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Info("GatherModelContext failed — " + ex.Message);
-                return string.Empty;
-            }
-        }
-
-        public void Cancel()
-        {
-            lock (_lock)
-            {
-                _internalCts?.Cancel();
-            }
-        }
-
-        public void ResetSession()
-        {
-            _conversationHistory.Clear();
-            Logger.Info("Direct backend session reset");
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            Cancel();
-            _httpClient?.Dispose();
         }
 
         // --- Helpers ---

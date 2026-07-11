@@ -12,7 +12,7 @@ using VibeModel.Services.Claude;
 
 namespace VibeModel.Services.Chat
 {
-    public class ClaudeCodeBackend : IChatBackend
+    public class ClaudeCodeBackend : ChatBackendBase
     {
         private const string NotFoundMessage =
             "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code";
@@ -22,28 +22,29 @@ namespace VibeModel.Services.Chat
         // Reset on every non-empty stdout line so streaming tasks aren't cut off.
         private const int ProcessTimeoutMs = 180000;
 
-        private readonly int _httpPort;
         private readonly string _systemPromptPath;
+        // ClaudeCode drives a child process, so it has its own lock and does NOT use the
+        // base CTS lifecycle. It still uses the inherited _isSending flag (under _processLock).
         private readonly object _processLock = new object();
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
 
         private string _claudePath;
         private string _sessionId;
         private Process _currentProcess;
-        private bool _isSending;
-        private bool _disposed;
 
         // Set by the idle-timer callback (other thread) -> must be volatile.
         // _lastBlockWasToolUse is touched only on the read-loop thread, no volatile needed.
         private volatile bool _killedByIdleTimeout;
         private bool _lastBlockWasToolUse;
 
-        public bool IsAvailable { get; private set; }
-        public string StatusMessage { get; private set; }
+        private bool _isAvailable;
+        private string _statusMessage;
+        public override bool IsAvailable => _isAvailable;
+        public override string StatusMessage => _statusMessage;
 
         public ClaudeCodeBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
+            : base(commands, httpPort)
         {
-            _httpPort = httpPort;
             _systemPromptPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "VibeModel",
@@ -95,8 +96,8 @@ namespace VibeModel.Services.Chat
                         if (proc.ExitCode == 0)
                         {
                             _claudePath = candidate;
-                            IsAvailable = true;
-                            StatusMessage = "Claude Code " + version;
+                            _isAvailable = true;
+                            _statusMessage = "Claude Code " + version;
                             Logger.Info("Claude Code found at: " + candidate + " (" + version + ")");
                             return;
                         }
@@ -108,8 +109,8 @@ namespace VibeModel.Services.Chat
                 }
             }
 
-            IsAvailable = false;
-            StatusMessage = NotFoundMessage;
+            _isAvailable = false;
+            _statusMessage = NotFoundMessage;
             Logger.Warn("Claude Code CLI not found in any known location");
         }
 
@@ -125,6 +126,13 @@ namespace VibeModel.Services.Chat
                 sb.AppendLine();
                 sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at http://localhost:" + _httpPort);
                 sb.AppendLine();
+                if (_authToken != null)
+                {
+                    sb.AppendLine("AUTH: This server requires a token. Add this header to EVERY curl call:");
+                    sb.AppendLine("  -H \"" + RevitHttpServer.TokenHeader + ": $" + RevitHttpServer.TokenEnvVar + "\"");
+                    sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell. Requests without this header return 401.");
+                    sb.AppendLine();
+                }
                 sb.AppendLine("Available commands:");
                 sb.AppendLine();
 
@@ -166,70 +174,7 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        private string GatherModelContext()
-        {
-            var baseUrl = "http://localhost:" + _httpPort;
-            var sb = new StringBuilder();
-
-            try
-            {
-                using (var client = new WebClient())
-                {
-                    client.Encoding = Encoding.UTF8;
-
-                    // Fetch document info
-                    try
-                    {
-                        var info = client.DownloadString(baseUrl + "/info");
-                        if (!string.IsNullOrWhiteSpace(info))
-                        {
-                            sb.AppendLine("CURRENT REVIT CONTEXT:");
-                            sb.AppendLine(info.Trim());
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /info failed — " + ex.Message);
-                    }
-
-                    // Fetch active view
-                    try
-                    {
-                        var view = client.DownloadString(baseUrl + "/activeview");
-                        if (!string.IsNullOrWhiteSpace(view))
-                        {
-                            sb.AppendLine("Active view: " + view.Trim());
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /activeview failed — " + ex.Message);
-                    }
-
-                    // Fetch selection
-                    try
-                    {
-                        var selected = client.DownloadString(baseUrl + "/selected");
-                        if (!string.IsNullOrWhiteSpace(selected))
-                        {
-                            sb.AppendLine("Selection: " + selected.Trim());
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Info("GatherModelContext: /selected failed — " + ex.Message);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Info("GatherModelContext failed — " + ex.Message);
-            }
-
-            return sb.ToString().Trim();
-        }
-
-        public void SendMessage(
+        public override void SendMessage(
             string prompt,
             Action<string> onToken,
             Action<string> onComplete,
@@ -713,7 +658,9 @@ namespace VibeModel.Services.Chat
             return sb.ToString();
         }
 
-        public void Cancel()
+        // Override: ClaudeCode kills the child process instead of cancelling a CTS.
+        // Base Dispose calls this (and finds no _httpClient), so no Dispose override is needed.
+        public override void Cancel()
         {
             lock (_processLock)
             {
@@ -722,17 +669,10 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        public void ResetSession()
+        public override void ResetSession()
         {
             _sessionId = null;
             Logger.Info("Chat session reset");
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            Cancel();
         }
     }
 }

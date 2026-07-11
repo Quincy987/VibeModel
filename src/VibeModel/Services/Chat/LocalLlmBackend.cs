@@ -12,24 +12,15 @@ using VibeModel.Services.Claude;
 
 namespace VibeModel.Services.Chat
 {
-    public class LocalLlmBackend : IChatBackend
+    public class LocalLlmBackend : ChatBackendBase
     {
         private const int MaxTokens = 4096;
         private const int MaxToolLoopIterations = 25;
 
-        private readonly int _httpPort;
-        private readonly IReadOnlyDictionary<string, IClaudeCommand> _commands;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-        private readonly object _lock = new object();
-        private readonly HttpClient _httpClient;
-
-        private List<Dictionary<string, object>> _conversationHistory = new List<Dictionary<string, object>>();
-        private bool _isSending;
-        private bool _disposed;
-        private CancellationTokenSource _internalCts;
         private bool? _cachedAvailable;
 
-        public bool IsAvailable
+        public override bool IsAvailable
         {
             get
             {
@@ -45,7 +36,7 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        public string StatusMessage
+        public override string StatusMessage
         {
             get
             {
@@ -98,16 +89,16 @@ namespace VibeModel.Services.Chat
         }
 
         public LocalLlmBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, HttpClient httpClient)
+            : base(commands, httpPort)
         {
-            _commands = commands;
-            _httpPort = httpPort;
-
             var timeoutSeconds = SettingsManager.GetLocalLlmTimeout();
             _httpClient = httpClient ?? new HttpClient();
             _httpClient.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
         }
 
-        public void SendMessage(
+        protected override string ResetLogLabel => "Local LLM backend";
+
+        public override void SendMessage(
             string prompt,
             Action<string> onToken,
             Action<string> onComplete,
@@ -121,42 +112,9 @@ namespace VibeModel.Services.Chat
                 return;
             }
 
-            lock (_lock)
-            {
-                if (_isSending)
-                {
-                    onError("A message is already being processed. Please wait or cancel first.");
-                    return;
-                }
-                _isSending = true;
-                _internalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            }
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    RunAgenticLoop(endpoint, prompt, onToken, onComplete, onError, _internalCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    onComplete("[Cancelled]");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("LocalLlmBackend error", ex);
-                    onError(ex.Message);
-                }
-                finally
-                {
-                    lock (_lock)
-                    {
-                        _isSending = false;
-                        _internalCts?.Dispose();
-                        _internalCts = null;
-                    }
-                }
-            });
+            RunOnBackgroundThread(
+                ct => RunAgenticLoop(endpoint, prompt, onToken, onComplete, onError, ct),
+                onComplete, onError, cancellationToken, "LocalLlmBackend error");
         }
 
         private void RunAgenticLoop(
@@ -389,37 +347,6 @@ namespace VibeModel.Services.Chat
             onComplete(fullResponse.ToString());
         }
 
-        private string ExecuteTool(string toolName, string args)
-        {
-            var commandName = toolName.StartsWith("revit_") ? toolName.Substring(6) : toolName;
-
-            try
-            {
-                // Request JSON so the model reads structured fields ({ok,data} / {ok,error}).
-                var url = "http://localhost:" + _httpPort + "/" + commandName;
-                var query = new List<string>();
-                if (!string.IsNullOrEmpty(args))
-                    query.Add("args=" + Uri.EscapeDataString(args));
-                if (commandName != "screenshot")
-                    query.Add("format=json");
-                if (query.Count > 0)
-                    url += "?" + string.Join("&", query);
-
-                using (var client = new WebClient())
-                {
-                    client.Encoding = Encoding.UTF8;
-                    var result = client.DownloadString(url);
-                    Logger.Info("Tool " + toolName + " result: " + (result.Length > 200 ? result.Substring(0, 200) + "..." : result));
-                    return result;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Tool execution failed: " + toolName, ex);
-                return "ERROR: Failed to execute " + commandName + ": " + ex.Message;
-            }
-        }
-
         private static object[] ToObjectArray(object raw)
         {
             if (raw is object[] arr) return arr;
@@ -460,75 +387,29 @@ namespace VibeModel.Services.Chat
             return body;
         }
 
-        private string BuildSystemPrompt()
+        // Local-specific behavior tail. NOTE: the "Prefer concrete" and "Stay within" bullets
+        // are intentionally kept terser than Anthropic's (no "query it"/"suggest a workaround"
+        // trailing sentences) — local models tend to follow shorter instructions better, so this
+        // wording is preserved rather than reconciled toward the fuller Anthropic phrasing.
+        protected override void AppendBehaviorTail(StringBuilder sb)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
-            sb.AppendLine("You can control Revit by calling the provided tools. Each tool maps to a VibeModel command.");
-            sb.AppendLine();
-            sb.AppendLine("BEHAVIOR:");
-            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
-            sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
-            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
-            sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
-            sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do.");
-            sb.AppendLine();
-            sb.AppendLine("TIPS:");
+        }
+
+        protected override void AppendJsonTip(StringBuilder sb)
+        {
             sb.AppendLine("- Tool results are JSON: {\"ok\":true,\"data\":{...}} on success or {\"ok\":false,\"error\":{\"code\",\"message\",\"suggestion\"}} on failure. Read the fields; on an error, follow the suggestion.");
-            sb.AppendLine("- All dimensions are in millimeters (mm).");
-            sb.AppendLine("- Always check revit_info first to understand the current document.");
-            sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
+        }
+
+        protected override void AppendTipsTail(StringBuilder sb)
+        {
             // NOTE: revit_screenshot returns a PNG path as text. Unlike AnthropicDirectBackend,
             // this backend does NOT inline the image — most local models aren't vision-capable.
             // The model only sees the path string. (Vision wiring for llava-class models is a
             // future enhancement.)
             sb.AppendLine("- revit_screenshot saves a PNG of the active view and returns its path (the image itself can't be viewed here).");
-            return sb.ToString();
-        }
-
-        private string GatherModelContext()
-        {
-            // Single round-trip: /context composes info + active view + selection server-side,
-            // replacing three serial calls across the ExternalEvent boundary (lowers TTFT).
-            try
-            {
-                using (var client = new WebClient())
-                {
-                    client.Encoding = Encoding.UTF8;
-                    var context = client.DownloadString("http://localhost:" + _httpPort + "/context");
-                    return (context ?? string.Empty).Trim();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Info("GatherModelContext failed — " + ex.Message);
-                return string.Empty;
-            }
-        }
-
-        public void Cancel()
-        {
-            lock (_lock)
-            {
-                _internalCts?.Cancel();
-            }
-        }
-
-        public void ResetSession()
-        {
-            _conversationHistory.Clear();
-            Logger.Info("Local LLM backend session reset");
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            Cancel();
-            _httpClient?.Dispose();
         }
     }
 }

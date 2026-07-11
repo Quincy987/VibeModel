@@ -55,6 +55,20 @@ errors are unchanged except for an additive `Hint: <suggestion>` line. `POST /ba
 returns `{"ok": <all-ok>, "atomic": bool, "rolledBack": bool, "results": [{command, args, result}]}`.
 The Anthropic and Local LLM chat backends request JSON automatically (except `screenshot`).
 
+### Optional Auth Token (off by default)
+By default the server is **fully open** on loopback — no token, nothing changes. To gate access
+(e.g. so other localhost processes can't call `exec`/`delete`), set the `VIBEMODEL_TOKEN`
+environment variable **before launching Revit**. When set, every request except `/health` must
+carry a matching `X-VibeModel-Token` header:
+```bash
+export VIBEMODEL_TOKEN="your-secret"     # set before starting Revit
+curl -s -H "X-VibeModel-Token: $VIBEMODEL_TOKEN" http://localhost:18884/info
+```
+Missing/wrong token → `401` (`{"ok":false,"error":{"code":"unauthorized",...}}` in JSON mode,
+`ERROR: Missing or invalid token.` in text mode). `/health` stays unauthenticated for liveness
+probes. The in-app chat backends read the same env var and add the header automatically, so
+enabling the token doesn't break in-Revit chat.
+
 ### Query Commands
 ```bash
 curl -s http://localhost:18884/info                          # Document info

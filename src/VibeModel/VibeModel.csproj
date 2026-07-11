@@ -68,6 +68,11 @@
     <PackageReference Include="Markdig" Version="0.44.0" />
   </ItemGroup>
 
+  <!-- Expose internal parsing helpers to the test project (net48-safe, no Revit needed). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="VibeModel.Tests" />
+  </ItemGroup>
+
   <!-- WPF references for Clipboard and UI -->
   <ItemGroup>
     <Reference Include="PresentationCore" />
@@ -84,8 +89,9 @@
     <EmbeddedResource Include="UI\Resources\chat-16.png" LogicalName="VibeModel.UI.Resources.chat-16.png" />
   </ItemGroup>
 
-  <!-- Post-build deployment -->
-  <Target Name="DeployAddin" AfterTargets="Build" Condition="'$(Configuration)'=='Release' Or '$(Configuration)'=='Debug'">
+  <!-- Post-build deployment. Skipped when SkipDeploy=true (test/CI builds, where Revit may
+       have the deployed DLL locked and there is no need to deploy the add-in). -->
+  <Target Name="DeployAddin" AfterTargets="Build" Condition="('$(Configuration)'=='Release' Or '$(Configuration)'=='Debug') And '$(SkipDeploy)'!='true'">
     <Message Importance="high" Text="Deploying VibeModel to Revit $(RevitVersion) Addins folder..." />
 
     <!-- Create target folder if it doesn't exist -->
