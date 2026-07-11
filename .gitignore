@@ -16,6 +16,11 @@ project.lock.json
 
 ## Build outputs
 TestResults/
+release/
+
+## Local junk artifacts
+Run
+nul
 
 ## OS files
 Thumbs.db

@@ -42,6 +42,17 @@
 - Combined `/context` endpoint composing `info` + `activeview` + `selected` in one call.
 - Friendly status lines streamed during chat tool calls (`StatusVerbs`) — "Creating wall…",
   "Looking at the model…", etc.
+- **Optional shared-secret auth gate** — set `VIBEMODEL_TOKEN` before launching Revit and every
+  request except `/health` must carry a matching `X-VibeModel-Token` header; missing/wrong token
+  → `401` (`unauthorized` error envelope in JSON, `ERROR: Missing or invalid token.` in text).
+  Off by default (unset ⇒ server stays fully open on loopback, unchanged). Token compared in
+  fixed time. The in-app chat backends read the same env var and add the header automatically, so
+  enabling it doesn't break in-Revit chat.
+- **Headless unit test suite** — first automated tests for VibeModel (`VibeModel.Tests`, net48,
+  no Revit required): batch parsing, command registry, `CommandResult` rendering, and query
+  arg-parsing. Batch parsing extracted into a standalone testable `BatchParser`; the add-in
+  exposes internals via `InternalsVisibleTo`, and a `SkipDeploy=true` MSBuild switch lets tests
+  build without the Revit-locked add-in DLL.
 
 ### Changed
 - Chat backends gather model context via a single `/context` round-trip instead of three serial
@@ -53,6 +64,18 @@
 - Chat tool-activity labels now appear **before** the tool runs (was after) and use a friendly
   verb instead of the raw `[toolName]`; the streaming placeholder shows "Looking at the model…"
   the instant a message is sent. Status lines are UI-only — never added to conversation history.
+- **Chat backends share a `ChatBackendBase`** — the duplicated plumbing (single-call `/context`
+  gathering, HTTP tool execution, background-send guard, CTS lifecycle, and the system-prompt
+  scaffold) is pulled up into one abstract base; the agentic loops stay per-backend (SSE
+  streaming, NDJSON, child process, vision inlining). `ClaudeCodeBackend` now uses the same
+  single `/context` round-trip as the others — it previously made three separate serial calls
+  (`/info` + `/activeview` + `/selected`). ~490 lines of duplicated code collapse into the base.
+
+### Fixed
+- **Chat streaming no longer janks on long responses** — the streaming pane rebuilt the entire
+  response string and reassigned the `TextBlock` on every token (O(n²) on multi-KB answers).
+  Tokens now accrue into a buffer that a `DispatcherTimer` flushes at ~25fps, so a long answer
+  renders in O(length) total; the final markdown render on completion is unchanged.
 
 ## [v1.1.4] — Chat Session Continuity (2026-05-05)
 
