@@ -259,6 +259,8 @@ namespace VibeModel
                         // changes the model outside VibeModel's control.
                         ModelChangeTracker.RecordUndoRedo(key);
                         break;
+                    // TransactionRolledBack is deliberately not counted: a rollback restores
+                    // the pre-transaction state, so there is no net model change to report.
                 }
             }
             catch (Exception ex)

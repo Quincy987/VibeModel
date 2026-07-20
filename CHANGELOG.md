@@ -13,7 +13,7 @@
   `userEditsSinceLastCommand`, `activeView`, `selectedCount`). Stamping is centralized in the
   command handler so no command can forget it; `/health` and `screenshot` stay untouched, a batch
   gets one stamp, and the user-edit counter resets only when a stamp is actually delivered.
-  Tracker + stamp rendering are Revit-free (`ModelChangeTracker`) and covered by 20 headless tests.
+  Tracker + stamp rendering are Revit-free (`ModelChangeTracker`) and covered by 21 headless tests.
 
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 
