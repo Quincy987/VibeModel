@@ -18,6 +18,9 @@ namespace VibeModel.Services.Chat
             "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code";
 
         private const int DetectTimeoutMs = 2000;
+        // Pre-flight /health probe before spawning the CLI: fail fast with a clear
+        // message instead of letting the model burn minutes on failed curl calls.
+        private const int HealthCheckTimeoutMs = 2000;
         // Idle timeout: kill the process if no NDJSON line is read for this long.
         // Reset on every non-empty stdout line so streaming tasks aren't cut off.
         private const int ProcessTimeoutMs = 180000;
@@ -45,13 +48,41 @@ namespace VibeModel.Services.Chat
         public ClaudeCodeBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
             : base(commands, httpPort)
         {
-            _systemPromptPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "VibeModel",
-                "system-prompt.txt");
+            // Per-port filename: multiple Revit instances (fallback ports 18885+)
+            // can never clobber each other's prompt file.
+            _systemPromptPath = GetSystemPromptPath(httpPort);
 
             DetectClaude();
-            WriteSystemPrompt(commands);
+            CleanUpLegacyPromptFile();
+            WriteSystemPrompt();
+        }
+
+        internal static string GetSystemPromptPath(int httpPort)
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "VibeModel",
+                "system-prompt-" + httpPort + ".txt");
+        }
+
+        // Older builds wrote a single shared system-prompt.txt that a second Revit
+        // instance could overwrite with its own (possibly fallback) port and leave
+        // stale after closing. Delete it so no session ever reads the poisoned copy.
+        private static void CleanUpLegacyPromptFile()
+        {
+            try
+            {
+                var legacy = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "VibeModel",
+                    "system-prompt.txt");
+                if (File.Exists(legacy))
+                    File.Delete(legacy);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
         }
 
         private void DetectClaude()
@@ -114,64 +145,72 @@ namespace VibeModel.Services.Chat
             Logger.Warn("Claude Code CLI not found in any known location");
         }
 
-        private void WriteSystemPrompt(IReadOnlyDictionary<string, IClaudeCommand> commands)
+        // Rewritten before every message (not just at startup) so the file always
+        // matches THIS instance's live server, even if another instance started later.
+        private void WriteSystemPrompt()
         {
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_systemPromptPath));
-
-                var sb = new StringBuilder();
-                sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
-                sb.AppendLine("You can control Revit by running curl commands against the embedded HTTP server.");
-                sb.AppendLine();
-                sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at http://localhost:" + _httpPort);
-                sb.AppendLine();
-                if (_authToken != null)
-                {
-                    sb.AppendLine("AUTH: This server requires a token. Add this header to EVERY curl call:");
-                    sb.AppendLine("  -H \"" + RevitHttpServer.TokenHeader + ": $" + RevitHttpServer.TokenEnvVar + "\"");
-                    sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell. Requests without this header return 401.");
-                    sb.AppendLine();
-                }
-                sb.AppendLine("Available commands:");
-                sb.AppendLine();
-
-                foreach (var cmd in commands.Values.OrderBy(c => c.Name))
-                {
-                    sb.AppendLine("  " + cmd.Name + " - " + cmd.Description);
-                    if (!string.IsNullOrEmpty(cmd.Usage))
-                        sb.AppendLine("    Usage: curl -s \"http://localhost:" + _httpPort + "/" + cmd.Usage + "\"");
-                    else
-                        sb.AppendLine("    Usage: curl -s http://localhost:" + _httpPort + "/" + cmd.Name);
-                }
-
-                sb.AppendLine();
-                sb.AppendLine("Tips:");
-                sb.AppendLine("- All dimensions are in millimeters (mm)");
-                sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST http://localhost:" + _httpPort + "/batch -d \"command1 args\\ncommand2 args\"");
-                sb.AppendLine("- Always check /info first to understand the current document");
-                sb.AppendLine("- Use /selected to inspect what the user has selected");
-                sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
-                sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
-                sb.AppendLine();
-                sb.AppendLine("BEHAVIOR:");
-                sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
-                sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
-                sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
-                sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
-                sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
-                sb.AppendLine("- When a task involves multiple steps, outline the full sequence up front so the user can approve or adjust before you proceed.");
-                sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
-                sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
-                sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
-
-                File.WriteAllText(_systemPromptPath, sb.ToString(), Encoding.UTF8);
+                File.WriteAllText(_systemPromptPath,
+                    BuildSystemPromptText(_commands, _httpPort, _authToken), Encoding.UTF8);
                 Logger.Info("System prompt written to: " + _systemPromptPath);
             }
             catch (Exception ex)
             {
                 Logger.Error("Failed to write system prompt", ex);
             }
+        }
+
+        internal static string BuildSystemPromptText(
+            IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
+            sb.AppendLine("You can control Revit by running curl commands against the embedded HTTP server.");
+            sb.AppendLine();
+            sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at http://localhost:" + httpPort);
+            sb.AppendLine();
+            if (authToken != null)
+            {
+                sb.AppendLine("AUTH: This server requires a token. Add this header to EVERY curl call:");
+                sb.AppendLine("  -H \"" + RevitHttpServer.TokenHeader + ": $" + RevitHttpServer.TokenEnvVar + "\"");
+                sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell. Requests without this header return 401.");
+                sb.AppendLine();
+            }
+            sb.AppendLine("Available commands:");
+            sb.AppendLine();
+
+            foreach (var cmd in commands.Values.OrderBy(c => c.Name))
+            {
+                sb.AppendLine("  " + cmd.Name + " - " + cmd.Description);
+                if (!string.IsNullOrEmpty(cmd.Usage))
+                    sb.AppendLine("    Usage: curl -s \"http://localhost:" + httpPort + "/" + cmd.Usage + "\"");
+                else
+                    sb.AppendLine("    Usage: curl -s http://localhost:" + httpPort + "/" + cmd.Name);
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Tips:");
+            sb.AppendLine("- All dimensions are in millimeters (mm)");
+            sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST http://localhost:" + httpPort + "/batch -d \"command1 args\\ncommand2 args\"");
+            sb.AppendLine("- Always check /info first to understand the current document");
+            sb.AppendLine("- Use /selected to inspect what the user has selected");
+            sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
+            sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
+            sb.AppendLine();
+            sb.AppendLine("BEHAVIOR:");
+            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
+            sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
+            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
+            sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
+            sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
+            sb.AppendLine("- When a task involves multiple steps, outline the full sequence up front so the user can approve or adjust before you proceed.");
+            sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
+            sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
+            sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
+
+            return sb.ToString();
         }
 
         public override void SendMessage(
@@ -236,6 +275,19 @@ namespace VibeModel.Services.Chat
             _killedByIdleTimeout = false;
             _lastBlockWasToolUse = false;
 
+            // Pre-flight: if our own server is down, surface a clear message instead of
+            // spawning the CLI and letting the model flail on connection-refused curls.
+            if (!IsServerHealthy())
+            {
+                onError("VibeModel's HTTP server isn't responding on port " + _httpPort +
+                        ". Restart Revit (or check whether another program is blocking the port), then try again.");
+                return;
+            }
+
+            // Refresh the prompt file every turn so it always matches this server's
+            // live port and auth state — never a stale copy from an earlier instance.
+            WriteSystemPrompt();
+
             // Capture whether this invocation tries to resume - used after WaitForExit
             // to detect stale-session failures and retry without --resume.
             bool resumeAttempted = !string.IsNullOrEmpty(_sessionId);
@@ -258,6 +310,10 @@ namespace VibeModel.Services.Chat
             appendPrompt.Append("You are inside Revit. Read " + _systemPromptPath +
                 " for available commands. Always use curl to interact with Revit. " +
                 "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
+            appendPrompt.AppendLine();
+            // Heals resumed sessions whose history mentions a dead port (e.g. after a
+            // fallback-port instance closed): the live port always wins.
+            appendPrompt.Append(BuildPortDirective(_httpPort));
 
             if (!string.IsNullOrEmpty(context))
             {
@@ -598,6 +654,35 @@ namespace VibeModel.Services.Chat
             catch (Exception ex)
             {
                 Logger.Error("Failed to parse NDJSON line: " + line, ex);
+            }
+        }
+
+        internal static string BuildPortDirective(int httpPort)
+        {
+            return "The VibeModel server is at http://localhost:" + httpPort +
+                ". This is the ONLY correct port right now — if this conversation or any file " +
+                "mentions a different port, ignore it and use " + httpPort + ".";
+        }
+
+        // GET /health with a short timeout. /health is unauthenticated by design,
+        // so this works whether or not VIBEMODEL_TOKEN is set.
+        private bool IsServerHealthy()
+        {
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(
+                    "http://localhost:" + _httpPort + "/health");
+                request.Timeout = HealthCheckTimeoutMs;
+                request.ReadWriteTimeout = HealthCheckTimeoutMs;
+                using (var response = (HttpWebResponse)request.GetResponse())
+                {
+                    return response.StatusCode == HttpStatusCode.OK;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Pre-flight health check failed on port " + _httpPort + ": " + ex.Message);
+                return false;
             }
         }
 

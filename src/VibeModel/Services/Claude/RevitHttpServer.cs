@@ -69,6 +69,7 @@ namespace VibeModel.Services.Claude
 
                     Logger.Info("HTTP server started on http://127.0.0.1:" + port
                               + (_authToken != null ? " (token auth ENABLED)" : " (open, no token)"));
+                    ServerDiscovery.Write(port);
                     return true;
                 }
                 catch (SocketException)
@@ -85,6 +86,9 @@ namespace VibeModel.Services.Claude
 
         public void Stop()
         {
+            if (ActivePort != 0)
+                ServerDiscovery.Delete(ActivePort);
+
             _running = false;
             try
             {
