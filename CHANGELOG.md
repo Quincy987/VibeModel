@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
+
+### Added
+- **Source-data reading (DWG + point clouds)** — six new read-only commands so the AI reads
+  imported source data as actual vectors/points instead of guessing from screenshots:
+  `imports` (CAD imports/links with mm bbox + curve/layer counts), `layers <id>` (DWG layer
+  names with object counts), `curves <id> <layer> [--bbox] [--closed] [--page]` (real
+  coordinates in mm — `--closed` chains segments into footprint loops paste-ready for
+  `/floor`), `pointclouds` (loaded `.rcp`/`.rcs` instances with mm bbox), `pcprobe <id> <x>
+  <y> [r]` (height histogram + robust ground estimate at a point), and `pcline <id> <x1> <y1>
+  <x2> <y2> [step]` (ground profile along a line). Ground estimation picks the lowest DENSE
+  band of points and averages only its bottom 200mm, so parked cars, trees and bins above the
+  surface — and a facade rising from the street — don't skew it; `pcline` additionally
+  rejects per-station spikes and interpolates occluded stations (flagged `interp`).
+  Point-cloud filter coordinate space is API-ambiguous, so the helper self-probes filter
+  space × orientation combos, only accepts a strategy whose points survive a sanity check
+  against the probe column, and caches the winner. Pure algorithms (curve chaining,
+  point-cloud analysis, arg parsing) are Revit-free and covered by 37 new headless tests.
+
+### Fixed
+- **Multi-instance chat port poisoning** — the Claude Code chat backend wrote one shared
+  `system-prompt.txt` once at startup; a second Revit instance (fallback port 18885+) would
+  overwrite it with its own port and leave it stale after closing, breaking chat in the surviving
+  instance with connection-refused curls. The prompt file is now per-port
+  (`system-prompt-<port>.txt`) and rewritten before every message; the legacy shared file is
+  deleted at startup.
+
+### Added
+- **Self-healing port directive** — every chat turn's appended system prompt names the live port
+  as authoritative, so resumed sessions ignore dead ports remembered from earlier conversation
+  history (`ClaudeCodeBackend.BuildPortDirective`).
+- **Pre-flight health check** — the chat backend probes `/health` (2s timeout) before spawning the
+  CLI; a down server yields one plain-language error instead of minutes of failed curl attempts.
+- **Server discovery files** — `RevitHttpServer` publishes
+  `%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc}`) on start and deletes
+  it on stop (new `ServerDiscovery` helper), so external clients find fallback ports instead of
+  assuming 18884; stale files are detectable via their dead PID. Documented in CLAUDE.md + README.
+- **Port-isolation tests** — 8 new xUnit tests (`PortIsolationTests`) covering per-port prompt
+  paths/content, the auth block, the port directive, and discovery JSON round-trip (suite: 69).
+
+### Build
+- **Add-in deployment is now opt-in** — plain `dotnet build` / `dotnet test` compile only;
+  deploying into the live Revit addins folder requires `-p:Deploy=true` (build.ps1 passes it
+  after closing Revit). Worktree builds (bot/CI sandboxes under `.worktrees`) additionally
+  default to SkipDeploy, so branch code can never overwrite the installed add-in or hit
+  locked-file MSB3027 failures by accident.
+
 ## v1.2.0 — Vision, Structured I/O & Modeling Breadth (2026-07-11)
 
 ### Added

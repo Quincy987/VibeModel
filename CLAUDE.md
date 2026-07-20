@@ -33,6 +33,12 @@ build.cmd --debug
 
 VibeModel runs an HTTP server on `http://localhost:18884` inside Revit. Commands are instant (no polling delay).
 
+**Port discovery (multiple Revit instances):** if 18884 is busy (e.g. a second Revit instance),
+the server falls back to 18885–18888. Each live server writes
+`%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc}`) on startup and deletes
+it on shutdown — read those files (a file is stale if its `pid` is no longer running) or probe
+`/health` on 18884–18888 to find the right port instead of assuming 18884.
+
 ### Quick Start
 ```bash
 curl -s http://localhost:18884/health          # Check connection

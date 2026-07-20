@@ -140,8 +140,9 @@ This section is for developers who want to modify VibeModel.
 - **Option B (API key):** Click **Settings** in the chat panel header and enter your Anthropic API key. Get a key from [console.anthropic.com](https://console.anthropic.com/).
 
 **Connection refused / port blocked**
-- VibeModel uses port 18884 — make sure nothing else is using it
-- If the port is blocked, VibeModel automatically falls back to file-based mode (slower but still works)
+- VibeModel uses port 18884; if it's busy (e.g. a second Revit instance), it falls back to 18885–18888
+- Live servers advertise their port in `%LOCALAPPDATA%\VibeModel\servers\<port>.json` — check there (or probe `/health` on 18884–18888) to find the right one
+- If no port is available at all, VibeModel falls back to file-based mode (slower but still works)
 - Check the logs at `%LOCALAPPDATA%\VibeModel\logs\` for details
 
 **Commands return errors**
