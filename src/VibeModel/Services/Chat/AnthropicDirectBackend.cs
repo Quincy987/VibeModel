@@ -19,7 +19,31 @@ namespace VibeModel.Services.Chat
         private const int MaxTokens = 8192;
         private const int MaxToolLoopIterations = 25;
 
+        // Attachment size guards. The API caps requests at ~32MB; base64 inflates bytes
+        // by 4/3, so the practical raw-file ceiling for a PDF is ~22MB (the plan's 30MB
+        // would sail past the request limit once encoded). Images above the reject cap
+        // are absurd; ones between the downscale threshold and the cap get re-encoded.
+        internal const long MaxPdfBytes = 22L * 1024 * 1024;
+        internal const long MaxImageBytes = 20L * 1024 * 1024;
+        // Budget for summed base64 chars across all attachment blocks kept in history.
+        internal const int MaxAttachmentPayloadChars = 25 * 1024 * 1024;
+
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+
+        // One entry per image/document block shipped in a user message, so an over-budget
+        // history can collapse the oldest payloads to text stubs (blocks are located by
+        // reference inside their owning message's content array).
+        internal class SentAttachmentRecord
+        {
+            public Dictionary<string, object> Owner;   // history message holding the block
+            public Dictionary<string, object> Block;   // the image/document block itself
+            public string Name;
+            public string Path;
+            public int PayloadChars;
+            public bool Dropped;
+        }
+
+        private readonly List<SentAttachmentRecord> _sentAttachments = new List<SentAttachmentRecord>();
 
         public override bool IsAvailable
         {
@@ -51,6 +75,7 @@ namespace VibeModel.Services.Chat
 
         public override void SendMessage(
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
@@ -63,14 +88,23 @@ namespace VibeModel.Services.Chat
                 return;
             }
 
+            // Fail fast with a clear message before shipping a request the API would reject.
+            var sizeError = ValidateAttachmentSizes(attachments);
+            if (sizeError != null)
+            {
+                onError(sizeError);
+                return;
+            }
+
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(apiKey, prompt, onToken, onComplete, onError, ct),
+                ct => RunAgenticLoop(apiKey, prompt, attachments, onToken, onComplete, onError, ct),
                 onComplete, onError, cancellationToken, "AnthropicDirectBackend error");
         }
 
         private void RunAgenticLoop(
             string apiKey,
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
@@ -78,14 +112,44 @@ namespace VibeModel.Services.Chat
         {
             // Gather context and prepend to first user message
             var context = GatherModelContext();
-            var userContent = string.IsNullOrEmpty(context) ? prompt : context + "\n\n" + prompt;
+            var baseText = string.IsNullOrEmpty(context) ? prompt : context + "\n\n" + prompt;
 
-            // Add user message to conversation
-            _conversationHistory.Add(new Dictionary<string, object>
+            // Add user message to conversation. Text-only messages keep the plain-string
+            // content path unchanged; attachments switch to a content-block array.
+            Dictionary<string, object> userMessage;
+            if (attachments == null || attachments.Count == 0)
             {
-                { "role", "user" },
-                { "content", userContent }
-            });
+                userMessage = new Dictionary<string, object>
+                {
+                    { "role", "user" },
+                    { "content", baseText }
+                };
+            }
+            else
+            {
+                var records = new List<SentAttachmentRecord>();
+                var blocks = BuildUserContentBlocks(baseText, attachments, records);
+
+                // Attachments persist in history for the whole session (that is the point —
+                // follow-up questions keep working). Only when a NEW attachment would push
+                // the summed base64 payload over budget do the OLDEST ones collapse to a
+                // text stub, mirroring DropOldScreenshotImages.
+                int incomingChars = 0;
+                foreach (var r in records) incomingChars += r.PayloadChars;
+                TrimAttachmentPayload(_sentAttachments, incomingChars, MaxAttachmentPayloadChars);
+
+                userMessage = new Dictionary<string, object>
+                {
+                    { "role", "user" },
+                    { "content", blocks }
+                };
+                foreach (var r in records)
+                {
+                    r.Owner = userMessage;
+                    _sentAttachments.Add(r);
+                }
+            }
+            _conversationHistory.Add(userMessage);
 
             var fullResponse = new StringBuilder();
             bool lastWasText = false;
@@ -294,6 +358,193 @@ namespace VibeModel.Services.Chat
                     args = argsObj.ToString();
             }
             return ExecuteTool(toolName, args);
+        }
+
+        // --- Attachment content building -------------------------------------------
+
+        /// <summary>
+        /// Pre-send size validation. Returns a user-facing error string, or null if all
+        /// attachments are within limits.
+        /// </summary>
+        internal static string ValidateAttachmentSizes(IReadOnlyList<ChatAttachment> attachments)
+        {
+            if (attachments == null)
+                return null;
+
+            foreach (var a in attachments)
+            {
+                if (a.Kind == AttachmentKind.Pdf && a.SizeBytes > MaxPdfBytes)
+                    return a.FileName + " is " + ChatAttachment.FormatSize(a.SizeBytes) +
+                           " — PDFs over ~22 MB exceed the API's ~32 MB request limit once base64-encoded. " +
+                           "Try splitting the document into parts.";
+
+                if (a.Kind == AttachmentKind.Image && a.SizeBytes > MaxImageBytes)
+                    return a.FileName + " is " + ChatAttachment.FormatSize(a.SizeBytes) +
+                           " — images over " + ChatAttachment.FormatSize(MaxImageBytes) +
+                           " can't be sent. Try exporting it at a lower resolution.";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Builds the content-block array for a user message with attachments:
+        /// one text block (context + prompt + inlined text files + notes), then one
+        /// image/document block per image/PDF. Adds a SentAttachmentRecord per
+        /// payload block; the caller sets Owner once the history message exists.
+        /// Read failures degrade to text notes instead of failing the message.
+        /// </summary>
+        internal static object[] BuildUserContentBlocks(
+            string baseText,
+            IReadOnlyList<ChatAttachment> attachments,
+            List<SentAttachmentRecord> records)
+        {
+            var textSb = new StringBuilder(baseText ?? "");
+            var mediaBlocks = new List<object>();
+
+            foreach (var a in attachments)
+            {
+                switch (a.Kind)
+                {
+                    case AttachmentKind.Image:
+                        try
+                        {
+                            string mediaType;
+                            var bytes = ImageResizer.LoadImageBytesForApi(a.StoredPath, a.MimeType, out mediaType);
+                            AddMediaBlock(mediaBlocks, records, a, "image", mediaType, bytes);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("Failed to read image attachment: " + a.StoredPath, ex);
+                            AppendSection(textSb, "[Attached image " + a.FileName + " could not be read: " + ex.Message + "]");
+                        }
+                        break;
+
+                    case AttachmentKind.Pdf:
+                        try
+                        {
+                            var bytes = File.ReadAllBytes(a.StoredPath);
+                            AddMediaBlock(mediaBlocks, records, a, "document", "application/pdf", bytes);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("Failed to read PDF attachment: " + a.StoredPath, ex);
+                            AppendSection(textSb, "[Attached PDF " + a.FileName + " could not be read: " + ex.Message + "]");
+                        }
+                        break;
+
+                    case AttachmentKind.Text:
+                        AppendSection(textSb, AttachmentFormatting.BuildTextFence(a));
+                        break;
+
+                    default:
+                        AppendSection(textSb, AttachmentFormatting.BuildUnreadableNote(a));
+                        break;
+                }
+            }
+
+            var blocks = new List<object>();
+            // The API rejects empty text blocks — skip it when there is genuinely no text
+            // (e.g. an image attached with no message and no model context).
+            if (textSb.Length > 0)
+                blocks.Add(new Dictionary<string, object>
+                {
+                    { "type", "text" },
+                    { "text", textSb.ToString() }
+                });
+            blocks.AddRange(mediaBlocks);
+            return blocks.ToArray();
+        }
+
+        private static void AddMediaBlock(
+            List<object> mediaBlocks,
+            List<SentAttachmentRecord> records,
+            ChatAttachment a,
+            string blockType,
+            string mediaType,
+            byte[] bytes)
+        {
+            var b64 = Convert.ToBase64String(bytes);
+            var block = new Dictionary<string, object>
+            {
+                { "type", blockType },
+                { "source", new Dictionary<string, object>
+                    {
+                        { "type", "base64" },
+                        { "media_type", mediaType },
+                        { "data", b64 }
+                    }
+                }
+            };
+            mediaBlocks.Add(block);
+            records.Add(new SentAttachmentRecord
+            {
+                Block = block,
+                Name = a.FileName,
+                Path = a.StoredPath,
+                PayloadChars = b64.Length
+            });
+        }
+
+        private static void AppendSection(StringBuilder sb, string section)
+        {
+            if (sb.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+            }
+            sb.Append(section);
+        }
+
+        /// <summary>
+        /// Drops the OLDEST still-active attachment payloads until the incoming payload
+        /// fits the budget alongside what remains. Dropped blocks are replaced in place
+        /// (inside their owning message's content array) with a text stub naming the
+        /// stored path, so the model can ask for a re-attach.
+        /// </summary>
+        internal static void TrimAttachmentPayload(
+            List<SentAttachmentRecord> sent, int incomingPayloadChars, int budgetChars)
+        {
+            int active = 0;
+            foreach (var r in sent)
+                if (!r.Dropped) active += r.PayloadChars;
+
+            int idx = 0;
+            while (active + incomingPayloadChars > budgetChars && idx < sent.Count)
+            {
+                var r = sent[idx++];
+                if (r.Dropped) continue;
+                DropRecord(r);
+                active -= r.PayloadChars;
+            }
+        }
+
+        private static void DropRecord(SentAttachmentRecord r)
+        {
+            r.Dropped = true;
+            var contentArr = r.Owner != null && r.Owner.TryGetValue("content", out var c)
+                ? c as object[]
+                : null;
+            if (contentArr == null) return;
+
+            for (int i = 0; i < contentArr.Length; i++)
+            {
+                if (ReferenceEquals(contentArr[i], r.Block))
+                {
+                    contentArr[i] = new Dictionary<string, object>
+                    {
+                        { "type", "text" },
+                        { "text", "[Attachment " + r.Name + " dropped from context to fit limits — stored at " +
+                                  r.Path + ", re-attach to discuss again]" }
+                    };
+                    break;
+                }
+            }
+        }
+
+        public override void ResetSession()
+        {
+            base.ResetSession();
+            _sentAttachments.Clear();
         }
 
         // Builds the tool_result content. Default is the plain string (unchanged behavior).

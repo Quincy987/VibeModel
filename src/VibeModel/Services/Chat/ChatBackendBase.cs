@@ -61,8 +61,13 @@ namespace VibeModel.Services.Chat
         public abstract bool IsAvailable { get; }
         public abstract string StatusMessage { get; }
 
+        // Exposed so the chat UI can reach the local Revit server (e.g. to resolve the
+        // current document title for per-project attachment storage).
+        public int HttpPort => _httpPort;
+
         public abstract void SendMessage(
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,

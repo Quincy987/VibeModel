@@ -100,6 +100,7 @@ namespace VibeModel.Services.Chat
 
         public override void SendMessage(
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
@@ -113,13 +114,14 @@ namespace VibeModel.Services.Chat
             }
 
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(endpoint, prompt, onToken, onComplete, onError, ct),
+                ct => RunAgenticLoop(endpoint, prompt, attachments, onToken, onComplete, onError, ct),
                 onComplete, onError, cancellationToken, "LocalLlmBackend error");
         }
 
         private void RunAgenticLoop(
             string endpoint,
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
@@ -128,6 +130,7 @@ namespace VibeModel.Services.Chat
             // Gather Revit context
             var context = GatherModelContext();
             var userContent = string.IsNullOrEmpty(context) ? prompt : context + "\n\n" + prompt;
+            userContent = AppendAttachments(userContent, attachments);
 
             _conversationHistory.Add(new Dictionary<string, object>
             {
@@ -345,6 +348,35 @@ namespace VibeModel.Services.Chat
 
             // Exhausted iterations
             onComplete(fullResponse.ToString());
+        }
+
+        /// <summary>
+        /// Text attachments inline as fenced blocks (same format as the Anthropic
+        /// backend); images/PDFs/other get a note — most local models aren't
+        /// vision-capable, so no base64 wiring here (future enhancement, see
+        /// AppendTipsTail note about screenshots).
+        /// </summary>
+        internal static string AppendAttachments(
+            string userContent, IReadOnlyList<ChatAttachment> attachments)
+        {
+            if (attachments == null || attachments.Count == 0)
+                return userContent;
+
+            var sb = new StringBuilder(userContent ?? "");
+            foreach (var a in attachments)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine();
+                }
+                if (a.Kind == AttachmentKind.Text)
+                    sb.Append(AttachmentFormatting.BuildTextFence(a));
+                else
+                    sb.Append("[Attached " + a.FileName + " (" + a.Kind + ") — this backend cannot read this format; stored at " +
+                              a.StoredPath + "]");
+            }
+            return sb.ToString();
         }
 
         private static object[] ToObjectArray(object raw)
