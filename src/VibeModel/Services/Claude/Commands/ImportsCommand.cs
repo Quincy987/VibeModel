@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -53,12 +52,12 @@ namespace VibeModel.Services.Claude.Commands
                 Dictionary<string, object> bboxData = null;
                 if (bbox != null)
                 {
-                    sb.AppendLine("  BBox min: " + FmtMm(bbox.Min) + " mm");
-                    sb.AppendLine("  BBox max: " + FmtMm(bbox.Max) + " mm");
+                    sb.AppendLine("  BBox min: " + FormattingHelper.FormatPointMmBare(bbox.Min) + " mm");
+                    sb.AppendLine("  BBox max: " + FormattingHelper.FormatPointMmBare(bbox.Max) + " mm");
                     bboxData = new Dictionary<string, object>
                     {
-                        { "min", MmArray(bbox.Min) },
-                        { "max", MmArray(bbox.Max) }
+                        { "min", FormattingHelper.ToMmArray(bbox.Min) },
+                        { "max", FormattingHelper.ToMmArray(bbox.Max) }
                     };
                 }
                 else
@@ -84,21 +83,5 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(sb.ToString(), data);
         }
 
-        private static string FmtMm(XYZ feet)
-        {
-            return "(" + RevitUnitHelper.FeetToMm(feet.X).ToString("F1", CultureInfo.InvariantCulture) +
-                   ", " + RevitUnitHelper.FeetToMm(feet.Y).ToString("F1", CultureInfo.InvariantCulture) +
-                   ", " + RevitUnitHelper.FeetToMm(feet.Z).ToString("F1", CultureInfo.InvariantCulture) + ")";
-        }
-
-        private static double[] MmArray(XYZ feet)
-        {
-            return new[]
-            {
-                RevitUnitHelper.FeetToMm(feet.X),
-                RevitUnitHelper.FeetToMm(feet.Y),
-                RevitUnitHelper.FeetToMm(feet.Z)
-            };
-        }
     }
 }

@@ -45,6 +45,22 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void WallRisingFromStreet_GroundStaysAtTheBase()
+        {
+            // Quay-wall scenario: street band at 1800-1840 plus a facade rising
+            // contiguously to 6000 — one merged cluster. Ground must stay at the base,
+            // not drift to the middle of the wall face.
+            var zs = new List<double>();
+            for (int i = 0; i < 400; i++) zs.Add(1800 + (i % 5) * 10);
+            for (double z = 1850; z < 6000; z += 2.5) zs.Add(z); // ~1660 wall points
+
+            var est = PointCloudAnalysis.EstimateGround(zs);
+
+            Assert.NotNull(est.GroundZMm);
+            Assert.InRange(est.GroundZMm.Value, 1790, 1950);
+        }
+
+        [Fact]
         public void TooFewPoints_GivesNoGround()
         {
             var zs = new List<double> { 1800, 1810, 1820 }; // below the 30-point density floor

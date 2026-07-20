@@ -75,11 +75,17 @@ namespace VibeModel.Services.Helpers
 
                 if (raw.Count == 0) continue;
 
+                // A wrong space/orientation combo can still return points — just not ones
+                // inside the probe column. Accept the strategy only if points survive the
+                // column check, otherwise a bad combination would be cached as the winner.
+                var zs = ToModelZsMm(raw, transform, bbox, xMm, yMm, radiusMm);
+                if (zs.Count == 0) continue;
+
                 _knownStrategy = strategy;
                 diagnostics = "filter=" + (cloudSpace ? "cloud" : "model") + "-space/" +
-                              (inward ? "inward" : "outward") + ", points=" + raw.Count;
+                              (inward ? "inward" : "outward") + ", points=" + zs.Count + "/" + raw.Count;
 
-                return ToModelZsMm(raw, transform, bbox, xMm, yMm, radiusMm);
+                return zs;
             }
 
             // Nothing worked with the cached strategy — clear it so the next call re-probes.

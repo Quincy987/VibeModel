@@ -15,6 +15,11 @@ namespace VibeModel.Services.Claude
     /// </summary>
     internal static class PointCloudAnalysis
     {
+        // Ground is averaged over at most this many bins from the cluster bottom
+        // (200 mm at the default 50 mm bin) — thicker than any street surface band,
+        // thinner than the walls/facades that can merge into the same cluster.
+        private const int GroundBandMaxBins = 4;
+
         /// <summary>
         /// Estimate ground elevation from a vertical column of Z samples (mm).
         /// Bins samples (binMm), finds clusters of adjacent occupied bins, and returns the
@@ -68,12 +73,19 @@ namespace VibeModel.Services.Claude
 
                 if (weight >= threshold)
                 {
-                    // Weighted mean of bin centers = robust ground level for this band.
+                    // Ground = the BOTTOM of the cluster, not its middle: a wall or facade
+                    // rising contiguously from the street merges into one cluster, and a
+                    // full-cluster mean would land mid-wall. Average only the lowest bins.
+                    int bandEnd = Math.Min(end, start + GroundBandMaxBins - 1);
                     double sum = 0;
-                    for (int i = start; i <= end; i++)
+                    int bandWeight = 0;
+                    for (int i = start; i <= bandEnd; i++)
+                    {
                         sum += counts[i] * (min + (i + 0.5) * binMm);
-                    result.GroundZMm = sum / weight;
-                    result.GroundBandPoints = weight;
+                        bandWeight += counts[i];
+                    }
+                    result.GroundZMm = sum / bandWeight;
+                    result.GroundBandPoints = bandWeight;
                     break;
                 }
             }

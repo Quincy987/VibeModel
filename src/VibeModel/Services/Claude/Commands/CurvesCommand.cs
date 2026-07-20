@@ -155,7 +155,7 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     var pts = chains[i].PointsMm.Select(p => (p.X, p.Y)).ToList();
                     sb.AppendLine("Curve " + (i + 1) + " (" + pts.Count + " pts): " + FormatChain2D(pts));
-                    curveData.Add(pts.Select(p => new[] { Round1(p.Item1), Round1(p.Item2) }).ToList());
+                    curveData.Add(pts.Select(p => new[] { Round1(p.X), Round1(p.Y) }).ToList());
                 }
                 sb.AppendLine();
                 AppendPageFooter(sb, parsed.Page, page.Value, chains.Count, CurvesPerPage);
