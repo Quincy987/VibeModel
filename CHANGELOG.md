@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.1 — Seamless Chat Port Isolation & Discovery (2026-07-20)
+
 ### Fixed
 - **Multi-instance chat port poisoning** — the Claude Code chat backend wrote one shared
   `system-prompt.txt` once at startup; a second Revit instance (fallback port 18885+) would
