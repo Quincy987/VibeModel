@@ -461,6 +461,12 @@ namespace VibeModel.UI
                 _session = ChatSession.Start(ActiveDocumentTracker.Title, BackendLabel());
             _session.Append(ChatSession.RoleUser, text);
 
+            // Capture the session that owns this turn. The completion/error callbacks
+            // arrive via the Dispatcher and may fire AFTER the user switched to a new
+            // chat or loaded another session — recording against the captured session
+            // keeps a late reply/error in the conversation it belongs to.
+            var sessionForTurn = _session;
+
             // Streaming placeholder — plain TextBlock, replaced with rendered markdown on complete
             _streamingMessage = new ChatMessage(ChatRole.Assistant, "");
             _streamingContent = new StringBuilder();
@@ -516,11 +522,8 @@ namespace VibeModel.UI
                             AddRenderedContent(_streamingContentPanel, content);
 
                             ChatHistory.Add("Claude", content);
-                            if (_session != null)
-                            {
-                                _session.Append(ChatSession.RoleAssistant, content);
-                                ChatSessionStore.Default.SaveSession(_session);
-                            }
+                            sessionForTurn.Append(ChatSession.RoleAssistant, content);
+                            ChatSessionStore.Default.SaveSession(sessionForTurn);
                             ClearStreamingState();
                         }
                         SetGenerating(false);
@@ -539,11 +542,8 @@ namespace VibeModel.UI
                         var errorMsg = "Error: " + error;
                         AddMessage(new ChatMessage(ChatRole.System, errorMsg));
                         ChatHistory.Add("System", errorMsg);
-                        if (_session != null)
-                        {
-                            _session.Append(ChatSession.RoleSystem, errorMsg);
-                            ChatSessionStore.Default.SaveSession(_session);
-                        }
+                        sessionForTurn.Append(ChatSession.RoleSystem, errorMsg);
+                        ChatSessionStore.Default.SaveSession(sessionForTurn);
                         SetGenerating(false);
                         ScrollToBottomIfNeeded();
                     }));

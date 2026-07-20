@@ -274,6 +274,19 @@ namespace VibeModel.Services.Chat
                     lastRole = m.Role;
                 }
             }
+
+            // A transcript can legally end on a user turn (the reply errored before it
+            // was recorded). Pad it so the next user message never produces two
+            // consecutive user turns — some chat APIs reject non-alternating roles.
+            if (lastRole == ChatSession.RoleUser)
+            {
+                _conversationHistory.Add(new Dictionary<string, object>
+                {
+                    { "role", ChatSession.RoleAssistant },
+                    { "content", "[No response was recorded for this message.]" }
+                });
+            }
+
             Logger.Info(ResetLogLabel + " restored " + _conversationHistory.Count + " turn(s) from saved session");
         }
 
