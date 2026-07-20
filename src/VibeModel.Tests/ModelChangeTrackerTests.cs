@@ -115,17 +115,6 @@ namespace VibeModel.Tests
             Assert.Equal(0, ModelChangeTracker.TakeStamp("doc-b", null, 0).TotalEdits);
         }
 
-        [Fact]
-        public void Forget_DropsDocumentState()
-        {
-            ModelChangeTracker.RecordCommit("doc-gone", Foreign);
-            ModelChangeTracker.Forget("doc-gone");
-
-            var stamp = ModelChangeTracker.TakeStamp("doc-gone", null, 0);
-            Assert.Equal(0, stamp.TotalEdits);
-            Assert.Equal(0, stamp.UserEdits);
-        }
-
         // ---- Doc key -------------------------------------------------------
 
         [Fact]

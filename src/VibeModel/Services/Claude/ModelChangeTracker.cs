@@ -28,6 +28,14 @@ namespace VibeModel.Services.Claude
         }
 
         private static readonly object Sync = new object();
+
+        // Per-document state deliberately survives document close: Revit's DocumentClosing
+        // fires BEFORE the close can be canceled (e.g. Cancel on the save prompt), so pruning
+        // there would wipe real counters for a document that stays open — under-reporting user
+        // edits, the exact confusion this tracker exists to prevent. DocumentClosed does not
+        // identify the document, so reliable pruning is impossible; the state is two longs per
+        // document per session, so keeping it is free. A doc closed unsaved and reopened keeps
+        // counting, which correctly flags "model differs from what you last saw".
         private static readonly Dictionary<string, DocState> Docs =
             new Dictionary<string, DocState>(StringComparer.OrdinalIgnoreCase);
 
@@ -97,15 +105,6 @@ namespace VibeModel.Services.Claude
                     viewName, selectedCount);
                 state.UserEditsSinceLastStamp = 0;
                 return stamp;
-            }
-        }
-
-        /// <summary>Drop per-document state when the document closes.</summary>
-        public static void Forget(string docKey)
-        {
-            lock (Sync)
-            {
-                Docs.Remove(docKey);
             }
         }
 

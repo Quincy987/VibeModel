@@ -81,7 +81,6 @@ namespace VibeModel
                 // Track every committed transaction so command responses can report
                 // "the user changed the model since your last command" (ModelChangeTracker).
                 application.ControlledApplication.DocumentChanged += OnDocumentChanged;
-                application.ControlledApplication.DocumentClosing += OnDocumentClosing;
 
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
@@ -99,7 +98,6 @@ namespace VibeModel
             {
                 application.DialogBoxShowing -= OnDialogBoxShowing;
                 application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
-                application.ControlledApplication.DocumentClosing -= OnDocumentClosing;
 
                 if (_usingFallback)
                 {
@@ -266,20 +264,6 @@ namespace VibeModel
             catch (Exception ex)
             {
                 Logger.Error("DocumentChanged tracking error", ex);
-            }
-        }
-
-        private void OnDocumentClosing(object sender, Autodesk.Revit.DB.Events.DocumentClosingEventArgs e)
-        {
-            try
-            {
-                var doc = e.Document;
-                if (doc != null)
-                    ModelChangeTracker.Forget(ModelChangeTracker.DocKey(doc.PathName, doc.Title));
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("DocumentClosing tracking error", ex);
             }
         }
 
