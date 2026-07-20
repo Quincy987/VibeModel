@@ -78,6 +78,11 @@ namespace VibeModel
                 // Dismiss non-transaction dialogs during command execution
                 application.DialogBoxShowing += OnDialogBoxShowing;
 
+                // Track the active document title (fires on the Revit UI thread) so the
+                // chat pane can label saved sessions with the project name without
+                // touching the Revit API outside an API context.
+                application.ViewActivated += OnViewActivated;
+
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
             }
@@ -93,6 +98,7 @@ namespace VibeModel
             try
             {
                 application.DialogBoxShowing -= OnDialogBoxShowing;
+                application.ViewActivated -= OnViewActivated;
 
                 if (_usingFallback)
                 {
@@ -209,6 +215,18 @@ namespace VibeModel
             catch (Exception ex)
             {
                 Logger.Error("Failed to switch backend", ex);
+            }
+        }
+
+        private void OnViewActivated(object sender, ViewActivatedEventArgs e)
+        {
+            try
+            {
+                ActiveDocumentTracker.Update(e.Document != null ? e.Document.Title : "");
+            }
+            catch
+            {
+                // Title tracking is best-effort; never disturb view activation.
             }
         }
 

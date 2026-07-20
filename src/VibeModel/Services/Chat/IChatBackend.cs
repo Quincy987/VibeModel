@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace VibeModel.Services.Chat
@@ -17,5 +18,12 @@ namespace VibeModel.Services.Chat
 
         void Cancel();
         void ResetSession();
+
+        /// <summary>
+        /// Rebuild conversation state from a restored session's transcript so the user
+        /// can continue where they left off. Backends without replayable state
+        /// (Claude CLI) treat this as a fresh session instead.
+        /// </summary>
+        void RestoreHistory(IEnumerable<ChatSessionMessage> messages);
     }
 }

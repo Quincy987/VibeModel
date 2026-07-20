@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- **Chat history persistence + browser** — conversations are no longer lost on "New Chat".
+  Every chat is saved to `%LOCALAPPDATA%\VibeModel\chats\` (one JSON file per session, written
+  after each completed reply, capped at 200 sessions) with a title derived from the first user
+  message, the Revit project name, and the active backend. A new **History** button in the chat
+  pane header opens a dark-themed browser — sessions grouped by project (most recent first),
+  searchable by title/project, with per-row open/delete and double-click to open. Opening a
+  session restores the full transcript and rebuilds conversation context so you continue where
+  you left off (Anthropic API and Local LLM backends replay the transcript into the model;
+  the Claude CLI backend shows the transcript and starts a fresh CLI session, clearly labeled).
+  Store logic is UI-free and covered by 10 new headless tests (round-trip, title truncation,
+  empty-session rule, prune-over-cap, corrupt-file tolerance).
+
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 
 ### Added

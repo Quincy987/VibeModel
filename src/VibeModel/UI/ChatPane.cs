@@ -29,6 +29,7 @@ namespace VibeModel.UI
         private Button _sendButton;
         private Button _cancelButton;
         private Button _newChatButton;
+        private Button _historyButton;
         private Button _settingsButton;
         private TextBlock _statusText;
         private Border _infoBanner;
@@ -49,6 +50,10 @@ namespace VibeModel.UI
         private CancellationTokenSource _cts;
         private bool _isGenerating;
         private bool _userScrolledUp;
+
+        // Current persisted session. Created lazily on the first user message
+        // (never on pane open) so empty chats leave no files behind.
+        private ChatSession _session;
 
         // Dark theme colors
         private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
@@ -113,6 +118,7 @@ namespace VibeModel.UI
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
 
             var title = new TextBlock
             {
@@ -142,9 +148,14 @@ namespace VibeModel.UI
             Grid.SetColumn(_newChatButton, 2);
             headerGrid.Children.Add(_newChatButton);
 
+            _historyButton = CreateHeaderButton("History");
+            _historyButton.Click += OnHistoryClick;
+            Grid.SetColumn(_historyButton, 3);
+            headerGrid.Children.Add(_historyButton);
+
             _settingsButton = CreateHeaderButton("Settings");
             _settingsButton.Click += OnSettingsClick;
-            Grid.SetColumn(_settingsButton, 3);
+            Grid.SetColumn(_settingsButton, 4);
             headerGrid.Children.Add(_settingsButton);
 
             return new Border
@@ -252,6 +263,10 @@ namespace VibeModel.UI
 
         public void InitializeBackend(IChatBackend backend)
         {
+            // Backend switch ends the current session — persist it first.
+            ChatSessionStore.Default.SaveSession(_session);
+            _session = null;
+
             _backend = backend;
             _messagePanel.Children.Clear();
             ClearStreamingState();
@@ -259,6 +274,14 @@ namespace VibeModel.UI
             UpdateStatus();
             ShowInfoBanner();
             ShowWelcomeMessage();
+        }
+
+        // Stable backend label persisted with each session; drives resume behavior on load.
+        private string BackendLabel()
+        {
+            if (_backend is ClaudeCodeBackend) return "claude-cli";
+            if (_backend is LocalLlmBackend) return "local";
+            return "anthropic";
         }
 
         private void ShowWelcomeMessage()
@@ -418,6 +441,11 @@ namespace VibeModel.UI
                 var msg = _backend?.StatusMessage ?? "Chat backend not initialized. Click Settings to configure your API key.";
                 AddMessage(new ChatMessage(ChatRole.System, msg));
                 ChatHistory.Add("System", msg);
+                if (_session != null)
+                {
+                    _session.Append(ChatSession.RoleSystem, msg);
+                    ChatSessionStore.Default.SaveSession(_session);
+                }
                 return;
             }
 
@@ -427,6 +455,11 @@ namespace VibeModel.UI
             var userMsg = new ChatMessage(ChatRole.User, text);
             AddMessage(userMsg);
             ChatHistory.Add("You", text);
+
+            // Lazily start the persisted session on the first user message.
+            if (_session == null)
+                _session = ChatSession.Start(ActiveDocumentTracker.Title, BackendLabel());
+            _session.Append(ChatSession.RoleUser, text);
 
             // Streaming placeholder — plain TextBlock, replaced with rendered markdown on complete
             _streamingMessage = new ChatMessage(ChatRole.Assistant, "");
@@ -483,6 +516,11 @@ namespace VibeModel.UI
                             AddRenderedContent(_streamingContentPanel, content);
 
                             ChatHistory.Add("Claude", content);
+                            if (_session != null)
+                            {
+                                _session.Append(ChatSession.RoleAssistant, content);
+                                ChatSessionStore.Default.SaveSession(_session);
+                            }
                             ClearStreamingState();
                         }
                         SetGenerating(false);
@@ -501,6 +539,11 @@ namespace VibeModel.UI
                         var errorMsg = "Error: " + error;
                         AddMessage(new ChatMessage(ChatRole.System, errorMsg));
                         ChatHistory.Add("System", errorMsg);
+                        if (_session != null)
+                        {
+                            _session.Append(ChatSession.RoleSystem, errorMsg);
+                            ChatSessionStore.Default.SaveSession(_session);
+                        }
                         SetGenerating(false);
                         ScrollToBottomIfNeeded();
                     }));
@@ -557,6 +600,10 @@ namespace VibeModel.UI
             if (_isGenerating)
                 CancelGeneration();
 
+            // Persist the conversation we're leaving before wiping the pane.
+            ChatSessionStore.Default.SaveSession(_session);
+            _session = null;
+
             _messagePanel.Children.Clear();
             ClearStreamingState();
             _infoBanner = null;
@@ -564,6 +611,67 @@ namespace VibeModel.UI
             ChatHistory.Clear();
             ShowInfoBanner();
             ShowWelcomeMessage();
+        }
+
+        private void OnHistoryClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ChatHistoryDialog();
+            var result = dialog.ShowDialog();
+            if (result == true && !string.IsNullOrEmpty(dialog.SelectedSessionId))
+                LoadSession(dialog.SelectedSessionId);
+        }
+
+        /// <summary>
+        /// Replace the pane contents with a saved session and rebuild backend context
+        /// so the user can continue where they left off.
+        /// </summary>
+        private void LoadSession(string id)
+        {
+            var loaded = ChatSessionStore.Default.LoadSession(id);
+            if (loaded == null)
+            {
+                AddMessage(new ChatMessage(ChatRole.System,
+                    "Could not load that chat - the file may have been deleted."));
+                return;
+            }
+
+            if (_isGenerating)
+                CancelGeneration();
+
+            // Persist the conversation we're leaving.
+            ChatSessionStore.Default.SaveSession(_session);
+
+            _messagePanel.Children.Clear();
+            ClearStreamingState();
+            _infoBanner = null;
+            ChatHistory.Clear();
+
+            // The loaded session becomes current: new turns append to the same file.
+            _session = loaded;
+            _session.Backend = BackendLabel();
+
+            foreach (var m in loaded.Messages)
+            {
+                ChatRole role;
+                string logRole;
+                if (m.Role == ChatSession.RoleUser) { role = ChatRole.User; logRole = "You"; }
+                else if (m.Role == ChatSession.RoleAssistant) { role = ChatRole.Assistant; logRole = "Claude"; }
+                else { role = ChatRole.System; logRole = "System"; }
+
+                AddMessage(new ChatMessage(role, m.Content));
+                ChatHistory.Add(logRole, m.Content);
+            }
+
+            _backend?.RestoreHistory(loaded.Messages);
+            if (_backend is ClaudeCodeBackend)
+            {
+                AddMessage(new ChatMessage(ChatRole.System,
+                    "Restored transcript - the assistant will see this as a new session " +
+                    "(previous CLI context can't be resumed)."));
+            }
+
+            ShowInfoBanner();
+            UpdateStatus();
         }
 
         private void OnSettingsClick(object sender, RoutedEventArgs e)
@@ -760,6 +868,8 @@ namespace VibeModel.UI
         {
             _cts?.Cancel();
             _backend?.Cancel();
+            // Persist whatever conversation is open when Revit shuts down.
+            ChatSessionStore.Default.SaveSession(_session);
         }
     }
 }
