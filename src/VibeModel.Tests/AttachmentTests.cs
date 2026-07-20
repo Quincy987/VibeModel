@@ -163,6 +163,26 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void StoreFile_SiblingFolderWithRootPrefix_IsStillCopied()
+        {
+            // A folder named "<root>-other" must not false-match the "already in
+            // store" check (separator-boundary comparison).
+            var sibling = _root + "-other";
+            Directory.CreateDirectory(sibling);
+            var source = Path.Combine(sibling, "spec.txt");
+            File.WriteAllText(source, "outside store");
+            try
+            {
+                var stored = AttachmentStore.StoreFile(source, "proj", _root);
+
+                Assert.NotEqual(source, stored);
+                Assert.StartsWith(Path.Combine(_root, "proj"), stored);
+                Assert.True(File.Exists(stored));
+            }
+            finally { Directory.Delete(sibling, true); }
+        }
+
+        [Fact]
         public void DedupePath_ReturnsOriginalWhenFree()
         {
             Directory.CreateDirectory(_root);

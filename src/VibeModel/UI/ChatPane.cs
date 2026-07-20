@@ -625,36 +625,48 @@ namespace VibeModel.UI
                 : Visibility.Collapsed;
         }
 
+        // Last successful document-title lookup — fallback when the server is busy.
+        private string _lastProjectKey;
+
         /// <summary>
         /// Resolves the current Revit document title (via /info on the local server) as
-        /// the per-project attachment folder key. Falls back to "default" when no
-        /// document is open or the server can't be reached.
+        /// the per-project attachment folder key. Runs on the UI thread, so the request
+        /// carries a short timeout — a busy Revit (modal dialog) must never hang the
+        /// pane. Falls back to the last known title, then "default".
         /// </summary>
         private string GetProjectKey()
         {
             try
             {
                 var port = (_backend as ChatBackendBase)?.HttpPort ?? 18884;
-                using (var client = new System.Net.WebClient { Encoding = Encoding.UTF8 })
-                {
-                    var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
-                    if (!string.IsNullOrWhiteSpace(token))
-                        client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
+                var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
+                    "http://localhost:" + port + "/info?format=json");
+                request.Timeout = 3000;
+                request.ReadWriteTimeout = 3000;
+                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
+                if (!string.IsNullOrWhiteSpace(token))
+                    request.Headers[RevitHttpServer.TokenHeader] = token.Trim();
 
-                    var json = client.DownloadString("http://localhost:" + port + "/info?format=json");
+                using (var response = request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                {
+                    var json = reader.ReadToEnd();
                     var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                     if (obj != null && obj.TryGetValue("data", out var dataObj)
                         && dataObj is Dictionary<string, object> data
                         && data.TryGetValue("title", out var titleObj)
                         && titleObj is string title && !string.IsNullOrWhiteSpace(title))
+                    {
+                        _lastProjectKey = title;
                         return title;
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Logger.Info("Project key lookup failed — " + ex.Message);
             }
-            return "default";
+            return _lastProjectKey ?? "default";
         }
 
         private void SendCurrentMessage()

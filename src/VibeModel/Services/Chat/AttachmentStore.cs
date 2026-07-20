@@ -39,7 +39,12 @@ namespace VibeModel.Services.Chat
 
         internal static string StoreFile(string sourcePath, string projectKey, string root)
         {
-            if (sourcePath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            // Separator-suffixed comparison so a sibling folder like "attachments-x"
+            // can't false-match the store root.
+            var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar.ToString())
+                ? root
+                : root + Path.DirectorySeparatorChar;
+            if (sourcePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
                 return sourcePath;
 
             var folder = GetProjectFolder(projectKey, root);
