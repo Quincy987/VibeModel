@@ -40,7 +40,7 @@
   it on stop (new `ServerDiscovery` helper), so external clients find fallback ports instead of
   assuming 18884; stale files are detectable via their dead PID. Documented in CLAUDE.md + README.
 - **Port-isolation tests** — 8 new xUnit tests (`PortIsolationTests`) covering per-port prompt
-  paths/content, the auth block, the port directive, and discovery JSON round-trip (suite: 69).
+  paths/content, the auth block, the port directive, and discovery JSON round-trip (suite: 107).
 
 ### Build
 - **Add-in deployment is now opt-in** — plain `dotnet build` / `dotnet test` compile only;
