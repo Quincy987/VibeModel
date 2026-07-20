@@ -90,7 +90,12 @@
   </ItemGroup>
 
   <!-- Post-build deployment. Skipped when SkipDeploy=true (test/CI builds, where Revit may
-       have the deployed DLL locked and there is no need to deploy the add-in). -->
+       have the deployed DLL locked and there is no need to deploy the add-in).
+       Worktree builds (bot/CI sandboxes under .worktrees) default to SkipDeploy: they must
+       never overwrite the live addins folder with branch code, and Revit may hold it locked. -->
+  <PropertyGroup>
+    <SkipDeploy Condition="'$(SkipDeploy)'=='' And $(MSBuildProjectDirectory.Contains('.worktrees'))">true</SkipDeploy>
+  </PropertyGroup>
   <Target Name="DeployAddin" AfterTargets="Build" Condition="('$(Configuration)'=='Release' Or '$(Configuration)'=='Debug') And '$(SkipDeploy)'!='true'">
     <Message Importance="high" Text="Deploying VibeModel to Revit $(RevitVersion) Addins folder..." />
 
