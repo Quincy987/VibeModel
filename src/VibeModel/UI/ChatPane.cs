@@ -627,6 +627,16 @@ namespace VibeModel.UI
         /// </summary>
         private void LoadSession(string id)
         {
+            if (_isGenerating)
+                CancelGeneration();
+
+            // Persist the conversation we're leaving BEFORE reading the target file.
+            // Order matters: the user may re-open the chat that is already current,
+            // and reading first would resurrect a stale copy (dropping any message
+            // not yet flushed, e.g. the in-flight user turn) that the next save
+            // would then write back over the file.
+            ChatSessionStore.Default.SaveSession(_session);
+
             var loaded = ChatSessionStore.Default.LoadSession(id);
             if (loaded == null)
             {
@@ -634,12 +644,6 @@ namespace VibeModel.UI
                     "Could not load that chat - the file may have been deleted."));
                 return;
             }
-
-            if (_isGenerating)
-                CancelGeneration();
-
-            // Persist the conversation we're leaving.
-            ChatSessionStore.Default.SaveSession(_session);
 
             _messagePanel.Children.Clear();
             ClearStreamingState();
