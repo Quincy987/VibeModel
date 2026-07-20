@@ -93,6 +93,21 @@ curl -s http://localhost:18884/familytypes                   # List available fa
 curl -s "http://localhost:18884/familytypes?args=door"       # Filter by category/name
 ```
 
+### Source Data Commands (imported DWG + point clouds)
+Read actual vector/point data from imported sources instead of guessing from screenshots.
+```bash
+curl -s http://localhost:18884/imports                            # List imported/linked CAD files (DWG)
+curl -s "http://localhost:18884/layers?args=123456"               # DWG layers with object counts
+curl -s "http://localhost:18884/curves?args=123456 pand --closed" # Closed footprint loops (mm, paste-ready for /floor)
+curl -s "http://localhost:18884/curves?args=123456 pand --bbox 0 0 50000 50000 --page 2"  # Window + paging
+curl -s http://localhost:18884/pointclouds                        # Loaded point clouds (.rcp/.rcs)
+curl -s "http://localhost:18884/pcprobe?args=77 1500 2000"        # Ground level + height histogram at (x,y) mm
+curl -s "http://localhost:18884/pcline?args=77 0 0 10000 0 500"   # Ground profile along a line (clutter-filtered)
+```
+`pcprobe`/`pcline` estimate ground as the lowest DENSE band of points, so parked cars,
+trees and bins sitting on the surface are ignored; `pcline` additionally rejects
+per-station spikes and interpolates occluded stations (flagged `interp`).
+
 ### Modification Commands
 ```bash
 # Create a wall (coordinates in mm)
