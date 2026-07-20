@@ -23,6 +23,29 @@ namespace VibeModel.Services.Helpers
             return "(" + FormatLength(point.X) + ", " + FormatLength(point.Y) + ", " + FormatLength(point.Z) + ")";
         }
 
+        /// <summary>Formats an internal-units (feet) point as bare mm values: "(x, y, z)".</summary>
+        public static string FormatPointMmBare(XYZ feetPoint)
+        {
+            return "(" + FormatMmValue(feetPoint.X) + ", " + FormatMmValue(feetPoint.Y) + ", " +
+                   FormatMmValue(feetPoint.Z) + ")";
+        }
+
+        /// <summary>Converts an internal-units (feet) point to a [x, y, z] mm array for JSON payloads.</summary>
+        public static double[] ToMmArray(XYZ feetPoint)
+        {
+            return new[]
+            {
+                feetPoint.X * 304.8,
+                feetPoint.Y * 304.8,
+                feetPoint.Z * 304.8
+            };
+        }
+
+        private static string FormatMmValue(double feet)
+        {
+            return (feet * 304.8).ToString("F1", CultureInfo.InvariantCulture);
+        }
+
         public static string GetLevelName(Document doc, ElementId levelId)
         {
             if (levelId == null || levelId == ElementId.InvalidElementId)
