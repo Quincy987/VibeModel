@@ -77,7 +77,7 @@ Write-Host "[2/4] Building VibeModel..." -ForegroundColor Yellow
 
 Push-Location $ProjectDir
 try {
-    $buildOutput = & dotnet build -c $Configuration -p:RevitVersion=$RevitVersion 2>&1
+    $buildOutput = & dotnet build -c $Configuration -p:RevitVersion=$RevitVersion -p:Deploy=true 2>&1
     $buildSuccess = $LASTEXITCODE -eq 0
 
     if ($buildSuccess) {
