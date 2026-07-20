@@ -91,7 +91,13 @@
 
   <!-- Post-build deployment into the Revit Addins folder. Opt-in via -p:Deploy=true
        (build.ps1 passes it after closing Revit). Plain `dotnet build` / `dotnet test`
-       compile only — deploying by default hard-fails whenever Revit has the DLL locked. -->
+       compile only — deploying by default hard-fails whenever Revit has the DLL locked.
+       Worktree builds (bot/CI sandboxes under .worktrees) additionally default to
+       SkipDeploy unless Deploy=true was passed explicitly, so they can never touch the
+       live addins folder by accident. -->
+  <PropertyGroup>
+    <SkipDeploy Condition="'$(SkipDeploy)'=='' And '$(Deploy)'!='true' And $(MSBuildProjectDirectory.Contains('.worktrees'))">true</SkipDeploy>
+  </PropertyGroup>
   <Target Name="DeployAddin" AfterTargets="Build" Condition="'$(Deploy)'=='true' And '$(SkipDeploy)'!='true'">
     <Message Importance="high" Text="Deploying VibeModel to Revit $(RevitVersion) Addins folder..." />
 
