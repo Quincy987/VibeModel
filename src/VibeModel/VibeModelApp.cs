@@ -78,6 +78,11 @@ namespace VibeModel
                 // Dismiss non-transaction dialogs during command execution
                 application.DialogBoxShowing += OnDialogBoxShowing;
 
+                // Track every committed transaction so command responses can report
+                // "the user changed the model since your last command" (ModelChangeTracker).
+                application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+                application.ControlledApplication.DocumentClosing += OnDocumentClosing;
+
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
             }
@@ -93,6 +98,8 @@ namespace VibeModel
             try
             {
                 application.DialogBoxShowing -= OnDialogBoxShowing;
+                application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+                application.ControlledApplication.DocumentClosing -= OnDocumentClosing;
 
                 if (_usingFallback)
                 {
@@ -230,6 +237,47 @@ namespace VibeModel
             {
                 Logger.Info("Auto-dismissing MessageBox during command");
                 e.OverrideResult(1); // IDOK
+            }
+        }
+
+        private void OnDocumentChanged(object sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs e)
+        {
+            try
+            {
+                var doc = e.GetDocument();
+                if (doc == null) return;
+                var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+
+                switch (e.Operation)
+                {
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted:
+                        ModelChangeTracker.RecordCommit(key, e.GetTransactionNames());
+                        break;
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionUndone:
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone:
+                        // Undo/redo is always user-driven — even undoing a VibeModel edit
+                        // changes the model outside VibeModel's control.
+                        ModelChangeTracker.RecordUndoRedo(key);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("DocumentChanged tracking error", ex);
+            }
+        }
+
+        private void OnDocumentClosing(object sender, Autodesk.Revit.DB.Events.DocumentClosingEventArgs e)
+        {
+            try
+            {
+                var doc = e.Document;
+                if (doc != null)
+                    ModelChangeTracker.Forget(ModelChangeTracker.DocKey(doc.PathName, doc.Title));
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("DocumentClosing tracking error", ex);
             }
         }
 

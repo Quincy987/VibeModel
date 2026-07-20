@@ -61,6 +61,23 @@ errors are unchanged except for an additive `Hint: <suggestion>` line. `POST /ba
 returns `{"ok": <all-ok>, "atomic": bool, "rolledBack": bool, "results": [{command, args, result}]}`.
 The Anthropic and Local LLM chat backends request JSON automatically (except `screenshot`).
 
+### Model-State Stamp (change awareness)
+Every command response carries a compact model-state stamp so you can tell when the USER
+changed the model between your commands. Text mode appends one trailing line:
+```
+-- model #47 | view: {3D} Main | selected: 0
+-- model #48 (2 USER edits since last command - model changed outside VibeModel) | view: Level 1 | selected: 1
+```
+JSON mode adds an additive `meta` sibling to the envelope:
+`{"ok":true,"data":{...},"meta":{"edits":48,"userEditsSinceLastCommand":2,"activeView":"Level 1","selectedCount":1}}`.
+`edits` counts every committed transaction in the document; `userEditsSinceLastCommand` counts
+only edits NOT made through VibeModel (manual edits, undo/redo) since your previous command, and
+resets once reported. **If the stamp reports user edits since your last command, the model changed
+outside your control — re-read context (`/context`, `/selected`, `/screenshot`) before relying on
+earlier query results.** Exceptions: `/health` and `/screenshot` are unstamped; a batch gets one
+stamp for the whole response; text-mode error responses are unstamped (JSON errors still carry
+`meta`); no useful stamp exists before a document is open.
+
 ### Optional Auth Token (off by default)
 By default the server is **fully open** on loopback — no token, nothing changes. To gate access
 (e.g. so other localhost processes can't call `exec`/`delete`), set the `VIBEMODEL_TOKEN`
