@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Multi-instance chat port poisoning** — the Claude Code chat backend wrote one shared
+  `system-prompt.txt` once at startup; a second Revit instance (fallback port 18885+) would
+  overwrite it with its own port and leave it stale after closing, breaking chat in the surviving
+  instance with connection-refused curls. The prompt file is now per-port
+  (`system-prompt-<port>.txt`) and rewritten before every message; the legacy shared file is
+  deleted at startup.
+
+### Added
+- **Self-healing port directive** — every chat turn's appended system prompt names the live port
+  as authoritative, so resumed sessions ignore dead ports remembered from earlier conversation
+  history (`ClaudeCodeBackend.BuildPortDirective`).
+- **Pre-flight health check** — the chat backend probes `/health` (2s timeout) before spawning the
+  CLI; a down server yields one plain-language error instead of minutes of failed curl attempts.
+- **Server discovery files** — `RevitHttpServer` publishes
+  `%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc}`) on start and deletes
+  it on stop (new `ServerDiscovery` helper), so external clients find fallback ports instead of
+  assuming 18884; stale files are detectable via their dead PID. Documented in CLAUDE.md + README.
+- **Port-isolation tests** — 8 new xUnit tests (`PortIsolationTests`) covering per-port prompt
+  paths/content, the auth block, the port directive, and discovery JSON round-trip (suite: 69).
+
+### Build
+- **Worktree builds skip add-in deploy by default** — `dotnet build` from a `.worktrees` sandbox
+  no longer copies the DLL into the live Revit addins folder (locked-file MSB3027 failures,
+  branch code overwriting the installed add-in); explicit `-p:SkipDeploy=false` still deploys.
+
 ## v1.2.0 — Vision, Structured I/O & Modeling Breadth (2026-07-11)
 
 ### Added
