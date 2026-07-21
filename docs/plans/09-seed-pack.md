@@ -136,8 +136,11 @@ other — that review **is** the privacy gate (§5).
   `AfterTargets="Build"` target that today copies `VibeModel.dll`, `Markdig.dll`, and
   `VibeModel.addin` into `$(RevitAddinFolder)`) with two more `<Copy>` items that place
   `global-memory.jsonl` and `seed-manifest.json` next to `VibeModel.dll`. So the shipped location
-  the addin reads at runtime is `<AssemblyDir>\global-memory.jsonl` — resolved relative to the
-  executing assembly, the same way the addin already finds its own files.
+  the addin reads at runtime is `<AssemblyDir>\global-memory.jsonl`, where `<AssemblyDir>` is the
+  folder of `Assembly.GetExecutingAssembly().Location` — the same call the ribbon already uses to
+  locate itself (`RibbonBuilder.cs:29`). Note the seed is a **loose** file read by path (via
+  `File.ReadAllLines` at that resolved path), unlike the ribbon icons, which are embedded
+  resources — so this adds one small new read pattern rather than reusing an existing one.
 
   ```xml
   <!-- Ship the curated memory seed next to the DLL -->
@@ -212,9 +215,11 @@ enforces plan 08 §5's boundary, structurally rather than by convention:
 - **Export reads one file.** The `memory export` copy (§1) and the Settings button reference the
   `global.jsonl` path as a constant; there is no code path in the export that opens
   `profile.jsonl`. A headless test asserts the exporter never touches the profile file.
-- **Curation refuses personal entries.** `curate_memory.py` treats a `user`-scope / personal line,
-  or any entry failing the impersonal heuristic (§2), as a hard reject with a loud warning — it
-  can't reach the output file without the maintainer overriding by hand.
+- **Curation refuses personal entries.** The entry has no scope field — scope is which *file* an
+  entry came from (plan 08 §1), and curation only ingests `global.jsonl` — so the guard is
+  content-based: `curate_memory.py` treats any entry that names a specific user or project, or
+  otherwise fails the impersonal heuristic (§2), as a hard reject with a loud warning. It can't
+  reach the output file without the maintainer overriding by hand.
 - **The repo is the only inbound door, and it's human-reviewed.** Nothing auto-publishes; the seed
   enters via a normal git commit the maintainer reads. If personal content ever reaches
   `seed/global-memory.jsonl`, it's a human review miss, not a silent leak — and the commit history
