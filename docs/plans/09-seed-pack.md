@@ -72,9 +72,12 @@ This is the human gate and the heart of the plan. Tooling assists; the maintaine
 **`scripts/curate_memory.py`** (pure offline Python, no addin code — mirrors the plan 06 §7
 `analyze_usage.py` posture: runs over collected files, changes nothing in the add-in).
 
-**Input:** one or more contributed `global.jsonl` files (a folder).
-**Output:** a proposed `seed/global-memory.jsonl` + a human-readable report (`curation-report.md`)
-the maintainer reviews and hand-edits before committing.
+**Input:** the **current** `seed/global-memory.jsonl` (the id authority — see the re-stamp pass)
+**plus** one or more contributed `global.jsonl` files (a folder). Curation is **incremental over
+the shipped seed**, never a from-scratch regeneration — that is what keeps a fact's `id` fixed
+across seed versions.
+**Output:** a proposed next `seed/global-memory.jsonl` + a human-readable report
+(`curation-report.md`) the maintainer reviews and hand-edits before committing.
 
 The script's automated passes:
 
@@ -96,9 +99,13 @@ The script's automated passes:
   Version-neutral facts (`revit:null`) always survive this pass.
 - **Re-stamp for shipping.** Every surviving entry gets `source:"seed"` (a valid plan 08 §1
   `source` value) and `verified:true` — a fact only enters the seed once a human has verified it
-  (criteria below). Its `id` is **preserved** if it already had a stable one, otherwise assigned a
-  deterministic id derived from normalized text (a short hash) so the *same fact* re-curated later
-  keeps the *same id* — critical for idempotent merges (§4).
+  (criteria below). For its `id`: if the fact already exists in the current shipped seed (matched
+  by normalized text), **reuse that seed's id**; otherwise assign a deterministic id derived from
+  normalized text (a short hash). The id is therefore a **function of the fact, never of which
+  contribution or curation run produced it** — a raw capture guid from an incoming contribution is
+  *never* carried into the seed as-is, since two users capturing the same fact arrive with
+  different guids. This is what makes a fact keep the *same id* across seed versions — critical for
+  the idempotent merge and for tombstones holding (§4).
 
 **Acceptance criteria for a fact entering the seed** (documented at the top of the script and here):
 
