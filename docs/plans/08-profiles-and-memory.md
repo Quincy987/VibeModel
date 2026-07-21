@@ -73,8 +73,9 @@ One JSON object per line, both files share the shape:
 
 - `remember user <text>` / `remember global <text>` — optional `--why <reason>` tail.
 - Returns the saved id so the model can reference/undo it.
-- Marked non-modification in the registry sense where applicable (it does not touch the Revit
-  document — no transaction, no undo entry; it writes only to the memory folder).
+- Not an `IModificationCommand` (`ClaudeCommandRegistry.cs:89`) — it never touches the Revit
+  document, so no transaction, no undo entry, and a batch containing only memory commands still
+  counts as read-only; it writes only to the memory folder.
 - System-prompt guidance (one BEHAVIOR bullet added in both prompt builders): save a `user`
   fact when the user corrects you or states a lasting preference; save a `global` fact when an
   approach failed and a different one worked, phrased impersonally with no project/user names;
