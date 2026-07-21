@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Docs
+- **Plan 08 — Profiles & Memory** (`docs/plans/08-profiles-and-memory.md`, proposed, nothing
+  built yet): design for a per-user profile + shareable global capability map, captured via a
+  new LLM-called `remember` command (phase 2: automatic failure→workaround candidates), stored
+  as tombstoned JSONL under `%LOCALAPPDATA%\VibeModel\memory\`, and injected fresh each turn
+  into all three chat backends' system prompts. Seed-pack export/inherit is deferred to plan 09.
+
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 
 ### Added
