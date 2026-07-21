@@ -12,8 +12,9 @@
   session restores the full transcript and rebuilds conversation context so you continue where
   you left off (Anthropic API and Local LLM backends replay the transcript into the model;
   the Claude CLI backend shows the transcript and starts a fresh CLI session, clearly labeled).
-  Store logic is UI-free and covered by 10 new headless tests (round-trip, title truncation,
-  empty-session rule, prune-over-cap, corrupt-file tolerance).
+  Store and replay logic are UI-free and covered by 13 new headless tests (round-trip, title
+  truncation, empty-session rule, prune-over-cap, corrupt-file tolerance, and the transcript
+  replay rules: system messages skipped, same-role turns merged, trailing user turn padded).
 
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 
