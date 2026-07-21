@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Docs
+- **Plan 09 — Seed Pack** (`docs/plans/09-seed-pack.md`, proposed, nothing built yet): design
+  for the distribution half of the memory feature — how a curated, impersonal `global.jsonl`
+  gets exported by users, curated by the maintainer (a new offline `scripts/curate_memory.py`
+  that dedupes, flags personal content, expires version-specific facts, and re-stamps entries
+  with stable ids), shipped in the repo at `seed/global-memory.jsonl` + a versioned
+  `seed-manifest.json` deployed next to the DLL, and inherited by new users on first run.
+  Updates merge into an existing local `global.jsonl` idempotently via stable entry ids, a
+  monotonic `seedVersion` gate, and tombstone respect so user-deleted facts never resurrect.
+  Personal `profile.jsonl` never enters the pipeline — curation is the only human-reviewed door.
+
 ## v1.2.2 — Plan 08: Profiles & Memory Design (2026-07-21)
 
 ### Docs
