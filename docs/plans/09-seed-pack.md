@@ -130,7 +130,10 @@ other — that review **is** the privacy gate (§5).
 
   `seedVersion` is a **monotonic integer** bumped every time the seed content changes — it is the
   key the inherit step gates on (§4), not the addin version. The maintainer bumps it in the
-  curation commit.
+  curation commit. `entryCount` and `generatedUtc` are informational (for the curation report and
+  a future log line). `minAddinVersion` is the compatibility floor: if the running addin is older
+  than it, the reconciler leaves the local store untouched (§4) — reserved for a future seed that
+  relies on a newer entry schema; today's value is satisfied by every shipped addin.
 
 - **Into the addin payload:** extend the `DeployAddin` target in `VibeModel.csproj` (the
   `AfterTargets="Build"` target that today copies `VibeModel.dll`, `Markdig.dll`, and
@@ -203,7 +206,9 @@ change since last launch — a single integer compare, no file scan, and gives a
 **Edge cases the reconciler must handle:** shipped seed missing (skip silently — not every build
 ships one); malformed seed line (skip that line, log, continue — same swallow-all discipline plan
 08 already applies to corrupt lines); `appliedSeedVersion` marker missing but `localGlobal` present
-(treat as version 0 → a full merge pass runs once, which is safe because it's idempotent).
+(treat as version 0 → a full merge pass runs once, which is safe because it's idempotent); seed's
+`minAddinVersion` newer than the running addin (skip seeding/merge entirely, leave the local store
+as-is until the addin is updated).
 
 ---
 
