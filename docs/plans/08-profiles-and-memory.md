@@ -76,7 +76,8 @@ One JSON object per line, both files share the shape:
 - Not an `IModificationCommand` (`ClaudeCommandRegistry.cs:89`) — it never touches the Revit
   document, so no transaction, no undo entry, and a batch containing only memory commands still
   counts as read-only; it writes only to the memory folder.
-- System-prompt guidance (one BEHAVIOR bullet added in both prompt builders): save a `user`
+- System-prompt guidance (one bullet in both prompt builders — under `BEHAVIOR:` in
+  `BuildSystemPrompt()`, under `Tips:` in the CLI's `BuildSystemPromptText()`): save a `user`
   fact when the user corrects you or states a lasting preference; save a `global` fact when an
   approach failed and a different one worked, phrased impersonally with no project/user names;
   save sparingly — lasting facts only, never session trivia.
