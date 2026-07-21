@@ -11,7 +11,7 @@ namespace VibeModel.Services.Claude
     /// re-reading everything.
     ///
     /// Pure logic — no Revit API types — so it is unit-testable headlessly. The thin
-    /// Revit-facing subscription lives in VibeModelApp (DocumentChanged / DocumentClosing).
+    /// Revit-facing subscription lives in VibeModelApp (DocumentChanged).
     /// </summary>
     public static class ModelChangeTracker
     {
