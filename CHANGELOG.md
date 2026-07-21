@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.2 — Plan 08: Profiles & Memory Design (2026-07-21)
+
 ### Docs
 - **Plan 08 — Profiles & Memory** (`docs/plans/08-profiles-and-memory.md`, proposed, nothing
   built yet): design for a per-user profile + shareable global capability map, captured via a
