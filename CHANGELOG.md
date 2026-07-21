@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.3 — Plan 09: Seed Pack Design (2026-07-21)
+
 ### Docs
 - **Plan 09 — Seed Pack** (`docs/plans/09-seed-pack.md`, proposed, nothing built yet): design
   for the distribution half of the memory feature — how a curated, impersonal `global.jsonl`
