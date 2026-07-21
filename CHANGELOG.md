@@ -23,6 +23,20 @@
   Store and replay logic are UI-free and covered by 13 new headless tests (round-trip, title
   truncation, empty-session rule, prune-over-cap, corrupt-file tolerance, and the transcript
   replay rules: system messages skipped, same-role turns merged, trailing user turn padded).
+### Added
+- **Model-state stamp (change awareness)** — every HTTP command response now reports whether the
+  user changed the model since the AI's previous command, so stale-context confusion can't happen
+  silently. A `DocumentChanged` subscription counts committed transactions per document and
+  classifies them by the shared `VibeModel: ` transaction-name prefix (now enforced centrally in
+  `TransactionHelper`); manual edits, undo and redo count as USER edits. Text responses gain one
+  trailing line (`-- model #47 | view: {3D} | selected: 0`, with an explicit warning when user
+  edits occurred); JSON envelopes gain an additive `meta` object (`edits`,
+  `userEditsSinceLastCommand`, `activeView`, `selectedCount`). Stamping is centralized in the
+  command handler so no command can forget it; `/health` and `screenshot` stay untouched, a batch
+  gets one stamp, and the user-edit counter resets only when a stamp is actually delivered.
+  Tracker + stamp rendering are Revit-free (`ModelChangeTracker`) and covered by 20 headless tests.
+  Tracker state deliberately survives document close — Revit's closing event fires before the
+  close can still be canceled, so pruning there could silently wipe real user-edit counts.
 
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 

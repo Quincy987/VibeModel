@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
@@ -82,6 +82,9 @@ namespace VibeModel
                 // chat pane can label saved sessions with the project name without
                 // touching the Revit API outside an API context.
                 application.ViewActivated += OnViewActivated;
+                // Track every committed transaction so command responses can report
+                // "the user changed the model since your last command" (ModelChangeTracker).
+                application.ControlledApplication.DocumentChanged += OnDocumentChanged;
 
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
@@ -99,6 +102,7 @@ namespace VibeModel
             {
                 application.DialogBoxShowing -= OnDialogBoxShowing;
                 application.ViewActivated -= OnViewActivated;
+                application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
 
                 if (_usingFallback)
                 {
@@ -144,7 +148,7 @@ namespace VibeModel
             if (preferred == "local-llm")
                 return new LocalLlmBackend(commands, httpPort);
 
-            // Auto mode: try CLI → API → Local → default
+            // Auto mode: try CLI â†’ API â†’ Local â†’ default
             var forceDirect = Environment.GetEnvironmentVariable("VIBEMODEL_FORCE_DIRECT") == "1";
 
             if (!forceDirect)
@@ -173,7 +177,7 @@ namespace VibeModel
             }
             localBackend.Dispose();
 
-            Logger.Info("No backend configured — will prompt user for setup");
+            Logger.Info("No backend configured â€” will prompt user for setup");
             return new AnthropicDirectBackend(commands, httpPort);
         }
 
@@ -248,6 +252,35 @@ namespace VibeModel
             {
                 Logger.Info("Auto-dismissing MessageBox during command");
                 e.OverrideResult(1); // IDOK
+            }
+        }
+
+        private void OnDocumentChanged(object sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs e)
+        {
+            try
+            {
+                var doc = e.GetDocument();
+                if (doc == null) return;
+                var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+
+                switch (e.Operation)
+                {
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted:
+                        ModelChangeTracker.RecordCommit(key, e.GetTransactionNames());
+                        break;
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionUndone:
+                    case Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone:
+                        // Undo/redo is always user-driven â€” even undoing a VibeModel edit
+                        // changes the model outside VibeModel's control.
+                        ModelChangeTracker.RecordUndoRedo(key);
+                        break;
+                    // TransactionRolledBack is deliberately not counted: a rollback restores
+                    // the pre-transaction state, so there is no net model change to report.
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("DocumentChanged tracking error", ex);
             }
         }
 

@@ -167,7 +167,7 @@ namespace VibeModel.Services.Claude
                         else
                         {
                             Logger.Info("Executing: " + request.Command + " " + request.Args);
-                            request.Result = _registry.Execute(request.Command, request.Args, app, request.Format);
+                            request.Result = ExecuteSingle(app, request);
                         }
                     }
                     catch (Exception ex)
@@ -185,6 +185,71 @@ namespace VibeModel.Services.Claude
             finally
             {
                 IsProcessingCommand = false;
+            }
+        }
+
+        // Commands whose responses must stay untouched by the model-state stamp.
+        // (/health never reaches this handler — the HTTP server answers it directly.)
+        private static readonly HashSet<string> StampExcluded =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "screenshot" };
+
+        /// <summary>
+        /// Runs a single command and appends the model-state stamp: a trailing text line on
+        /// successful text responses, a "meta" object on every JSON envelope. Centralized here
+        /// so no individual command can forget it.
+        /// </summary>
+        private string ExecuteSingle(UIApplication app, CommandRequest request)
+        {
+            var cr = _registry.ExecuteCore(request.Command, request.Args, app);
+            bool json = request.Format == ResponseFormat.Json;
+
+            // Take the stamp only when it will actually be delivered — taking it resets the
+            // "user edits since last command" counter (reset means "the client has been told").
+            ModelStamp stamp = null;
+            if (!StampExcluded.Contains(request.Command) && (json || cr.Success))
+                stamp = TryTakeStamp(app);
+
+            if (json)
+            {
+                var obj = cr.ToJsonObject();
+                if (stamp != null && obj is Dictionary<string, object> dict)
+                    dict["meta"] = stamp.ToMeta();
+                return _json.Serialize(obj);
+            }
+
+            var text = cr.RenderText();
+            return stamp != null ? stamp.AppendToText(text) : text;
+        }
+
+        /// <summary>
+        /// Builds the stamp on the Revit main thread (active view + selection must not be read
+        /// from the HTTP thread). Never throws — a stamp failure must not break a command that
+        /// would otherwise have succeeded; it just falls back to no stamp.
+        /// </summary>
+        private static ModelStamp TryTakeStamp(UIApplication app)
+        {
+            try
+            {
+                var uidoc = app.ActiveUIDocument;
+                var doc = uidoc?.Document;
+                if (doc == null)
+                    return null; // no document open — omit the stamp gracefully
+
+                string viewName = null;
+                try { viewName = uidoc.ActiveView?.Name; }
+                catch { /* view mid-switch — stamp survives without a name */ }
+
+                int selectedCount = 0;
+                try { selectedCount = uidoc.Selection.GetElementIds().Count; }
+                catch { /* selection unavailable — 0 is a safe default */ }
+
+                return ModelChangeTracker.TakeStamp(
+                    ModelChangeTracker.DocKey(doc.PathName, doc.Title), viewName, selectedCount);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Model-state stamp unavailable: " + ex.Message);
+                return null;
             }
         }
 
@@ -267,16 +332,24 @@ namespace VibeModel.Services.Claude
                 }
             }
 
-            if (json)
-                return _json.Serialize(new Dictionary<string, object>
-                    {
-                        { "ok", !anyError },
-                        { "atomic", req.Atomic },
-                        { "rolledBack", rolledBack },
-                        { "results", entries }
-                    });
+            // One stamp for the whole batch, never per sub-command.
+            var stamp = TryTakeStamp(app);
 
-            return sb.ToString();
+            if (json)
+            {
+                var envelope = new Dictionary<string, object>
+                {
+                    { "ok", !anyError },
+                    { "atomic", req.Atomic },
+                    { "rolledBack", rolledBack },
+                    { "results", entries }
+                };
+                if (stamp != null)
+                    envelope["meta"] = stamp.ToMeta();
+                return _json.Serialize(envelope);
+            }
+
+            return stamp != null ? stamp.AppendToText(sb.ToString()) : sb.ToString();
         }
 
         // Readable undo-dropdown label, e.g. "VibeModel: 3× wall, 1× floor".

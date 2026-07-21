@@ -15,6 +15,12 @@ namespace VibeModel.Services.Helpers
         /// </summary>
         public static string Execute(Document doc, string name, Action action)
         {
+            // Every VibeModel transaction must carry the shared prefix — ModelChangeTracker
+            // uses it to tell our edits from the user's. Callers already include it; this
+            // guards future commands that might forget.
+            if (name == null || !name.StartsWith(Claude.ModelChangeTracker.TransactionPrefix, StringComparison.Ordinal))
+                name = Claude.ModelChangeTracker.TransactionPrefix + (name ?? "");
+
             using (var trans = new Transaction(doc, name))
             {
                 var options = trans.GetFailureHandlingOptions();
