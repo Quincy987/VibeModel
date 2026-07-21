@@ -237,6 +237,59 @@ namespace VibeModel.Services.Chat
             Logger.Info(ResetLogLabel + " session reset");
         }
 
+        /// <summary>
+        /// Default restore for the API-style backends: replay the transcript's
+        /// user/assistant text into _conversationHistory. Consecutive same-role
+        /// messages are merged and a leading assistant turn is dropped so the
+        /// rebuilt history is always a valid alternating conversation.
+        /// </summary>
+        public virtual void RestoreHistory(IEnumerable<ChatSessionMessage> messages)
+        {
+            _conversationHistory.Clear();
+            if (messages == null)
+                return;
+
+            string lastRole = null;
+            foreach (var m in messages)
+            {
+                if (m == null || string.IsNullOrEmpty(m.Content))
+                    continue;
+                if (m.Role != ChatSession.RoleUser && m.Role != ChatSession.RoleAssistant)
+                    continue;
+                if (_conversationHistory.Count == 0 && m.Role != ChatSession.RoleUser)
+                    continue; // conversations must open with a user turn
+
+                if (m.Role == lastRole)
+                {
+                    var prev = _conversationHistory[_conversationHistory.Count - 1];
+                    prev["content"] = (string)prev["content"] + "\n\n" + m.Content;
+                }
+                else
+                {
+                    _conversationHistory.Add(new Dictionary<string, object>
+                    {
+                        { "role", m.Role },
+                        { "content", m.Content }
+                    });
+                    lastRole = m.Role;
+                }
+            }
+
+            // A transcript can legally end on a user turn (the reply errored before it
+            // was recorded). Pad it so the next user message never produces two
+            // consecutive user turns — some chat APIs reject non-alternating roles.
+            if (lastRole == ChatSession.RoleUser)
+            {
+                _conversationHistory.Add(new Dictionary<string, object>
+                {
+                    { "role", ChatSession.RoleAssistant },
+                    { "content", "[No response was recorded for this message.]" }
+                });
+            }
+
+            Logger.Info(ResetLogLabel + " restored " + _conversationHistory.Count + " turn(s) from saved session");
+        }
+
         public virtual void Dispose()
         {
             if (_disposed) return;

@@ -10,6 +10,19 @@
   new LLM-called `remember` command (phase 2: automatic failure→workaround candidates), stored
   as tombstoned JSONL under `%LOCALAPPDATA%\VibeModel\memory\`, and injected fresh each turn
   into all three chat backends' system prompts. Seed-pack export/inherit is deferred to plan 09.
+### Added
+- **Chat history persistence + browser** — conversations are no longer lost on "New Chat".
+  Every chat is saved to `%LOCALAPPDATA%\VibeModel\chats\` (one JSON file per session, written
+  after each completed reply, capped at 200 sessions) with a title derived from the first user
+  message, the Revit project name, and the active backend. A new **History** button in the chat
+  pane header opens a dark-themed browser — sessions grouped by project (most recent first),
+  searchable by title/project, with per-row open/delete and double-click to open. Opening a
+  session restores the full transcript and rebuilds conversation context so you continue where
+  you left off (Anthropic API and Local LLM backends replay the transcript into the model;
+  the Claude CLI backend shows the transcript and starts a fresh CLI session, clearly labeled).
+  Store and replay logic are UI-free and covered by 13 new headless tests (round-trip, title
+  truncation, empty-session rule, prune-over-cap, corrupt-file tolerance, and the transcript
+  replay rules: system messages skipped, same-role turns merged, trailing user turn padded).
 
 ## v1.2.1 — Source-Data Reading & Seamless Chat Port Isolation (2026-07-20)
 

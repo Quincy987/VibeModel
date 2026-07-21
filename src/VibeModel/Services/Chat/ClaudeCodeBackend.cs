@@ -759,5 +759,14 @@ namespace VibeModel.Services.Chat
             _sessionId = null;
             Logger.Info("Chat session reset");
         }
+
+        // The CLI's context lives in its own --resume session; a saved transcript
+        // cannot be replayed into it. Start fresh — the pane shows the transcript
+        // read-only and new turns begin a new CLI session.
+        public override void RestoreHistory(System.Collections.Generic.IEnumerable<ChatSessionMessage> messages)
+        {
+            ResetSession();
+            Logger.Info("ClaudeCode: transcript restored for display only; CLI session starts fresh");
+        }
     }
 }
