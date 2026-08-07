@@ -215,6 +215,7 @@ namespace VibeModel.Services.Chat
 
         public override void SendMessage(
             string prompt,
+            IReadOnlyList<ChatAttachment> attachments,
             Action<string> onToken,
             Action<string> onComplete,
             Action<string> onError,
@@ -225,6 +226,12 @@ namespace VibeModel.Services.Chat
                 onError(StatusMessage);
                 return;
             }
+
+            // Attachments are already persisted on disk (AttachmentStore); the CLI's
+            // allowed tools include Read, which handles PDFs and images natively, so
+            // pointing it at the paths is all that's needed. Session resume keeps the
+            // read content in the CLI's own history afterwards.
+            prompt = BuildPromptWithAttachments(prompt, attachments);
 
             lock (_processLock)
             {
@@ -259,6 +266,25 @@ namespace VibeModel.Services.Chat
                     }
                 }
             });
+        }
+
+        /// <summary>
+        /// Prepends attachment file paths to the prompt so the CLI reads them itself.
+        /// Null/empty attachments return the prompt unchanged.
+        /// </summary>
+        internal static string BuildPromptWithAttachments(
+            string prompt, IReadOnlyList<ChatAttachment> attachments)
+        {
+            if (attachments == null || attachments.Count == 0)
+                return prompt;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("The user attached the following file(s) — read them with the Read tool before answering:");
+            foreach (var a in attachments)
+                sb.AppendLine(a.StoredPath);
+            sb.AppendLine();
+            sb.Append(prompt);
+            return sb.ToString();
         }
 
         private void RunClaudeProcess(

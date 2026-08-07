@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -10,6 +14,7 @@ using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
 using VibeModel.Markdown;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Claude;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace VibeModel.UI
@@ -55,6 +60,20 @@ namespace VibeModel.UI
         // (never on pane open) so empty chats leave no files behind.
         private ChatSession _session;
 
+        // Pending attachments (chips above the input box, not yet sent). Pasted
+        // clipboard images are saved into the AttachmentStore immediately (the
+        // clipboard is transient); picked/dropped files are copied at send time.
+        private class PendingFile
+        {
+            public string SourcePath;
+            public bool AlreadyStored;
+        }
+
+        private readonly List<PendingFile> _pendingAttachments = new List<PendingFile>();
+        private Button _attachButton;
+        private Border _attachmentBar;
+        private WrapPanel _attachmentChipPanel;
+
         // Dark theme colors
         private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
         private static readonly SolidColorBrush BgPanel = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
@@ -80,6 +99,7 @@ namespace VibeModel.UI
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
 
             var header = CreateHeader();
             Grid.SetRow(header, 0);
@@ -104,11 +124,21 @@ namespace VibeModel.UI
             Grid.SetRow(_scrollViewer, 1);
             mainGrid.Children.Add(_scrollViewer);
 
+            _attachmentBar = CreateAttachmentBar();
+            Grid.SetRow(_attachmentBar, 2);
+            mainGrid.Children.Add(_attachmentBar);
+
             var inputArea = CreateInputArea();
-            Grid.SetRow(inputArea, 2);
+            Grid.SetRow(inputArea, 3);
             mainGrid.Children.Add(inputArea);
 
             Content = mainGrid;
+
+            // Drag-and-drop files anywhere onto the pane. Preview events intercept
+            // before the TextBox (which would otherwise refuse file drops).
+            AllowDrop = true;
+            PreviewDragOver += OnPreviewDragOver;
+            PreviewDrop += OnPreviewDrop;
         }
 
         private Border CreateHeader()
@@ -186,11 +216,48 @@ namespace VibeModel.UI
             return btn;
         }
 
+        // Chip row above the input: one removable chip per pending attachment.
+        // Collapsed while empty so the layout is untouched for text-only use.
+        private Border CreateAttachmentBar()
+        {
+            _attachmentChipPanel = new WrapPanel { Orientation = Orientation.Horizontal };
+
+            return new Border
+            {
+                Background = BgPanel,
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(8, 6, 8, 2),
+                Visibility = Visibility.Collapsed,
+                Child = _attachmentChipPanel
+            };
+        }
+
         private Border CreateInputArea()
         {
             var inputGrid = new Grid();
+            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+
+            _attachButton = new Button
+            {
+                Content = "📎",
+                Background = Brushes.Transparent,
+                Foreground = FgSecondary,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(6, 6, 6, 6),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = 14,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                ToolTip = "Attach documents or images (or paste / drag-and-drop)"
+            };
+            _attachButton.Click += OnAttachClick;
+            _attachButton.MouseEnter += (s, e) => _attachButton.Foreground = FgPrimary;
+            _attachButton.MouseLeave += (s, e) => _attachButton.Foreground = FgSecondary;
+            Grid.SetColumn(_attachButton, 0);
+            inputGrid.Children.Add(_attachButton);
 
             _inputBox = new TextBox
             {
@@ -207,7 +274,9 @@ namespace VibeModel.UI
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             _inputBox.PreviewKeyDown += OnInputPreviewKeyDown;
-            Grid.SetColumn(_inputBox, 0);
+            // Intercept paste: files / clipboard images become attachments; text pastes normally.
+            DataObject.AddPastingHandler(_inputBox, OnInputPasting);
+            Grid.SetColumn(_inputBox, 1);
             inputGrid.Children.Add(_inputBox);
 
             var buttonPanel = new StackPanel
@@ -246,7 +315,7 @@ namespace VibeModel.UI
             _cancelButton.Click += OnCancelClick;
             buttonPanel.Children.Add(_cancelButton);
 
-            Grid.SetColumn(buttonPanel, 1);
+            Grid.SetColumn(buttonPanel, 2);
             inputGrid.Children.Add(buttonPanel);
 
             return new Border
@@ -270,6 +339,8 @@ namespace VibeModel.UI
             _backend = backend;
             _messagePanel.Children.Clear();
             ClearStreamingState();
+            _pendingAttachments.Clear();
+            RebuildAttachmentChips();
             ChatHistory.Clear();
             UpdateStatus();
             ShowInfoBanner();
@@ -426,10 +497,206 @@ namespace VibeModel.UI
             }
         }
 
+        // --- Attachments -----------------------------------------------------------
+
+        private void OnAttachClick(object sender, RoutedEventArgs e)
+        {
+            if (_isGenerating) return;
+
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Multiselect = true,
+                Filter = "Documents & images|*.pdf;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.txt;*.md;*.csv;*.json;*.xml|All files|*.*",
+                Title = "Attach files to chat"
+            };
+            if (dialog.ShowDialog() == true)
+                AttachFiles(dialog.FileNames);
+        }
+
+        private void OnInputPasting(object sender, DataObjectPastingEventArgs e)
+        {
+            try
+            {
+                if (_isGenerating) return;
+
+                if (e.DataObject.GetDataPresent(DataFormats.FileDrop))
+                {
+                    var files = e.DataObject.GetData(DataFormats.FileDrop) as string[];
+                    if (files != null && files.Length > 0)
+                    {
+                        AttachFiles(files);
+                        e.CancelCommand();
+                    }
+                }
+                else if (e.DataObject.GetDataPresent(DataFormats.Bitmap))
+                {
+                    // Clipboard images (e.g. a screenshotted spec page) are transient —
+                    // persist to the store immediately, then treat like any attachment.
+                    var image = Clipboard.GetImage();
+                    if (image != null)
+                    {
+                        var path = AttachmentStore.SaveClipboardImage(image, GetProjectKey());
+                        _pendingAttachments.Add(new PendingFile { SourcePath = path, AlreadyStored = true });
+                        RebuildAttachmentChips();
+                        e.CancelCommand();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Paste attachment failed", ex);
+            }
+        }
+
+        private void OnPreviewDragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = _isGenerating ? DragDropEffects.None : DragDropEffects.Copy;
+                e.Handled = true;
+            }
+        }
+
+        private void OnPreviewDrop(object sender, DragEventArgs e)
+        {
+            if (_isGenerating) return;
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+            var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (files != null && files.Length > 0)
+            {
+                AttachFiles(files);
+                e.Handled = true;
+            }
+        }
+
+        private void AttachFiles(IEnumerable<string> paths)
+        {
+            if (_isGenerating) return;
+
+            foreach (var path in paths)
+            {
+                try
+                {
+                    if (!File.Exists(path))
+                        continue; // skips folders and vanished files
+                    if (_pendingAttachments.Any(p =>
+                            string.Equals(p.SourcePath, path, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    _pendingAttachments.Add(new PendingFile { SourcePath = path, AlreadyStored = false });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to add attachment: " + path, ex);
+                }
+            }
+            RebuildAttachmentChips();
+        }
+
+        private void RebuildAttachmentChips()
+        {
+            _attachmentChipPanel.Children.Clear();
+
+            foreach (var pending in _pendingAttachments)
+            {
+                var captured = pending;
+                long size = 0;
+                try { size = new FileInfo(pending.SourcePath).Length; } catch { }
+
+                var chipPanel = new StackPanel { Orientation = Orientation.Horizontal };
+                chipPanel.Children.Add(new TextBlock
+                {
+                    Text = "📎 " + Path.GetFileName(pending.SourcePath) +
+                           " (" + ChatAttachment.FormatSize(size) + ")",
+                    Foreground = FgPrimary,
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                var removeBtn = new Button
+                {
+                    Content = "×",
+                    Foreground = FgSecondary,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand,
+                    FontSize = 12,
+                    Padding = new Thickness(4, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                removeBtn.Click += (s, e) =>
+                {
+                    _pendingAttachments.Remove(captured);
+                    RebuildAttachmentChips();
+                };
+                removeBtn.MouseEnter += (s, e) => removeBtn.Foreground = FgError;
+                removeBtn.MouseLeave += (s, e) => removeBtn.Foreground = FgSecondary;
+                chipPanel.Children.Add(removeBtn);
+
+                _attachmentChipPanel.Children.Add(new Border
+                {
+                    Background = BgInput,
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6, 2, 4, 2),
+                    Margin = new Thickness(0, 0, 4, 4),
+                    Child = chipPanel
+                });
+            }
+
+            _attachmentBar.Visibility = _pendingAttachments.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        // Last successful document-title lookup — fallback when the server is busy.
+        private string _lastProjectKey;
+
+        /// <summary>
+        /// Resolves the current Revit document title (via /info on the local server) as
+        /// the per-project attachment folder key. Runs on the UI thread, so the request
+        /// carries a short timeout — a busy Revit (modal dialog) must never hang the
+        /// pane. Falls back to the last known title, then "default".
+        /// </summary>
+        private string GetProjectKey()
+        {
+            try
+            {
+                var port = (_backend as ChatBackendBase)?.HttpPort ?? 18884;
+                var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
+                    "http://localhost:" + port + "/info?format=json");
+                request.Timeout = 3000;
+                request.ReadWriteTimeout = 3000;
+                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
+                if (!string.IsNullOrWhiteSpace(token))
+                    request.Headers[RevitHttpServer.TokenHeader] = token.Trim();
+
+                using (var response = request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                {
+                    var json = reader.ReadToEnd();
+                    var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                    if (obj != null && obj.TryGetValue("data", out var dataObj)
+                        && dataObj is Dictionary<string, object> data
+                        && data.TryGetValue("title", out var titleObj)
+                        && titleObj is string title && !string.IsNullOrWhiteSpace(title))
+                    {
+                        _lastProjectKey = title;
+                        return title;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Info("Project key lookup failed — " + ex.Message);
+            }
+            return _lastProjectKey ?? "default";
+        }
+
         private void SendCurrentMessage()
         {
             var text = _inputBox.Text?.Trim();
-            if (string.IsNullOrEmpty(text) || _isGenerating)
+            bool hasAttachments = _pendingAttachments.Count > 0;
+            if ((string.IsNullOrEmpty(text) && !hasAttachments) || _isGenerating)
                 return;
 
             // Re-check availability (API key may have been configured via Settings)
@@ -450,11 +717,51 @@ namespace VibeModel.UI
             }
 
             _inputBox.Text = "";
+            if (text == null) text = "";
+
+            // Persist pending attachments into the per-project store and build the
+            // list handed to the backend. A file that fails to copy is reported and
+            // skipped rather than blocking the message.
+            List<ChatAttachment> attachments = null;
+            if (hasAttachments)
+            {
+                attachments = new List<ChatAttachment>();
+                var projectKey = GetProjectKey();
+                foreach (var pending in _pendingAttachments)
+                {
+                    try
+                    {
+                        var att = ChatAttachment.FromFile(pending.SourcePath);
+                        att.StoredPath = pending.AlreadyStored
+                            ? pending.SourcePath
+                            : AttachmentStore.StoreFile(pending.SourcePath, projectKey);
+                        attachments.Add(att);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Failed to store attachment: " + pending.SourcePath, ex);
+                        AddMessage(new ChatMessage(ChatRole.System,
+                            "Could not attach " + Path.GetFileName(pending.SourcePath) + ": " + ex.Message));
+                    }
+                }
+                _pendingAttachments.Clear();
+                RebuildAttachmentChips();
+                if (attachments.Count == 0)
+                {
+                    attachments = null;
+                    if (string.IsNullOrEmpty(text))
+                        return; // nothing left to send
+                }
+            }
 
             // User message
-            var userMsg = new ChatMessage(ChatRole.User, text);
+            var userMsg = new ChatMessage(ChatRole.User, text) { Attachments = attachments };
             AddMessage(userMsg);
-            ChatHistory.Add("You", text);
+            var historyText = attachments == null
+                ? text
+                : (string.IsNullOrEmpty(text) ? "" : text + "\n") +
+                  "[attached: " + string.Join(", ", attachments.Select(a => a.FileName)) + "]";
+            ChatHistory.Add("You", historyText);
 
             // Lazily start the persisted session on the first user message.
             if (_session == null)
@@ -494,6 +801,7 @@ namespace VibeModel.UI
 
             _backend.SendMessage(
                 text,
+                attachments,
                 onToken: delta =>
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
@@ -607,6 +915,9 @@ namespace VibeModel.UI
             _messagePanel.Children.Clear();
             ClearStreamingState();
             _infoBanner = null;
+            // Pending chips clear; stored copies stay on disk as the project archive.
+            _pendingAttachments.Clear();
+            RebuildAttachmentChips();
             _backend?.ResetSession();
             ChatHistory.Clear();
             ShowInfoBanner();
@@ -699,6 +1010,7 @@ namespace VibeModel.UI
         {
             _isGenerating = generating;
             _inputBox.IsEnabled = !generating;
+            _attachButton.IsEnabled = !generating;
             _sendButton.Visibility = generating ? Visibility.Collapsed : Visibility.Visible;
             _cancelButton.Visibility = generating ? Visibility.Visible : Visibility.Collapsed;
 
@@ -720,6 +1032,23 @@ namespace VibeModel.UI
             StackPanel contentPanel;
             var border = CreateMessageChrome(message, out contentPanel);
             AddRenderedContent(contentPanel, message.Content);
+
+            // Attachment chip line under the message text
+            if (message.Attachments != null && message.Attachments.Count > 0)
+            {
+                foreach (var att in message.Attachments)
+                {
+                    contentPanel.Children.Add(new TextBlock
+                    {
+                        Text = "📎 " + att.FileName + " (" + att.FormatSize() + ")",
+                        Foreground = FgSecondary,
+                        FontSize = 11,
+                        Margin = new Thickness(0, 4, 0, 0),
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+            }
+
             _messagePanel.Children.Add(border);
             ScrollToBottomIfNeeded();
         }

@@ -23,6 +23,7 @@ namespace VibeModel.Tests
 
             public override void SendMessage(
                 string prompt,
+                IReadOnlyList<ChatAttachment> attachments,
                 Action<string> onToken,
                 Action<string> onComplete,
                 Action<string> onError,
