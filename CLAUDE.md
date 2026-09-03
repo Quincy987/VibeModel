@@ -38,6 +38,10 @@ the server falls back to 18885–18888. Each live server writes
 `%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc}`) on startup and deletes
 it on shutdown — read those files (a file is stale if its `pid` is no longer running) or probe
 `/health` on 18884–18888 to find the right port instead of assuming 18884.
+Clients running **on this machine** (in-process code, or the CLI the chat pane spawns) should
+address the server as `127.0.0.1`, not `localhost`: the listener binds IPv4 loopback only,
+while `localhost` resolves to `::1` first — if that IPv6 attempt is silently dropped rather
+than refused, the request stalls for its full timeout and looks like a dead server.
 
 ### Quick Start
 ```bash

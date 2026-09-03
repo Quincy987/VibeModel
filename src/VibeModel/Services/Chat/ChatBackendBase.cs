@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -84,7 +84,7 @@ namespace VibeModel.Services.Chat
             {
                 using (var client = CreateRevitClient())
                 {
-                    var context = client.DownloadString("http://localhost:" + _httpPort + "/context");
+                    var context = client.DownloadString("http://" + RevitHttpServer.LoopbackHost + ":" + _httpPort + "/context");
                     return (context ?? string.Empty).Trim();
                 }
             }
@@ -109,7 +109,7 @@ namespace VibeModel.Services.Chat
             {
                 // Request JSON so the model reads structured fields ({ok,data} / {ok,error}).
                 // Skip screenshot: it returns a text "Path:" line that the caller inlines as an image.
-                var url = "http://localhost:" + _httpPort + "/" + commandName;
+                var url = "http://" + RevitHttpServer.LoopbackHost + ":" + _httpPort + "/" + commandName;
                 var query = new List<string>();
                 if (!string.IsNullOrEmpty(args))
                     query.Add("args=" + Uri.EscapeDataString(args));

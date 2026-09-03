@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
 using VibeModel.Services.Chat;
@@ -40,8 +40,18 @@ namespace VibeModel.Tests
         public void PromptText_ReferencesOnlyTheGivenPort()
         {
             var text = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18885, null);
-            Assert.Contains("http://localhost:18885", text);
-            Assert.DoesNotContain("localhost:18884", text);
+            Assert.Contains("http://127.0.0.1:18885", text);
+            Assert.DoesNotContain("127.0.0.1:18884", text);
+        }
+
+        // The prompt must name the loopback IP, not "localhost": the CLI child curls this
+        // URL, and localhost resolves to ::1 first while the server binds IPv4 only.
+        [Fact]
+        public void PromptText_UsesLoopbackIpNotLocalhost()
+        {
+            var text = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null);
+            Assert.Contains("http://127.0.0.1:18884", text);
+            Assert.DoesNotContain("http://localhost:", text);
         }
 
         [Fact]
@@ -62,7 +72,8 @@ namespace VibeModel.Tests
         public void PortDirective_NamesTheLivePortAndOverridesHistory()
         {
             var directive = ClaudeCodeBackend.BuildPortDirective(18886);
-            Assert.Contains("http://localhost:18886", directive);
+            Assert.Contains("http://127.0.0.1:18886", directive);
+            Assert.DoesNotContain("localhost", directive);
             Assert.Contains("ONLY correct port", directive);
         }
     }

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+- **In-process HTTP calls now dial `127.0.0.1` instead of `localhost`.** The chat pane's
+  pre-flight probe (`ClaudeCodeBackend.IsServerHealthy`), the per-turn `/context` gather and
+  tool calls (`ChatBackendBase`), the document-title lookup for per-project attachments
+  (`ChatPane.GetProjectKey`), and the system prompt/port directive handed to the Claude CLI
+  all addressed the embedded server as `localhost`. `RevitHttpServer` binds
+  `IPAddress.Loopback` (IPv4 only), but Windows resolves `localhost` to `::1` first; where
+  that IPv6 attempt is dropped rather than refused (observed with corporate endpoint
+  protection), each request burned its full timeout. For the 2 s pre-flight that surfaced as
+  *"VibeModel's HTTP server isn't responding on port 18884"* and a chat pane that refused to
+  send — while the same server answered an IPv4 request in ~4 ms. The loopback host is now a
+  single constant (`RevitHttpServer.LoopbackHost`) so it can't drift back.
+
 ## v1.2.3 — Plan 09: Seed Pack Design (2026-07-21)
 
 ### Docs
