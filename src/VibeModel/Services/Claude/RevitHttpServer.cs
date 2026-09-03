@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -25,17 +25,27 @@ namespace VibeModel.Services.Claude
         private const int BasePort = 18884;
         private const int MaxPortRetries = 5;
 
+        // Loopback host for clients INSIDE this process (and for the CLI child we spawn).
+        // Must stay a literal IPv4 address: Start() below binds IPAddress.Loopback (IPv4
+        // only), while "localhost" resolves to ::1 first on Windows. Where an IPv6 connect
+        // attempt is silently dropped instead of refused (some endpoint-protection setups),
+        // a request to "localhost" burns its whole timeout and the caller wrongly concludes
+        // the server is down. See ClaudeCodeBackend.IsServerHealthy.
+        internal const string LoopbackHost = "127.0.0.1";
+
+        /// <summary>
+        /// Base URL ("http://127.0.0.1:&lt;port&gt;") for callers inside this process and for
+        /// the CLI child we spawn. Use this instead of hand-building the URL so the host
+        /// can't drift back to "localhost" at a single call site — see <see cref="LoopbackHost"/>.
+        /// </summary>
+        internal static string BaseUrl(int port)
+        {
+            return "http://" + LoopbackHost + ":" + port;
+        }
+
         // Optional shared-secret gate. Read once at startup from the VIBEMODEL_TOKEN env var.
         // Null/empty => auth disabled and the server behaves exactly as before (fully open).
         // When set, every request except /health must present a matching X-VibeModel-Token header.
-        // Loopback host for clients INSIDE this process (and for the CLI child we spawn).
-        // Must stay a literal IPv4 address: the listener below binds IPAddress.Loopback
-        // (IPv4 only), while "localhost" resolves to ::1 first on Windows. Where an IPv6
-        // connect attempt is silently dropped instead of refused (some endpoint-protection
-        // setups), a request to "localhost" burns its whole timeout and the caller wrongly
-        // concludes the server is down. See ClaudeCodeBackend.IsServerHealthy.
-        internal const string LoopbackHost = "127.0.0.1";
-
         internal const string TokenEnvVar = "VIBEMODEL_TOKEN";
         internal const string TokenHeader = "X-VibeModel-Token";
         private readonly string _authToken;

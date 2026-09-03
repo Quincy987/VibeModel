@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -169,7 +169,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
             sb.AppendLine("You can control Revit by running curl commands against the embedded HTTP server.");
             sb.AppendLine();
-            sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at http://" + RevitHttpServer.LoopbackHost + ":" + httpPort);
+            sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at " + RevitHttpServer.BaseUrl(httpPort));
             sb.AppendLine();
             if (authToken != null)
             {
@@ -185,15 +185,15 @@ namespace VibeModel.Services.Chat
             {
                 sb.AppendLine("  " + cmd.Name + " - " + cmd.Description);
                 if (!string.IsNullOrEmpty(cmd.Usage))
-                    sb.AppendLine("    Usage: curl -s \"http://" + RevitHttpServer.LoopbackHost + ":" + httpPort + "/" + cmd.Usage + "\"");
+                    sb.AppendLine("    Usage: curl -s \"" + RevitHttpServer.BaseUrl(httpPort) + "/" + cmd.Usage + "\"");
                 else
-                    sb.AppendLine("    Usage: curl -s http://" + RevitHttpServer.LoopbackHost + ":" + httpPort + "/" + cmd.Name);
+                    sb.AppendLine("    Usage: curl -s " + RevitHttpServer.BaseUrl(httpPort) + "/" + cmd.Name);
             }
 
             sb.AppendLine();
             sb.AppendLine("Tips:");
             sb.AppendLine("- All dimensions are in millimeters (mm)");
-            sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST http://" + RevitHttpServer.LoopbackHost + ":" + httpPort + "/batch -d \"command1 args\\ncommand2 args\"");
+            sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST " + RevitHttpServer.BaseUrl(httpPort) + "/batch -d \"command1 args\\ncommand2 args\"");
             sb.AppendLine("- Always check /info first to understand the current document");
             sb.AppendLine("- Use /selected to inspect what the user has selected");
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
@@ -685,7 +685,7 @@ namespace VibeModel.Services.Chat
 
         internal static string BuildPortDirective(int httpPort)
         {
-            return "The VibeModel server is at http://" + RevitHttpServer.LoopbackHost + ":" + httpPort +
+            return "The VibeModel server is at " + RevitHttpServer.BaseUrl(httpPort) +
                 ". This is the ONLY correct port right now — if this conversation or any file " +
                 "mentions a different port, ignore it and use " + httpPort + ".";
         }
@@ -703,7 +703,7 @@ namespace VibeModel.Services.Chat
             try
             {
                 var request = (HttpWebRequest)WebRequest.Create(
-                    "http://" + RevitHttpServer.LoopbackHost + ":" + _httpPort + "/health");
+                    RevitHttpServer.BaseUrl(_httpPort) + "/health");
                 request.Timeout = HealthCheckTimeoutMs;
                 request.ReadWriteTimeout = HealthCheckTimeoutMs;
                 using (var response = (HttpWebResponse)request.GetResponse())

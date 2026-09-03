@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
 using VibeModel.Services.Chat;
@@ -75,6 +75,26 @@ namespace VibeModel.Tests
             Assert.Contains("http://127.0.0.1:18886", directive);
             Assert.DoesNotContain("localhost", directive);
             Assert.Contains("ONLY correct port", directive);
+        }
+    }
+
+    /// <summary>
+    /// In-process callers (and the CLI child) must reach the server by literal IPv4
+    /// loopback: the listener binds IPAddress.Loopback, while "localhost" resolves to
+    /// ::1 first — a dropped IPv6 attempt stalls the caller for its whole timeout.
+    /// </summary>
+    public class LoopbackAddressTests
+    {
+        [Fact]
+        public void BaseUrl_IsLoopbackIpWithPort()
+        {
+            Assert.Equal("http://127.0.0.1:18885", RevitHttpServer.BaseUrl(18885));
+        }
+
+        [Fact]
+        public void BaseUrl_NeverUsesLocalhost()
+        {
+            Assert.DoesNotContain("localhost", RevitHttpServer.BaseUrl(18884));
         }
     }
 
