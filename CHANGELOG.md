@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.5 — Chat Pane Loopback Fix (2026-09-03)
+
 ### Fixed
 - **In-process HTTP calls now dial `127.0.0.1` instead of `localhost`.** The chat pane's
   pre-flight probe (`ClaudeCodeBackend.IsServerHealthy`), the per-turn `/context` gather and
