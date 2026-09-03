@@ -663,7 +663,7 @@ namespace VibeModel.UI
             {
                 var port = (_backend as ChatBackendBase)?.HttpPort ?? 18884;
                 var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
-                    "http://localhost:" + port + "/info?format=json");
+                    RevitHttpServer.BaseUrl(port) + "/info?format=json");
                 request.Timeout = 3000;
                 request.ReadWriteTimeout = 3000;
                 var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);

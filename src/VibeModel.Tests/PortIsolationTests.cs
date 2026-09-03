@@ -40,8 +40,18 @@ namespace VibeModel.Tests
         public void PromptText_ReferencesOnlyTheGivenPort()
         {
             var text = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18885, null);
-            Assert.Contains("http://localhost:18885", text);
-            Assert.DoesNotContain("localhost:18884", text);
+            Assert.Contains("http://127.0.0.1:18885", text);
+            Assert.DoesNotContain("127.0.0.1:18884", text);
+        }
+
+        // The prompt must name the loopback IP, not "localhost": the CLI child curls this
+        // URL, and localhost resolves to ::1 first while the server binds IPv4 only.
+        [Fact]
+        public void PromptText_UsesLoopbackIpNotLocalhost()
+        {
+            var text = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null);
+            Assert.Contains("http://127.0.0.1:18884", text);
+            Assert.DoesNotContain("http://localhost:", text);
         }
 
         [Fact]
@@ -62,8 +72,29 @@ namespace VibeModel.Tests
         public void PortDirective_NamesTheLivePortAndOverridesHistory()
         {
             var directive = ClaudeCodeBackend.BuildPortDirective(18886);
-            Assert.Contains("http://localhost:18886", directive);
+            Assert.Contains("http://127.0.0.1:18886", directive);
+            Assert.DoesNotContain("localhost", directive);
             Assert.Contains("ONLY correct port", directive);
+        }
+    }
+
+    /// <summary>
+    /// In-process callers (and the CLI child) must reach the server by literal IPv4
+    /// loopback: the listener binds IPAddress.Loopback, while "localhost" resolves to
+    /// ::1 first — a dropped IPv6 attempt stalls the caller for its whole timeout.
+    /// </summary>
+    public class LoopbackAddressTests
+    {
+        [Fact]
+        public void BaseUrl_IsLoopbackIpWithPort()
+        {
+            Assert.Equal("http://127.0.0.1:18885", RevitHttpServer.BaseUrl(18885));
+        }
+
+        [Fact]
+        public void BaseUrl_NeverUsesLocalhost()
+        {
+            Assert.DoesNotContain("localhost", RevitHttpServer.BaseUrl(18884));
         }
     }
 
