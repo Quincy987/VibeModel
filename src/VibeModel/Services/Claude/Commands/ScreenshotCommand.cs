@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -15,8 +16,8 @@ namespace VibeModel.Services.Claude.Commands
     public class ScreenshotCommand : IClaudeCommand
     {
         public string Name => "screenshot";
-        public string Description => "Export the active view to a PNG so it can be viewed";
-        public string Usage => "screenshot [pixels]";   // optional long-edge px, default 1536
+        public string Description => "Export the active view (or --view <id|name|sheet number>, sheets included) to a PNG so it can be viewed";
+        public string Usage => "screenshot [pixels] [--view <viewId|name|sheetNumber>]";   // optional long-edge px, default 1536
 
         // Vision sweet spot: big enough to read geometry, small enough to keep tokens sane.
         // Anthropic downscales images > ~1568px long edge anyway, so 1536 sits just under.
@@ -32,20 +33,33 @@ namespace VibeModel.Services.Claude.Commands
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc.Document;
 
-            View view;
-            try { view = uiDoc.ActiveGraphicalView; } catch { view = null; }
-            if (view == null) view = uiDoc.ActiveView;
+            // --view exports another view or a sheet without switching to it (a view switch
+            // only lands after the request, so "activate then screenshot" in one batch can't work).
+            var f = FlagArgs.Parse(args);
+            string target = f.Text("view");
+            View view = null;
+            if (target != null)
+            {
+                view = SheetHelper.FindView(doc, target);
+                if (view == null) return "ERROR: No view or sheet '" + target + "'. Run 'views' or 'list sheets'.";
+            }
+            else
+            {
+                try { view = uiDoc.ActiveGraphicalView; } catch { view = null; }
+                if (view == null) view = uiDoc.ActiveView;
+            }
             if (view == null) return "ERROR: No active view to capture.";
 
             // Guard view types Revit can't raster-export as a single useful image.
-            if (view is ViewSchedule || view.ViewType == ViewType.Legend ||
-                view.ViewType == ViewType.DrawingSheet)
+            if (view is ViewSchedule || view.ViewType == ViewType.Legend)
                 return "ERROR: View type '" + view.ViewType + "' cannot be exported as an image. " +
-                       "Switch to a plan, section, elevation, or 3D view.";
+                       "Switch to a plan, section, elevation, 3D view or sheet.";
 
             int pixels = DefaultPixels;
-            if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args.Trim(), out var p))
+            var pxTok = f.Positional.FirstOrDefault();
+            if (pxTok != null && int.TryParse(pxTok, out var p))
                 pixels = Math.Max(MinPixels, Math.Min(MaxPixels, p));
+            bool isActive = target == null && !(view is ViewSheet);
 
             var root = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -61,7 +75,7 @@ namespace VibeModel.Services.Claude.Commands
             var opts = new ImageExportOptions
             {
                 FilePath = basePath,
-                ExportRange = ExportRange.CurrentView,
+                ExportRange = isActive ? ExportRange.CurrentView : ExportRange.SetOfViews,
                 ZoomType = ZoomFitType.FitToPage,
                 PixelSize = pixels,                 // long-edge pixels when FitToPage
                 FitDirection = FitDirectionType.Horizontal,
@@ -69,6 +83,8 @@ namespace VibeModel.Services.Claude.Commands
                 ShadowViewsFileType = ImageFileType.PNG,
                 ImageResolution = ImageResolution.DPI_150
             };
+
+            if (!isActive) opts.SetViewsAndSheets(new System.Collections.Generic.List<ElementId> { view.Id });
 
             try
             {
