@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+### Added — Plan 11: Office Standards
+- **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`
+  + on-demand topic sheets + `checks.json`. Packs are found via the new `StandardsPackPath`
+  setting (e.g. an office share), `%LOCALAPPDATA%\VibeModel\standards\`, or the add-in folder;
+  a pack is active for a document only when its fingerprint (phases, scope box, shared
+  parameter — measured names, aliases for alternative spellings) matches. No hardcoded office
+  names in code; the repo ships only a fictional `standards/example-office` sample.
+- **`template`** — live inventory of how the document was set up (phases + filters, view
+  templates grouped by prefix, scope boxes, coordinates and pins, CAD links vs imports, family
+  prefix classes, sheets, title blocks) and which pack matches.
+- **`standards`** — active pack overview and search diagnostics, `standards <topic>`, `core`,
+  `--refresh`; plus the office's own source documents: `--index` (PDF/txt split into numbered
+  chapters, cached by file hash, PDF text via an out-of-process helper), `docs`,
+  `standards <doc> <chapter>`, and an explicit `distill` that turns the manual's rule chapters
+  into `core.generated.md` (used when the pack says `"core": "generated"`).
+- **Prompt injection.** Every chat turn (all three backends) gets a `TEMPLATE:` block (≤1 kB)
+  and, with an active pack, a `STANDARDS:` block with the core rules. Rendered on Idling on the
+  Revit thread, read lock-free by the chat backends.
+- **Default phase on creation.** `wall`, `floor`, `place`, `placeid`, `room` take
+  `--phase existing|new|temp|demolish|future` and, with an active pack, default to the pack's
+  phase (new work → e.g. `2. New construction` instead of the active view's existing phase),
+  warning when the element will not show in the active view. New **`phase`** command re-phases
+  existing elements from the office table.
+- **Office defaults** for `view` (view template, phase, phase filter, browser-folder parameters;
+  `--template`/`--no-template`) and `sheet` (default title block, stamp-field hint).
+- **`check`** — whyhidden-style audit against the pack's rules (13 rule kinds: pins, phases,
+  phase filter digits, plot-view templates, family prefixes, required parameters, survey/base
+  point, file name, schedule phase, links vs imports), `check selected|<ids>`, `check --stats`.
+  After every modifying command/batch the element-level rules run on what was just created and
+  add one `-- check: …` line (JSON: additive `check` object). Hits are logged (rule id + count).
+- **`library` / `loadfamily`** — background-built, cached index of the office family library;
+  `place` suggests `loadfamily "<path>"` when a family is not loaded.
+- **`linkcad`** (link, never import; off-axis correction and orient-to-view off; shared
+  coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN as first
+  link) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
+- Settings dialog: *Office standards* section (enable switch, pack folder, source-documents folder).
+
 ## v1.2.5 — Chat Pane Loopback Fix (2026-09-03)
 
 ### Fixed

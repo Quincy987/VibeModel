@@ -75,6 +75,7 @@ namespace VibeModel.Services.Standards
         /// <summary>Drop every cached verdict and re-read the packs (setting change, --refresh).</summary>
         public static void Reset()
         {
+            SettingsManager.ClearCache(); // pick up settings.json edits made outside the dialog
             StandardsPackRegistry.Refresh();
             lock (Sync) Cache.Clear();
             _promptDirty = true;

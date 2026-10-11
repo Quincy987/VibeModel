@@ -87,7 +87,7 @@ namespace VibeModel.Services.Standards
                 line += "; FAILED on " + string.Join(", ", _failures.Take(3));
 
             var hidden = VisibilityWarning(doc, activeView);
-            if (hidden != null) line += "\n" + hidden;
+            if (hidden != null) line += Environment.NewLine + hidden;
             return line;
         }
 

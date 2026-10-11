@@ -182,10 +182,26 @@ namespace VibeModel.Services.Standards
                     idx = LibraryIndex.Load(IndexPath(pack));
                     if (idx != null) Loaded[pack.Id] = idx;
                 }
+                // An index built from other folders (the pack's libraryPaths changed) is not this
+                // library: never answer from it.
+                if (idx != null && !SameRoots(idx.Roots, pack.LibraryPaths))
+                {
+                    Loaded.Remove(pack.Id);
+                    idx = null;
+                    forceRebuild = true;
+                }
             }
             if (forceRebuild || idx == null || DateTime.UtcNow - idx.BuiltUtc > MaxAge)
                 StartBuild(pack);
             return idx;
+        }
+
+        internal static bool SameRoots(IEnumerable<string> a, IEnumerable<string> b)
+        {
+            string Norm(string p) => (p ?? "").Trim().TrimEnd('\\', '/').ToLowerInvariant();
+            var x = (a ?? Enumerable.Empty<string>()).Select(Norm).Where(p => p.Length > 0).OrderBy(p => p).ToList();
+            var y = (b ?? Enumerable.Empty<string>()).Select(Norm).Where(p => p.Length > 0).OrderBy(p => p).ToList();
+            return x.SequenceEqual(y);
         }
 
         public static bool IsBuilding(StandardsPack pack)
@@ -215,7 +231,8 @@ namespace VibeModel.Services.Standards
                     {
                         var sw = System.Diagnostics.Stopwatch.StartNew();
                         var idx = LibraryIndex.Build(roots, prefixes, cts.Token);
-                        // A scan that reached nothing must not overwrite a good cached index.
+                        // A scan that reached nothing must not overwrite a good cached index
+                        // (of the same folders — Get() already discards one built elsewhere).
                         if (idx.Entries.Count == 0 && idx.UnreachableRoots.Count == idx.Roots.Count)
                         {
                             lock (Sync) LastError[id] = "library unreachable: " + string.Join("; ", idx.UnreachableRoots);

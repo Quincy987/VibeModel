@@ -14,12 +14,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "view";
         public string Description => "Create a view (floor plan or 3D); with an office standard it gets the office view template, phase and browser folder";
-        public string Usage => "view plan|3d [levelName] [--template <name>|--no-template]";
-
-        private static readonly Regex TemplateFlag = new Regex(@"(?:^|\s)--template(?:=|\s+)(?<name>""[^""]+""|\S+)",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        private static readonly Regex NoTemplateFlag = new Regex(@"(?:^|\s)--no-template\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        public string Usage => "view plan|3d [levelName] [--name <viewName>] [--template <name>|--no-template]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -28,21 +23,14 @@ namespace VibeModel.Services.Claude.Commands
             var doc = uiApp.ActiveUIDocument.Document;
 
             // Office-default overrides; without these flags the args parse exactly as before.
-            args = args ?? "";
-            string templateOverride = null;
-            var tm = TemplateFlag.Match(args);
-            if (tm.Success)
-            {
-                templateOverride = tm.Groups["name"].Value.Trim('"');
-                args = args.Remove(tm.Index, tm.Length).Trim();
-            }
-            bool noTemplate = false;
-            var nm = NoTemplateFlag.Match(args);
-            if (nm.Success)
-            {
-                noTemplate = true;
-                args = args.Remove(nm.Index, nm.Length).Trim();
-            }
+            var va = ViewArgs.Parse(args);
+            args = va.Remaining;
+            string templateOverride = va.Template;
+            bool noTemplate = va.NoTemplate;
+            string viewName = va.Name;
+            if (viewName != null && new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>()
+                    .Any(v => !v.IsTemplate && v.Name.Equals(viewName, StringComparison.OrdinalIgnoreCase)))
+                return CommandResult.Error("BAD_ARGS", "A view named '" + viewName + "' already exists.", "Pick another --name.");
 
             var parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 1)
@@ -55,14 +43,14 @@ namespace VibeModel.Services.Claude.Commands
             if (setupError != null) return setupError;
 
             if (kind == "plan")
-                return CreatePlan(doc, levelName, uiApp.ActiveUIDocument, defaults);
+                return CreatePlan(doc, levelName, uiApp.ActiveUIDocument, defaults, viewName);
             if (kind == "3d")
-                return Create3D(doc, defaults);
+                return Create3D(doc, defaults, viewName);
 
             return CommandResult.Error("BAD_ARGS", "Unknown view type '" + parts[0] + "'.", Usage);
         }
 
-        private CommandResult CreatePlan(Document doc, string levelName, UIDocument uiDoc, OfficeViewSetup setup)
+        private CommandResult CreatePlan(Document doc, string levelName, UIDocument uiDoc, OfficeViewSetup setup, string viewName)
         {
             // Floor plan type first; documents started from a structural template may only
             // have structural plans, which serve the same purpose here.
@@ -102,6 +90,7 @@ namespace VibeModel.Services.Claude.Commands
             var error = TransactionHelper.Execute(doc, "VibeModel: Create View", () =>
             {
                 view = ViewPlan.Create(doc, vft.Id, level.Id);
+                if (viewName != null) view.Name = viewName;
                 setup?.Apply(doc, view);
             });
             if (error != null)
@@ -129,7 +118,7 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(sb.ToString(), data);
         }
 
-        private CommandResult Create3D(Document doc, OfficeViewSetup setup)
+        private CommandResult Create3D(Document doc, OfficeViewSetup setup, string viewName)
         {
             var vft = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewFamilyType))
@@ -143,6 +132,7 @@ namespace VibeModel.Services.Claude.Commands
             var error = TransactionHelper.Execute(doc, "VibeModel: Create View", () =>
             {
                 view = View3D.CreateIsometric(doc, vft.Id);
+                if (viewName != null) view.Name = viewName;
                 setup?.Apply(doc, view);
             });
             if (error != null)

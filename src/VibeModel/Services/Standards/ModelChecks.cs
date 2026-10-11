@@ -293,12 +293,19 @@ namespace VibeModel.Services.Standards
             if (prefixes.Count == 0) return CheckFinding.Skip(r, "pack declares no family prefixes");
             var ignore = new HashSet<string>(r.GetStrings("ignoreCategories"), StringComparer.OrdinalIgnoreCase);
 
+            // Only families that are actually used: a template ships plenty of loaded-but-unused
+            // system-ish families (mullions, rebar shapes, balusters) that are not the modeller's choice.
+            bool onlyPlaced = PackJson.GetBool(r.Params, "onlyPlaced") ?? true;
             IEnumerable<Family> families;
             if (c.Scope != null)
                 families = c.Scope.Select(id => c.Doc.GetElement(id)).OfType<FamilyInstance>()
                     .Select(fi => fi.Symbol?.Family).Where(f => f != null).GroupBy(f => f.Id.IntegerValue).Select(g => g.First());
+            else if (onlyPlaced)
+                families = new FilteredElementCollector(c.Doc).OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>()
+                    .Select(fi => fi.Symbol?.Family).Where(f => f != null).GroupBy(f => f.Id.IntegerValue).Select(g => g.First());
             else
                 families = new FilteredElementCollector(c.Doc).OfClass(typeof(Family)).Cast<Family>();
+            var what = onlyPlaced || c.Scope != null ? "placed model famil(ies)" : "loaded model famil(ies)";
 
             var bad = new List<int>();
             var names = new List<string>();
@@ -316,10 +323,10 @@ namespace VibeModel.Services.Standards
                     if (names.Count < 8) names.Add(f.Name);
                 }
             }
-            if (total == 0) return c.Scope != null ? null : CheckFinding.Ok(r, "no loadable model families");
+            if (total == 0) return c.Scope != null ? null : CheckFinding.Ok(r, "no " + what);
             return bad.Count == 0
-                ? (c.Scope != null ? null : CheckFinding.Ok(r, total + " model famil(ies), all from the office sources"))
-                : CheckFinding.Problem(r, bad.Count + " of " + total + " model famil(ies) without an office prefix: " + string.Join(", ", names), bad);
+                ? (c.Scope != null ? null : CheckFinding.Ok(r, total + " " + what + ", all from the office sources"))
+                : CheckFinding.Problem(r, bad.Count + " of " + total + " " + what + " without an office prefix: " + string.Join(", ", names), bad);
         }
 
         private static CheckFinding ParamFilled(Ctx c, CheckRule r)

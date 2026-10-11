@@ -101,7 +101,7 @@ their parameters:
 - `phase-filter-digit` — a view's phase and phase filter must start with the same digit.
 - `view-phase-for-new-work` — the active view is on the pack's *existing* phase.
 - `view-template-required` — `namePattern` (regex for plot views), `onSheets` (views placed on sheets).
-- `family-source` — loaded model families without one of `prefixes` (default: `familyPrefixes`); `ignoreCategories`.
+- `family-source` — model families without one of `prefixes` (default: `familyPrefixes`); `ignoreCategories`; `onlyPlaced` (default true: only families with instances — a template's unused families are not the modeller's choice).
 - `param-filled` — `parameters` empty on elements created in the phase of `phaseKey` (default `new`).
 - `survey-point-origin` — `toleranceMm`.
 - `base-point-rounded` — `roundToMm` (only once shared coordinates exist).

@@ -47,9 +47,10 @@ namespace VibeModel.Services.Claude.Commands
                     fs.Name.ToLower().Contains(typeName.ToLower()));
 
             if (symbol == null)
-                return "ERROR: Family/type not found matching '" + familyName + "' / '" + typeName + "'.\nUse 'familytypes' to see available families.";
+                return "ERROR: Family/type not found matching '" + familyName + "' / '" + typeName + "'.\nUse 'familytypes' to see available families." +
+                       LibraryHint(doc, familyName);
 
-            return PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm);
+            return PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm, phase);
         }
 
         /// <summary>

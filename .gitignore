@@ -37,3 +37,7 @@ standards/*
 !standards/README.md
 !standards/example-office/
 docs/reference/ib-revit-leidraad-map.md
+
+## Local (office-specific) variants of design docs — never committed
+docs/plans/*.local.md
+docs/verify/*.local.md

@@ -177,7 +177,9 @@ namespace VibeModel.Services.Standards
                 SaveManifest(pack, manifest);
                 var status = "indexed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
                              ": " + added + " new, " + cached + " unchanged, " + failed + " failed" +
-                             (unreachable.Count > 0 ? "; unreachable: " + string.Join(", ", unreachable) : "") +
+                             (unreachable.Count > 0
+                                 ? "; " + unreachable.Count + " source(s) unreachable (e.g. " + string.Join(", ", unreachable.Take(2)) + ")"
+                                 : "") +
                              (errors.Count > 0 ? "; errors: " + string.Join(" | ", errors.Take(3)) : "");
                 lock (Sync) Status[pack.Id] = status;
                 Logger.Info("Standards documents for " + pack.Id + ": " + status);

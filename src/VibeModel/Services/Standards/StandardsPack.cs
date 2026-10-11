@@ -378,7 +378,6 @@ namespace VibeModel.Services.Standards
         public string Template { get; set; }
         public string PhaseKey { get; set; }
         public string PhaseFilter { get; set; }
-        public string NamePattern { get; set; }
         public Dictionary<string, string> Parameters { get; set; } =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -390,7 +389,6 @@ namespace VibeModel.Services.Standards
                 Template = PackJson.GetString(d, "template"),
                 PhaseKey = PackJson.GetString(d, "phase"),
                 PhaseFilter = PackJson.GetString(d, "phaseFilter"),
-                NamePattern = PackJson.GetString(d, "namePattern"),
                 Parameters = PackJson.GetStringMap(d, "parameters")
             };
         }

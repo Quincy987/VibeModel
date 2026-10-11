@@ -74,6 +74,14 @@ namespace VibeModel.Tests
             Assert.Null(LibraryIndex.Load(file + ".missing"));
         }
 
+        [Fact]
+        public void SameRoots_IgnoresCaseOrderAndTrailingSlash()
+        {
+            Assert.True(LibraryIndexService.SameRoots(new[] { @"X:\Lib\", @"Y:\fam" }, new[] { @"y:\FAM\", @"x:\lib" }));
+            Assert.False(LibraryIndexService.SameRoots(new[] { @"X:\Lib" }, new[] { @"X:\Other" }));
+            Assert.False(LibraryIndexService.SameRoots(new[] { @"X:\Lib" }, new[] { @"X:\Lib", @"Y:\fam" }));
+        }
+
         [Theory]
         [InlineData("Family.0001", true)]
         [InlineData("Family.v2", false)]

@@ -17,7 +17,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "standards";
         public string Description => "Office standards: active pack, rule topics, source-document chapters (standards <topic> | core | docs | <doc> <chapter> | --refresh | --index | distill)";
-        public string Usage => "standards [topic|core|docs|<doc> <chapter>|--refresh|--index|distill [--status]] [--pack <id>]";
+        public string Usage => "standards [topic|core|docs|<doc> <chapter>|--refresh|--index|--prompt|distill [--status]] [--pack <id>]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -34,6 +34,21 @@ namespace VibeModel.Services.Claude.Commands
                     return CommandResult.Error("BAD_ARGS", "--pack needs a pack id.", Usage);
                 packId = tokens[pi + 1];
                 tokens.RemoveRange(pi, 2);
+            }
+
+            if (tokens.Count > 0 && tokens[0].Equals("--prompt", StringComparison.OrdinalIgnoreCase))
+            {
+                // Exactly what the chat backends inject this turn (re-rendered now).
+                StandardsContext.RefreshPrompt(uiApp);
+                var combined = StandardsPrompt.Combined;
+                return CommandResult.Ok(combined.Length == 0 ? "(nothing injected: no document, or no matching pack and no template facts)\n" : combined,
+                    new Dictionary<string, object>
+                    {
+                        { "template", StandardsPrompt.TemplateBlock },
+                        { "standards", StandardsPrompt.StandardsBlock },
+                        { "templateBytes", StandardsRender.Bytes(StandardsPrompt.TemplateBlock) },
+                        { "standardsBytes", StandardsRender.Bytes(StandardsPrompt.StandardsBlock) }
+                    });
             }
 
             if (tokens.Count > 0 && tokens[0].Equals("--refresh", StringComparison.OrdinalIgnoreCase))
