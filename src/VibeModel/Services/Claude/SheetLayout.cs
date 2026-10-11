@@ -25,6 +25,17 @@ namespace VibeModel.Services.Claude
         public bool Overlaps(MmRect o, double tol = 0.5)
             => Math.Min(X1, o.X1) - Math.Max(X0, o.X0) > tol && Math.Min(Y1, o.Y1) - Math.Max(Y0, o.Y0) > tol;
 
+        /// <summary>Width × height of the shared area (0 when apart).</summary>
+        public void OverlapSize(MmRect o, out double w, out double h)
+        {
+            w = Math.Max(0, Math.Min(X1, o.X1) - Math.Max(X0, o.X0));
+            h = Math.Max(0, Math.Min(Y1, o.Y1) - Math.Max(Y0, o.Y0));
+        }
+
+        /// <summary>How far the rectangle sticks out of the outer one (max over the four sides).</summary>
+        public double Overhang(MmRect outer)
+            => Math.Max(Math.Max(outer.X0 - X0, outer.Y0 - Y0), Math.Max(X1 - outer.X1, Y1 - outer.Y1));
+
         public bool Inside(MmRect outer, double tol = 0.5)
             => X0 >= outer.X0 - tol && Y0 >= outer.Y0 - tol && X1 <= outer.X1 + tol && Y1 <= outer.Y1 + tol;
 
@@ -111,6 +122,27 @@ namespace VibeModel.Services.Claude
         public static List<string> OffPaper(IList<KeyValuePair<string, MmRect>> rects, MmRect paper)
             => rects.Where(r => !r.Value.Inside(paper)).Select(r => r.Key).ToList();
 
+        /// <summary>
+        /// One line per overlapping pair. Viewport boxes include empty crop margin, so a thin
+        /// overlap strip (≤ 30 mm across) is usually harmless — INFO; anything bigger is WARN.
+        /// Measured on a finished IB A0: every harmless overlap was a 10–27 mm strip.
+        /// </summary>
+        public static List<string> OverlapLines(IList<KeyValuePair<string, MmRect>> rects)
+        {
+            var lines = new List<string>();
+            for (int i = 0; i < rects.Count; i++)
+                for (int j = i + 1; j < rects.Count; j++)
+                {
+                    var a = rects[i].Value; var b = rects[j].Value;
+                    if (!a.Overlaps(b)) continue;
+                    a.OverlapSize(b, out double w, out double h);
+                    bool thin = Math.Min(w, h) <= 30;
+                    lines.Add((thin ? "INFO  " : "WARN  ") + rects[i].Key + " and " + rects[j].Key + " boxes overlap " + Mm.F(w) + "×" + Mm.F(h) + " mm" +
+                              (thin ? " (thin strip — usually empty crop margin)" : " — check the screenshot whether the drawings collide"));
+                }
+            return lines;
+        }
+
         /// <summary>Common paper names for a width × height in mm (either orientation), or null.</summary>
         public static string PaperName(double w, double h)
         {
@@ -124,9 +156,12 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>
-    /// The section frame for `section` (plan 12): a vertical cut plane through the line
-    /// p1→p2. BasisX = line direction, BasisY = up, BasisZ = BasisX × BasisY (Revit's
-    /// right-handed section frame; the view looks along −BasisZ, i.e. to the LEFT of p1→p2).
+    /// The section frame for `section` (plan 12): a vertical cut plane through the line p1→p2
+    /// that looks to the LEFT of the walking direction, with the line reading left-to-right.
+    /// Measured in Revit 2023 (ViewSection.CreateSection): the box's BasisZ is the LOOKING
+    /// direction, its Min.Z is the cut plane and Max.Z the far clip; the created view then reports
+    /// ViewDirection = −BasisZ and RightDirection = −BasisX. So the input basis is
+    /// BasisX = −D, BasisY = up, BasisZ = Look = (−Dy, Dx) (right-handed: (−D) × Z = Look).
     /// Pure — unit-tested; the Revit side only turns these numbers into XYZ.
     /// </summary>
     internal sealed class SectionFrame
@@ -134,7 +169,7 @@ namespace VibeModel.Services.Claude
         public double Ox, Oy;          // midpoint (mm)
         public double Dx, Dy;          // unit line direction
         public double Length;          // mm
-        public double Bx, By;          // BasisZ (horizontal), = (Dy, -Dx)
+        public double Lx, Ly;          // looking direction = left of D = (-Dy, Dx) = the box's BasisZ
 
         public static SectionFrame FromLine(double x1, double y1, double x2, double y2)
         {
@@ -144,8 +179,7 @@ namespace VibeModel.Services.Claude
             return new SectionFrame
             {
                 Ox = (x1 + x2) / 2, Oy = (y1 + y2) / 2, Dx = dx, Dy = dy, Length = len,
-                // (dx,dy,0) × (0,0,1) = (dy, -dx, 0)
-                Bx = dy, By = -dx
+                Lx = -dy, Ly = dx
             };
         }
 
@@ -199,5 +233,57 @@ namespace VibeModel.Services.Claude
 
         public static string Segments(IList<double> valuesMm)
             => string.Join(" + ", valuesMm.Select(Mm.F1)) + (valuesMm.Count > 1 ? " = " + Mm.F1(valuesMm.Sum()) : "") + " mm";
+    }
+}
+
+namespace VibeModel.Services.Claude
+{
+    /// <summary>
+    /// Office stamp-field patterns (pack `sheets.stampParameters`) against the parameter names a
+    /// sheet really has: `NL_META_*` (glob) and `IB_BEPALING_1..5` (numeric range) expand; a
+    /// plain name stays as is. Pure — unit-tested.
+    /// </summary>
+    internal static class StampPatterns
+    {
+        public static List<string> Expand(IEnumerable<string> patterns, ICollection<string> available, out List<string> unmatched)
+        {
+            var res = new List<string>();
+            unmatched = new List<string>();
+            foreach (var p in patterns ?? Enumerable.Empty<string>())
+            {
+                var names = Match(p, available).ToList();
+                if (names.Count == 0) unmatched.Add(p);
+                foreach (var n in names) if (!res.Contains(n)) res.Add(n);
+            }
+            return res;
+        }
+
+        private static IEnumerable<string> Match(string pattern, ICollection<string> available)
+        {
+            var range = System.Text.RegularExpressions.Regex.Match(pattern, @"^(.*?)(\d+)\.\.(\d+)(.*)$");
+            if (range.Success)
+            {
+                int a = int.Parse(range.Groups[2].Value), b = int.Parse(range.Groups[3].Value);
+                for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++)
+                {
+                    var n = range.Groups[1].Value + i + range.Groups[4].Value;
+                    if (available.Contains(n)) yield return n;
+                }
+                yield break;
+            }
+            if (pattern.IndexOf('*') >= 0)
+            {
+                var rx = new System.Text.RegularExpressions.Regex("^" + System.Text.RegularExpressions.Regex.Escape(pattern).Replace(@"\*", ".*") + "$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (var n in available.Where(x => rx.IsMatch(x)).OrderBy(x => x, StringComparer.Ordinal)) yield return n;
+                yield break;
+            }
+            var exact = available.FirstOrDefault(x => x.Equals(pattern, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) yield return exact;
+        }
+
+        /// <summary>Blank, or one of the invisible placeholder characters title blocks use to look empty.</summary>
+        public static bool IsBlank(string v)
+            => string.IsNullOrWhiteSpace(v) || v.Trim().All(c => c == 'ㅤ' || c == '​' || c == ' ' || char.IsWhiteSpace(c));
     }
 }

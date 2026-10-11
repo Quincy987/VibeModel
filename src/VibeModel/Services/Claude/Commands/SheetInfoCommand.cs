@@ -44,25 +44,35 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Paper: " + Mm.F(paper.W) + "×" + Mm.F(paper.H) + " mm" + (pn != null ? " (" + pn + ")" : "") + " — " + paperSource);
             sb.AppendLine("Title block: " + (tbType != null ? tbType.FamilyName + " : " + tbType.Name + " (instance " + tb.Id.IntegerValue + ")" : "none"));
 
-            // Stamp fields: the office pack's list, else the title block's own text parameters.
+            // Stamp fields: the office pack's patterns (NL_META_*, X_1..5), else the title block's own text fields.
             var stamp = new List<object>();
             var pack = Standards.StandardsContext.GetActivePack(doc);
-            var names = pack?.Sheets?.StampParameters != null && pack.Sheets.StampParameters.Count > 0
-                ? pack.Sheets.StampParameters
-                : (tb != null ? tb.Parameters.Cast<Parameter>().Where(p => p.StorageType == StorageType.String && !p.IsReadOnly)
-                                  .Select(p => p.Definition.Name).Distinct().OrderBy(n => n).Take(25).ToList() : new List<string>());
-            if (names.Count > 0)
+            var fields = new Dictionary<string, Parameter>(StringComparer.OrdinalIgnoreCase);
+            foreach (var owner in new Element[] { sheet, tb })
+                if (owner != null)
+                    foreach (Parameter p in owner.Parameters)
+                        if (p.StorageType == StorageType.String && !p.IsReadOnly && !fields.ContainsKey(p.Definition.Name))
+                            fields[p.Definition.Name] = p;
+            bool fromPack = pack?.Sheets?.StampParameters != null && pack.Sheets.StampParameters.Count > 0;
+            List<string> unmatched;
+            var names = fromPack ? StampPatterns.Expand(pack.Sheets.StampParameters, fields.Keys, out unmatched)
+                                 : StampPatterns.Expand(tb != null ? tb.Parameters.Cast<Parameter>().Where(p => p.StorageType == StorageType.String && !p.IsReadOnly)
+                                                                       .Select(p => p.Definition.Name) : new string[0], fields.Keys, out unmatched);
+            if (names.Count > 0 || unmatched.Count > 0)
             {
-                sb.AppendLine("Stamp" + (pack?.Sheets?.StampParameters?.Count > 0 ? " (office: " + pack.Id + ")" : "") + ":");
+                sb.AppendLine("Stamp" + (fromPack ? " (office " + pack.Id + ": " + string.Join(", ", pack.Sheets.StampParameters) + ")" : " (title block text fields)") + ":");
+                var empty = new List<string>();
                 foreach (var n in names)
                 {
-                    var p = sheet.LookupParameter(n) ?? tb?.LookupParameter(n);
-                    string val = p == null ? "(no such parameter)" : (FormattingHelper.GetParameterValue(p) ?? "");
-                    if (string.IsNullOrWhiteSpace(val)) val = "(empty)";
-                    sb.AppendLine("  " + n + ": " + val);
-                    stamp.Add(new Dictionary<string, object> { { "name", n }, { "value", p == null ? null : FormattingHelper.GetParameterValue(p) }, { "exists", p != null } });
+                    var val = FormattingHelper.GetParameterValue(fields[n]);
+                    bool blank = StampPatterns.IsBlank(val);
+                    if (blank) empty.Add(n); else sb.AppendLine("  " + n + ": " + val);
+                    stamp.Add(new Dictionary<string, object> { { "name", n }, { "value", blank ? null : val } });
                 }
-                sb.AppendLine("  fill with 'set " + sheet.Id.IntegerValue + " <parameter> <value>' or at creation 'sheet --set \"Param=Value\"'");
+                if (empty.Count > 0)
+                    sb.AppendLine("  empty (" + empty.Count + "): " + string.Join(", ", empty.Take(12)) + (empty.Count > 12 ? ", …" : ""));
+                foreach (var u in unmatched) sb.AppendLine("  " + u + ": no such field on this sheet or its title block");
+                sb.AppendLine("  fill with 'set " + sheet.Id.IntegerValue + " <field> <value>' or at creation 'sheet --set \"Field=Value\"'");
             }
 
             // Viewports + schedules.
@@ -80,7 +90,8 @@ namespace VibeModel.Services.Claude.Commands
                 bool title = showLabel == null || showLabel.AsInteger() != 0;
                 string label = "'" + (v?.Name ?? "?") + "'";
                 rects.Add(new KeyValuePair<string, MmRect>(label, r));
-                sb.AppendLine("  " + vp.Id.IntegerValue + "  " + label + " [" + v?.ViewType + "] 1:" + v?.Scale + "  " + r +
+                string scale = v == null ? "?" : v.Scale > 0 ? "1:" + v.Scale : "perspective";
+                sb.AppendLine("  " + vp.Id.IntegerValue + "  " + label + " [" + v?.ViewType + "] " + scale + "  " + r +
                               (title ? "" : "  (no title)") + (v != null && !v.CropBoxActive && !(v is View3D) && !(v is ViewDrafting) ? "  (crop off)" : ""));
                 vps.Add(new Dictionary<string, object>
                 {
@@ -118,13 +129,15 @@ namespace VibeModel.Services.Claude.Commands
 
             // Checks.
             var overlaps = SheetLayout.Overlaps(rects);
+            var overlapLines = SheetLayout.OverlapLines(rects);
             var off = SheetLayout.OffPaper(rects, paper);
             sb.AppendLine();
             sb.AppendLine("CHECKS");
             if (rects.Count == 0) sb.AppendLine("  INFO  no views on this sheet yet ('viewport " + sheet.SheetNumber + " <view>')");
-            foreach (var o in overlaps) sb.AppendLine("  WARN  " + o.Item1 + " overlaps " + o.Item2);
-            foreach (var o in off) sb.AppendLine("  WARN  " + o + " runs off the paper");
-            if (rects.Count > 0 && overlaps.Count == 0 && off.Count == 0) sb.AppendLine("  OK    no overlaps, everything on the paper");
+            foreach (var l in overlapLines) sb.AppendLine("  " + l);
+            foreach (var o in off)
+                sb.AppendLine("  WARN  " + o + " runs " + Mm.F(rects.First(r => r.Key == o).Value.Overhang(paper)) + " mm off the paper");
+            if (rects.Count > 0 && !overlapLines.Any(l => l.StartsWith("WARN")) && off.Count == 0) sb.AppendLine("  OK    no conflicting overlaps, everything on the paper");
 
             var data = new Dictionary<string, object>
             {

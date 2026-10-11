@@ -192,12 +192,14 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
-### Sheet Assembly (section / viewport / dimension / text / sheetinfo)
+### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
 and read the result back without looking at the Revit UI.
 ```bash
 curl -s "http://localhost:18884/section?args=-92722 14921 -73243 10385 --name Doorsnede 1-1 --scale 50"  # Along a line (mm)
 curl -s "http://localhost:18884/section?args=1543814 --offset 2000 --depth 1000"     # Straight across a wall, at its midpoint
+curl -s "http://localhost:18884/crop?args=Bovenaanzicht --fit --margin 2000"                       # Crop to the model elements (DWG/point clouds ignored)
+curl -s "http://localhost:18884/crop?args=Bovenaanzicht --box 100000 -10000 230000 10000"            # ...or to a rectangle; 3D views get a section box
 curl -s "http://localhost:18884/sheet?args=--number 0001 --name Situatie 0 --set \"Opsteller=Q. de Klerk\""
 curl -s "http://localhost:18884/viewport?args=0001 101,102,103,104 --grid 2x2 --scale 50"            # Grid over the free sheet area
 curl -s "http://localhost:18884/viewport?args=0001 Bovenaanzicht --at 500 650"                       # One view centred at paper mm
@@ -219,11 +221,16 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
 - **`section`** looks to the LEFT of the line direction x1,y1→x2,y2 (the response names the compass
   direction). Default depth 3000 mm; the vertical range comes from the model elements it cuts ±1 m
   (`--top/--bottom` override). An active office pack's `viewDefaults.section` template/phase applies.
+- **`crop`** first: an uncropped view spans everything visible — with a BGT underlay hundreds of
+  metres — so it never fits a cell. `--fit` crops to the model elements (or `--elements`), `--box`
+  to a rectangle, `--off` undoes; the response gives the paper size at the view's scale.
 - **`viewport`** keeps the margin (default 10 mm) and, when the title block is a full-sheet border, a
   200 mm strip on the right for the stamp (`--reserve 0` / `--area` to change). A view that does not fit
   its cell is still placed and gets a `WARN` naming the scale that would fit. A view already on another
   sheet is refused with that sheet's number. Schedules are placed too. `--title off` uses (or creates) a
   viewport type without a title.
+- **`sheetinfo`** grades box overlaps: a thin strip (≤ 30 mm) is `INFO` (usually empty crop margin),
+  anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
 - **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.

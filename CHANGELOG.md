@@ -9,6 +9,9 @@ build and check a sheet from the conversation.
   with depth, vertical range (auto from the model elements it cuts), name, scale and the office
   pack's section template/phase. Reports which compass direction it looks and the in-view coordinate
   frame the annotation commands use.
+- **`crop`** — crop a view to its model elements (`--fit`, DWG underlays / point clouds / links
+  ignored; `--elements` to choose), to a rectangle (`--box`), or `--off`; 3D views get a section
+  box. Without it an uncropped plan over a BGT underlay is metres wide on paper and fits no cell.
 - **`viewport`** — put one view at a paper position (`--at x y`) or several in a grid (`--grid CxR`,
   optionally inside `--area`), with `--scale`, `--margin`, `--reserve` (stamp strip) and `--title off`.
   Every placement reports its paper outline; a view that does not fit its cell is still placed with a
@@ -22,8 +25,9 @@ build and check a sheet from the conversation.
 - **`text`** — text notes (`\n` line breaks, `--size` in paper mm creating a type when none matches,
   `--leader`). The building block for annotating from a specification, which stays chat work.
 - **`sheetinfo`** — the sensor: paper size, title block, stamp fields (office pack list or the title
-  block's own text parameters), viewports with paper outlines, text and schedules on the sheet, and
-  overlap / off-paper checks.
+  block's own text parameters; patterns like `NL_META_*` and `X_1..5` expand, filled fields are listed
+  and empty ones counted), viewports with paper outlines, text and schedules on the sheet, and overlap /
+  off-paper checks (a ≤ 30 mm overlap strip is INFO — on a finished IB A0 every harmless overlap was one).
 - **Extended:** `sheet --number --name --set "Param=Value"` (sheet or title-block field); `tag --leader
   --at x y`; `screenshot --view <id|name|sheet number>` (sheets were refused before; now exported, and
   without having to activate them); `list dimensions|text` with values; `list sheets` with view counts;

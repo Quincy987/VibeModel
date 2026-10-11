@@ -132,13 +132,18 @@ namespace VibeModel.Services.Helpers
             return new XYZ(p.X, p.Y, y);
         }
 
-        /// <summary>A section's frame origin (the middle of its section line); the view origin otherwise.</summary>
+        /// <summary>
+        /// The in-view origin of a section/elevation: the middle of its crop region on the cut
+        /// plane (for a fresh `section`, the middle of the section line). Revit relocates the crop
+        /// box's own transform origin to a corner, so that cannot be used directly.
+        /// </summary>
         public static XYZ SectionOrigin(View view)
         {
             try
             {
                 var cb = view.CropBox;
-                if (cb != null && cb.Transform != null) return cb.Transform.Origin;
+                if (cb != null && cb.Transform != null)
+                    return cb.Transform.OfPoint(new XYZ((cb.Min.X + cb.Max.X) / 2, (cb.Min.Y + cb.Max.Y) / 2, cb.Max.Z));
             }
             catch { /* some view types have no crop box */ }
             return view.Origin;

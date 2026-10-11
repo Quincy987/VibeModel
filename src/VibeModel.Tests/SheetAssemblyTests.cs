@@ -315,26 +315,26 @@ namespace VibeModel.Tests
         public void PaperName(double w, double h, string name) => Assert.Equal(name, SheetLayout.PaperName(w, h));
 
         [Fact]
-        public void SectionFrame_EastLine_LooksNorth()
+        public void SectionFrame_EastLine_LooksNorth_ToTheLeft()
         {
             var f = SectionFrame.FromLine(0, 0, 10000, 0);
             Assert.Equal(5000, f.Ox, 6);
             Assert.Equal(0, f.Oy, 6);
             Assert.Equal(10000, f.Length, 6);
             Assert.Equal(1, f.Dx, 6);
-            // BasisZ = X × Z = -Y; the view looks along -BasisZ = +Y
-            Assert.Equal(0, f.Bx, 6);
-            Assert.Equal(-1, f.By, 6);
-            Assert.Equal("north", SectionFrame.Compass(-f.Bx, -f.By));
+            // looks to the left of the walking direction: walking east → looking north
+            Assert.Equal(0, f.Lx, 6);
+            Assert.Equal(1, f.Ly, 6);
+            Assert.Equal("north", SectionFrame.Compass(f.Lx, f.Ly));
         }
 
         [Fact]
         public void SectionFrame_IsRightHanded()
         {
             var f = SectionFrame.FromLine(-92722, 14921, -73243, 10385);
-            // (Dx,Dy,0) × (0,0,1) must equal (Bx,By,0)
-            Assert.Equal(f.Dy, f.Bx, 9);
-            Assert.Equal(-f.Dx, f.By, 9);
+            // Revit input basis: (-D) × Z must equal the looking direction (BasisZ)
+            Assert.Equal(-f.Dy, f.Lx, 9);
+            Assert.Equal(f.Dx, f.Ly, 9);
             Assert.Equal(1, Math.Sqrt(f.Dx * f.Dx + f.Dy * f.Dy), 9);
         }
 
@@ -378,5 +378,94 @@ namespace VibeModel.Tests
             Assert.Equal("300 + 2700 = 3000 mm", DimensionMath.Segments(new[] { 300.0, 2700 }));
             Assert.Equal("3000 mm", DimensionMath.Segments(new[] { 3000.0 }));
         }
+    }
+}
+
+namespace VibeModel.Tests
+{
+    /// <summary>Plan 12 — sheetinfo: office stamp patterns, overlap grading, overhang.</summary>
+    public class SheetInfoLogicTests
+    {
+        private static readonly string[] Fields =
+        {
+            "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "Drawn By", "IB_AANVULLENDE_BEPALING_1",
+            "IB_AANVULLENDE_BEPALING_2", "IB_AANVULLENDE_BEPALING_4", "Sheet Issue Date"
+        };
+
+        [Fact]
+        public void Stamp_GlobRangeAndPlain()
+        {
+            var names = StampPatterns.Expand(new[] { "NL_META_*", "IB_AANVULLENDE_BEPALING_1..5", "drawn by", "Missing Field" },
+                Fields, out var unmatched);
+            Assert.Equal(new[] { "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "IB_AANVULLENDE_BEPALING_1", "IB_AANVULLENDE_BEPALING_2",
+                                 "IB_AANVULLENDE_BEPALING_4", "Drawn By" }, names);
+            Assert.Equal(new[] { "Missing Field" }, unmatched);
+        }
+
+        [Theory]
+        [InlineData(null, true)]
+        [InlineData("  ", true)]
+        [InlineData("ㅤ", true)]      // the invisible filler IB title blocks use
+        [InlineData("Concept", false)]
+        public void Stamp_Blank(string v, bool blank) => Assert.Equal(blank, StampPatterns.IsBlank(v));
+
+        [Fact]
+        public void OverlapLines_GradeSmallVsLarge()
+        {
+            var rects = new List<KeyValuePair<string, MmRect>>
+            {
+                new KeyValuePair<string, MmRect>("'Bovenaanzicht'", new MmRect(22, 611, 1178, 846)),
+                new KeyValuePair<string, MmRect>("'Vooraanzicht'", new MmRect(32, 527, 1144, 638)),   // 27 mm strip: small
+                new KeyValuePair<string, MmRect>("'A'", new MmRect(0, 0, 100, 100)),
+                new KeyValuePair<string, MmRect>("'B'", new MmRect(20, 20, 120, 120)),               // 64% of B: large
+            };
+            var lines = SheetLayout.OverlapLines(rects);
+            Assert.Equal(2, lines.Count);
+            Assert.StartsWith("INFO  'Bovenaanzicht' and 'Vooraanzicht' boxes overlap 1112×27 mm", lines[0]);
+            Assert.StartsWith("WARN  'A' and 'B' boxes overlap 80×80 mm", lines[1]);
+        }
+
+        [Fact]
+        public void Overhang_IsTheWorstSide()
+        {
+            var paper = new MmRect(0, 0, 1189, 841);
+            Assert.Equal(5, new MmRect(22, 611, 1178, 846).Overhang(paper), 6);
+            Assert.Equal(17, new MmRect(972, 77, 1206, 271).Overhang(paper), 6);
+            Assert.True(new MmRect(10, 10, 20, 20).Overhang(paper) < 0);
+        }
+    }
+}
+
+namespace VibeModel.Tests
+{
+    public class CropArgsTests
+    {
+        [Fact]
+        public void Fit_WithElementsAndMargin()
+        {
+            var a = CropArgs.Parse("VM Bovenaanzicht --fit --elements 1561029,1561031 --margin 5000");
+            Assert.Null(a.Error);
+            Assert.Equal("VM Bovenaanzicht", a.View);
+            Assert.True(a.Fit);
+            Assert.Equal(new[] { 1561029, 1561031 }, a.Elements);
+            Assert.Equal(5000, a.Margin);
+        }
+
+        [Fact]
+        public void Box_AndOff()
+        {
+            var b = CropArgs.Parse("1730920 --box 100000 -10000 230000 10000");
+            Assert.Null(b.Error);
+            Assert.Equal(new[] { 100000.0, -10000, 230000, 10000 }, b.Box);
+            Assert.True(CropArgs.Parse("1730920 --off").Off);
+        }
+
+        [Theory]
+        [InlineData("--fit", "view")]
+        [InlineData("12", "Pick one")]
+        [InlineData("12 --fit --off", "Pick one")]
+        [InlineData("12 --box 5 5 1 1", "x1 > x0")]
+        [InlineData("12 --off --elements 3", "goes with --fit")]
+        public void Errors(string args, string fragment) => Assert.Contains(fragment, CropArgs.Parse(args).Error);
     }
 }

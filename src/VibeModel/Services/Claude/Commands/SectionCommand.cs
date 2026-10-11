@@ -67,7 +67,12 @@ namespace VibeModel.Services.Claude.Commands
             if (frame == null) return CommandResult.Error("BAD_ARGS", "The section line has no length.", null);
 
             double depthMm = a.Depth ?? DefaultDepthMm;
-            if (!autoBottom.HasValue) ModelZRange(doc, frame, depthMm, out autoBottom, out autoTop);
+            ModelZRange(doc, frame, depthMm, out var seenBottom, out var seenTop);
+            if (seenBottom.HasValue)
+            {
+                autoBottom = autoBottom.HasValue ? Math.Min(autoBottom.Value, seenBottom.Value) : seenBottom;
+                autoTop = autoTop.HasValue ? Math.Max(autoTop.Value, seenTop.Value) : seenTop;
+            }
             double bottomMm = a.Bottom ?? (autoBottom.HasValue ? autoBottom.Value - VerticalMarginMm : -5000);
             double topMm = a.Top ?? (autoTop.HasValue ? autoTop.Value + VerticalMarginMm : 10000);
             if (topMm - bottomMm < 100)
@@ -85,17 +90,17 @@ namespace VibeModel.Services.Claude.Commands
             var t = Transform.Identity;
             double midZ = RevitUnitHelper.MmToFeet((bottomMm + topMm) / 2);
             t.Origin = new XYZ(RevitUnitHelper.MmToFeet(frame.Ox), RevitUnitHelper.MmToFeet(frame.Oy), midZ);
-            t.BasisX = new XYZ(frame.Dx, frame.Dy, 0);
+            // See SectionFrame: BasisZ = looking direction, Min.Z = cut plane, Max.Z = far clip.
+            t.BasisX = new XYZ(-frame.Dx, -frame.Dy, 0);
             t.BasisY = XYZ.BasisZ;
-            t.BasisZ = new XYZ(frame.Bx, frame.By, 0);
+            t.BasisZ = new XYZ(frame.Lx, frame.Ly, 0);
             double halfLen = RevitUnitHelper.MmToFeet(frame.Length / 2);
             double halfH = RevitUnitHelper.MmToFeet((topMm - bottomMm) / 2);
             var box = new BoundingBoxXYZ
             {
                 Transform = t,
-                // Cut plane at local z = 0; the view sees depth mm beyond it (along −BasisZ).
-                Min = new XYZ(-halfLen, -halfH, -RevitUnitHelper.MmToFeet(depthMm)),
-                Max = new XYZ(halfLen, halfH, 0)
+                Min = new XYZ(-halfLen, -halfH, 0),
+                Max = new XYZ(halfLen, halfH, RevitUnitHelper.MmToFeet(depthMm))
             };
 
             ViewSection view = null;
@@ -121,7 +126,9 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Line: (" + Mm.F(frame.Ox - frame.Dx * frame.Length / 2) + ", " + Mm.F(frame.Oy - frame.Dy * frame.Length / 2) + ") → (" +
                           Mm.F(frame.Ox + frame.Dx * frame.Length / 2) + ", " + Mm.F(frame.Oy + frame.Dy * frame.Length / 2) + ") mm, " +
                           Mm.F(frame.Length) + " mm long, " + through);
-            sb.AppendLine("Looking: " + SectionFrame.Compass(look.X, look.Y) + " (project north = +Y), i.e. to the left of the line direction");
+            bool asIntended = look.X * frame.Lx + look.Y * frame.Ly > 0.99;
+            sb.AppendLine("Looking: " + SectionFrame.Compass(look.X, look.Y) + " (project north = +Y)" +
+                          (asIntended ? ", i.e. to the left of the line direction" : " — NOT the intended left side; swap x1,y1 and x2,y2 to flip"));
             sb.AppendLine("Depth: " + Mm.F(depthMm) + " mm beyond the cut plane");
             sb.AppendLine("Vertical range: " + Mm.F(bottomMm) + " .. " + Mm.F(topMm) + " mm" +
                           (a.Top.HasValue || a.Bottom.HasValue ? "" : " (from the model elements it cuts, ±" + Mm.F(VerticalMarginMm) + ")"));
@@ -174,7 +181,7 @@ namespace VibeModel.Services.Claude.Commands
             double x1 = f.Ox - f.Dx * f.Length / 2, y1 = f.Oy - f.Dy * f.Length / 2;
             double x2 = f.Ox + f.Dx * f.Length / 2, y2 = f.Oy + f.Dy * f.Length / 2;
             // Region seen by the section: the line swept depth mm along the looking direction (−BasisZ).
-            double lx = -f.Bx * depthMm, ly = -f.By * depthMm;
+            double lx = f.Lx * depthMm, ly = f.Ly * depthMm;
             var xs = new[] { x1, x2, x1 + lx, x2 + lx }; var ys = new[] { y1, y2, y1 + ly, y2 + ly };
             var outline = new Outline(
                 new XYZ(RevitUnitHelper.MmToFeet(xs.Min()), RevitUnitHelper.MmToFeet(ys.Min()), -1e4),

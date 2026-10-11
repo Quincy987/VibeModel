@@ -432,3 +432,53 @@ namespace VibeModel.Services.Claude
         }
     }
 }
+
+namespace VibeModel.Services.Claude
+{
+    /// <summary>`crop &lt;view&gt; --fit [--margin mm] | --box x0 y0 x1 y1 | --off`.</summary>
+    internal sealed class CropArgs
+    {
+        public string View;
+        public bool Fit, Off;
+        public double[] Box;
+        public double Margin = 2000;
+        public List<int> Elements = new List<int>();
+        public string Error;
+
+        public const string Usage = "crop <viewId|name> --fit [--elements <id,id...>] [--margin <mm>]  |  crop <view> --box <x0> <y0> <x1> <y1>  |  crop <view> --off";
+
+        public static CropArgs Parse(string args)
+        {
+            var r = new CropArgs();
+            var f = FlagArgs.Parse(args);
+            r.Error = f.Unknown("fit", "box", "off", "margin", "elements");
+            if (r.Error != null) return r;
+            r.View = string.Join(" ", f.Positional).Trim();
+            if (r.View.Length == 0) { r.Error = "Give the view (id or name) first."; return r; }
+            int modes = (f.Has("fit") ? 1 : 0) + (f.Has("box") ? 1 : 0) + (f.Has("off") ? 1 : 0);
+            if (modes != 1) { r.Error = "Pick one of --fit, --box x0 y0 x1 y1, --off."; return r; }
+            r.Fit = f.Has("fit"); r.Off = f.Has("off");
+            if (f.Has("box"))
+            {
+                if (!f.TryNums("box", 4, out r.Box, out r.Error)) return r;
+                if (r.Box[2] <= r.Box[0] || r.Box[3] <= r.Box[1]) { r.Error = "--box is x0 y0 x1 y1 with x1 > x0 and y1 > y0."; return r; }
+            }
+            if (f.Has("margin"))
+            {
+                if (!f.TryNum("margin", out double m, out r.Error)) return r;
+                if (m < 0) { r.Error = "--margin cannot be negative."; return r; }
+                r.Margin = m;
+            }
+            if (f.Has("elements"))
+            {
+                if (!r.Fit) { r.Error = "--elements goes with --fit."; return r; }
+                foreach (var t in string.Join(" ", f.Values("elements")).Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!int.TryParse(t, out int id)) { r.Error = "--elements: '" + t + "' is not an element id."; return r; }
+                    r.Elements.Add(id);
+                }
+            }
+            return r;
+        }
+    }
+}

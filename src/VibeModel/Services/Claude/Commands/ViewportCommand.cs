@@ -118,9 +118,9 @@ namespace VibeModel.Services.Claude.Commands
                         vp.SetBoxCenter(SheetHelper.ToSheet(origin, cx, cy));
                         doc.Regenerate();
                         var box = SheetHelper.ToPaper(origin, vp.GetBoxOutline());
-                        bool fits = SheetLayout.Fits(box.W, box.H, cell);
+                        bool fits = v.Scale <= 0 || SheetLayout.Fits(box.W, box.H, cell);   // perspective: no scale to suggest
                         string tag = fits ? "OK  " : "WARN";
-                        lines.Add(tag + " '" + v.Name + "' 1:" + v.Scale + " → " + box + "  (viewport " + vp.Id.IntegerValue + ")" +
+                        lines.Add(tag + " '" + v.Name + "' " + (v.Scale > 0 ? "1:" + v.Scale : "perspective") + " → " + box + "  (viewport " + vp.Id.IntegerValue + ")" +
                                   (scaleNote != null ? "  [" + scaleNote + "]" : ""));
                         if (!fits)
                         {

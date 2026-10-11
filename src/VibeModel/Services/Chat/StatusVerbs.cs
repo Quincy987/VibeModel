@@ -67,6 +67,7 @@ namespace VibeModel.Services.Chat
                 { "dimension", "Adding dimension…" },
                 { "text", "Adding text…" },
                 { "sheetinfo", "Checking the sheet…" },
+                { "crop", "Cropping view…" },
             };
 
         /// <summary>
