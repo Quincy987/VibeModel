@@ -8,9 +8,9 @@ internal names and network paths, so they are kept outside this public repo
 
 Environment: Revit 2023.1, add-in built from this branch and deployed with `build.ps1`; the
 office network share was **unreachable** during the whole run (weekend, no VPN), which also
-exercised every offline path. Six rounds: round 1 found 4 defects (fixed), round 2 ran the
-full script, rounds 3–4 re-checked the fixes, rounds 5–6 verified the code-review fixes below on
-a fresh Revit session. Unit tests: 296/296 pass.
+exercised every offline path. Seven rounds: round 1 found 4 defects (fixed), round 2 ran the
+full script, rounds 3–4 re-checked the fixes, rounds 5–7 verified the two code-review passes below on
+fresh Revit sessions. Unit tests: 296/296 pass.
 
 ## Results
 
@@ -78,6 +78,20 @@ platform newline; `standards --prompt` added to show exactly what the chat recei
   out is probed once per index run; documents removed from a reachable folder leave the index;
   the additions file name is a pack setting (`additionsFile`); dead members removed; one shared
   Claude CLI lookup.
+
+## Second review pass (verified in round 7)
+
+- `linkcad` refused a DGN only when NO underlay existed; it now also waits until shared
+  coordinates are acquired (`--force` overrides). Round 7: DGN refused as first underlay, DWG
+  linked centre-to-centre and pinned, DGN then refused "before shared coordinates are set up".
+- A phase Revit refuses no longer leaves an element half-changed: the previous phases are
+  restored and the failure reported (also per element by `phase`). Round 7:
+  `wall … --phase demolish` → `1 / 2`, `phase <id> future` → `3 / None` (read back).
+- The STANDARDS block's byte budget now reserves room for the footer, so a small `coreMaxBytes`
+  cuts the core rules instead of the phase hint (unit-tested).
+- The distiller locates the Claude CLI on its worker thread instead of inside the command on
+  Revit's thread; `GetActivePack` costs nothing when no pack is installed; the Settings dialog
+  scrolls instead of overflowing small screens (not visually verified).
 
 ## Not verified here
 

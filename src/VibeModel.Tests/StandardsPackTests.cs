@@ -413,6 +413,8 @@ namespace VibeModel.Tests
             var block = StandardsRender.RenderCore(Example(), 600);
             Assert.True(StandardsRender.Bytes(block) <= 600, "got " + StandardsRender.Bytes(block));
             Assert.StartsWith("STANDARDS:", block);
+            Assert.Contains("pass --phase", block); // the phase hint survives; the core is cut instead
+            Assert.Contains("truncated", block);
         }
 
         [Fact]

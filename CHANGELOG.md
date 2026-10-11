@@ -25,20 +25,24 @@
 - **Default phase on creation.** `wall`, `floor`, `place`, `placeid`, `room` take
   `--phase existing|new|temp|demolish|future` and, with an active pack, default to the pack's
   phase (new work → e.g. `2. New construction` instead of the active view's existing phase),
-  warning when the element will not show in the active view. New **`phase`** command re-phases
+  warning when the element will not show in the active view (rooms: Revit does not allow
+  re-phasing them; an explicit `--phase` reports "not applicable"). A phase Revit refuses leaves
+  the element's previous phases intact and is reported. New **`phase`** command re-phases
   existing elements from the office table.
 - **Office defaults** for `view` (view template, phase, phase filter, browser-folder parameters;
   `--template`/`--no-template`, plus `--name`) and `sheet` (default title block, stamp-field hint).
-- **`check`** — audit (OK/WARN/FAIL/SKIPPED per rule, Fix lines, Verdict) against the pack's rules (13 rule kinds: pins, phases,
-  phase filter digits, plot-view templates, family prefixes, required parameters, survey/base
+- **`check`** — audit (OK/WARN/FAIL/SKIPPED per rule, Fix lines, Verdict) against the pack's
+  rules (13 rule kinds: pins, phases, phase filter digits, plot-view templates, family prefixes, required parameters, survey/base
   point, file name, schedule phase, links vs imports), `check selected|<ids>`, `check --stats`.
   After every modifying command/batch the element-level rules run on what was just created and
   add one `-- check: …` line (JSON: additive `check` object). Hits are logged (rule id + count).
 - **`library` / `loadfamily`** — background-built, cached index of the office family library;
   `place` suggests `loadfamily "<path>"` when a family is not loaded.
 - **`linkcad`** (link, never import; off-axis correction and orient-to-view off; shared
-  coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN as first
-  link) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
+  coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN until a base map
+  is linked and shared coordinates exist, `--force` overrides) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
+- Optional office additions file (`additionsFile`) appended to the core, next to the pack or in
+  the source-documents folder (cached locally by the background index run).
 - Settings dialog: *Office standards* section (enable switch, pack folder, source-documents folder).
 - New helper `VibeModel.PdfText.exe` (PdfPig) for PDF text, built with the add-in and deployed to
   its own `VibeModel.PdfText\` subfolder by `build.ps1` and `install.ps1`.

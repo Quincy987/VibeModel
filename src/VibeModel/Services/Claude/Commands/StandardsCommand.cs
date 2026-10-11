@@ -56,7 +56,7 @@ namespace VibeModel.Services.Claude.Commands
                 StandardsContext.Reset();
                 tokens.RemoveAt(0);
                 if (tokens.Count == 0)
-                    return Overview(doc, packId, "Packs re-read from disk." +
+                    return Overview(doc, "Packs re-read from disk." +
                         (PathProbe.IsNetworkPath(SettingsManager.GetStandardsPackPath())
                             ? " The network pack folder is being re-synced in the background — run 'standards' again in a moment."
                             : ""));
@@ -66,7 +66,7 @@ namespace VibeModel.Services.Claude.Commands
             var pack = ResolvePack(eval, packId, out var packNote);
 
             if (tokens.Count == 0 || tokens[0].Equals("--list", StringComparison.OrdinalIgnoreCase))
-                return Overview(doc, packId, null);
+                return Overview(doc, null);
 
             var first = tokens[0].ToLowerInvariant();
             if (pack == null)
@@ -77,8 +77,9 @@ namespace VibeModel.Services.Claude.Commands
             switch (first)
             {
                 case "core":
-                    return CommandResult.Ok(Prefix(packNote) + StandardsRender.RenderCore(pack),
-                        new Dictionary<string, object> { { "pack", pack.Id }, { "core", StandardsRender.RenderCore(pack) } });
+                    var core = StandardsRender.RenderCore(pack);
+                    return CommandResult.Ok(Prefix(packNote) + core,
+                        new Dictionary<string, object> { { "pack", pack.Id }, { "core", core } });
 
                 case "--index":
                     bool started = DocumentIndexService.StartIndex(pack);
@@ -142,7 +143,7 @@ namespace VibeModel.Services.Claude.Commands
 
         private static string Prefix(string note) => note == null ? "" : note + "\n\n";
 
-        private CommandResult Overview(Autodesk.Revit.DB.Document doc, string packId, string headline)
+        private CommandResult Overview(Autodesk.Revit.DB.Document doc, string headline)
         {
             var eval = StandardsContext.Evaluate(doc, false);
             var discovered = StandardsPackRegistry.GetDiscovered();

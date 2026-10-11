@@ -61,12 +61,14 @@ namespace VibeModel.Services.Claude.Commands
                     var e = doc.GetElement(id);
                     if (e == null) { lines.Add(id.IntegerValue + ": not found"); continue; }
                     var before = Describe(doc, e);
-                    int appliedBefore = req.Applied;
+                    int appliedBefore = req.Applied, failedBefore = req.Failures.Count;
                     req.Apply(e);
                     var after = Describe(doc, e);
                     bool changed = req.Applied > appliedBefore;
                     lines.Add(id.IntegerValue + " (" + (e.Category?.Name ?? e.GetType().Name) + "): " +
-                              (changed ? before + " → " + after : "unchanged — " + (e.HasPhases() ? "phases not modifiable" : "element has no phases")));
+                              (changed ? before + " → " + after
+                               : req.Failures.Count > failedBefore ? "unchanged — Revit refused: " + req.Failures[req.Failures.Count - 1]
+                               : "unchanged — " + (e.HasPhases() ? "phases not modifiable" : "element has no phases")));
                     rows.Add(new Dictionary<string, object>
                     {
                         { "id", id.IntegerValue }, { "before", before }, { "after", after }, { "changed", changed }

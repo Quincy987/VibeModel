@@ -20,7 +20,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "linkcad";
         public string Description => "Link a DWG/DGN underlay with the office link settings (link not import, shared coordinates, pinned)";
-        public string Usage => "linkcad \"<path.dwg|.dgn>\" [--first] [--origin] [--no-pin]";
+        public string Usage => "linkcad \"<path.dwg|.dgn>\" [--first] [--origin] [--no-pin] [--force]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -33,6 +33,7 @@ namespace VibeModel.Services.Claude.Commands
             bool first = TakeFlag(ref raw, "--first");
             bool origin = TakeFlag(ref raw, "--origin");
             bool noPin = TakeFlag(ref raw, "--no-pin");
+            bool force = TakeFlag(ref raw, "--force");
             var path = raw.Trim().Trim('"');
             if (path.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Usage: " + Usage, null);
@@ -57,16 +58,18 @@ namespace VibeModel.Services.Claude.Commands
                 .Cast<ImportInstance>().Count(i => i.IsLinked);
             bool isFirst = first || existingLinks == 0;
 
-            if (ext == ".dgn" && existingLinks == 0)
+            // A DGN is only placed correctly by shared coordinates, so it waits until a base map
+            // is linked AND coordinates have been acquired from it.
+            var coords = TemplateFactsCollector.ReadCoordinates(doc);
+            if (ext == ".dgn" && !force && (existingLinks == 0 || !coords.SharedCoordinates))
                 return CommandResult.Error("REFUSED",
-                    "Not linking a DGN as the first underlay: " +
+                    "Not linking a DGN " + (existingLinks == 0 ? "as the first underlay" : "before shared coordinates are set up") + ": " +
                     (opts.RefuseFirstDgnReason ?? "a DGN does not carry reliable coordinates; positioning would go wrong."),
-                    "Link the base map (DWG) first and set up shared coordinates, then link the DGN by shared coordinates.");
+                    "Link the base map (DWG) first and acquire shared coordinates from it, then link the DGN (by shared coordinates). --force overrides.");
 
             // Placement: shared coordinates once they exist; the very first underlay has none to
             // follow, so it goes centre-to-centre (or origin-to-origin on request) and is then
             // moved — never rotated — and used to acquire coordinates.
-            var coords = TemplateFactsCollector.ReadCoordinates(doc);
             ImportPlacement placement;
             string placementWhy;
             if (origin) { placement = ImportPlacement.Origin; placementWhy = "origin-to-origin (--origin)"; }

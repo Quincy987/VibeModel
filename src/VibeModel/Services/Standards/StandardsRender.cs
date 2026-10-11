@@ -31,13 +31,15 @@ namespace VibeModel.Services.Standards
             var footer = topics.Count == 0
                 ? ""
                 : "Full rule sheets on demand: `standards <topic>` — " + string.Join(", ", topics) + ".";
-            if (pack.PhaseTable != null)
+            if (pack.PhaseTable?.Default != null)
                 footer += (footer.Length > 0 ? "\n" : "") +
                           "Creating commands default to phase '" + pack.PhaseTable.DefaultKey + "' (" +
-                          pack.PhaseTable.Default?.Created + "); pass --phase " +
+                          pack.PhaseTable.Default.Created + "); pass --phase " +
                           string.Join("|", pack.PhaseTable.Keys) + " to override. `check` audits the model against these rules.";
 
-            int fixedBytes = Bytes(header) + Bytes(footer) + 4;
+            // Header, footer and three line breaks are fixed; the core gets the rest, so the final
+            // cut below never has to drop the footer's phase hint.
+            int fixedBytes = Bytes(header) + Bytes(footer) + 3 * Environment.NewLine.Length;
             var core = TruncateAtLine(pack.GetCoreText() ?? "", Math.Max(0, maxBytes - fixedBytes));
 
             var sb = new StringBuilder();

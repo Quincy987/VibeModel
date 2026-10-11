@@ -101,13 +101,9 @@ namespace VibeModel.Services.Standards
                 return false;
             }
 
+            // The CLI is located on the worker thread: probing candidates spawns processes and
+            // this method runs inside a command on Revit's main thread.
             var apiKey = SettingsManager.GetApiKey();
-            var cli = apiKey == null ? ClaudeCodeBackend.LocateCli(out _) : null;
-            if (apiKey == null && cli == null)
-            {
-                message = "No LLM available: set an Anthropic API key in Settings or install the Claude Code CLI.";
-                return false;
-            }
 
             lock (Sync)
             {
@@ -117,17 +113,20 @@ namespace VibeModel.Services.Standards
                     return true;
                 }
                 var hashes = string.Join(", ", docs.Select(d => d.Name + "@" + d.Hash));
-                Running[pack.Id] = Task.Run(() => Run(pack, source, used, hashes, apiKey, cli));
+                Running[pack.Id] = Task.Run(() => Run(pack, source, used, hashes, apiKey));
             }
             message = "Distillation started for " + pack.Id + " over " + used.Count + " chapter(s) (" + source.Length +
-                      " chars) via " + (apiKey != null ? "the Anthropic API" : "the Claude Code CLI") + ".";
+                      " chars) via " + (apiKey != null ? "the Anthropic API" : "the Claude Code CLI (if installed)") + ".";
             return true;
         }
 
-        private static void Run(StandardsPack pack, string source, List<string> used, string hashes, string apiKey, string cli)
+        private static void Run(StandardsPack pack, string source, List<string> used, string hashes, string apiKey)
         {
             try
             {
+                var cli = apiKey == null ? ClaudeCodeBackend.LocateCli(out _) : null;
+                if (apiKey == null && cli == null)
+                    throw new Exception("no LLM available — set an Anthropic API key in Settings or install the Claude Code CLI");
                 var prompt = Instruction + "\n\n=== MANUAL CHAPTERS ===\n\n" + source;
                 var text = apiKey != null ? CallApi(apiKey, prompt) : CallCli(cli, prompt);
                 text = (text ?? "").Trim();

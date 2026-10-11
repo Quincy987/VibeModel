@@ -76,7 +76,12 @@ namespace VibeModel.Services.Standards
         /// <summary>The pack in force for this document, or null (no match / disabled).</summary>
         public static StandardsPack GetActivePack(Document doc)
         {
-            try { return Evaluate(doc, false).Active; }
+            try
+            {
+                // Zero cost for the (common) setup without any pack: no fact collection at all.
+                if (!SettingsManager.GetStandardsEnabled() || StandardsPackRegistry.GetPacks().Count == 0) return null;
+                return Evaluate(doc, false).Active;
+            }
             catch (Exception ex)
             {
                 Logger.Warn("Standards evaluation failed: " + ex.Message);

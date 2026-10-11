@@ -67,7 +67,9 @@ namespace VibeModel.UI
         {
             Title = "VibeModel Settings";
             Width = 500;
-            Height = 700;
+            // Tall enough for the office-standards section, never taller than the screen (the
+            // content scrolls instead).
+            Height = Math.Min(700, SystemParameters.WorkArea.Height - 40);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode = ResizeMode.NoResize;
             Background = BgDark;
@@ -126,7 +128,11 @@ namespace VibeModel.UI
             buttonPanel.Children.Add(_saveButton);
             mainPanel.Children.Add(buttonPanel);
 
-            Content = mainPanel;
+            Content = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = mainPanel
+            };
             UpdateTabVisuals();
         }
 

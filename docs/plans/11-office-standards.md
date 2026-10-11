@@ -118,7 +118,8 @@ background index run.
   coordinates (0,0,0), not its distance from the internal origin — acquiring coordinates moves it
   far away on every correctly georeferenced project.
 - `coords`, `library <terms>` / `library --rebuild`, `loadfamily "<path>"`,
-  `linkcad "<path>" [--first] [--origin] [--no-pin]`.
+  `linkcad "<path>" [--first] [--origin] [--no-pin] [--force]` (a DGN is refused until a base
+  map is linked and shared coordinates exist).
 - Changed: `wall`, `floor`, `place`, `placeid`, `room` (`--phase`, default phase, visibility
   warning), `view` (office template/phase/filter/browser parameters, `--template`,
   `--no-template`, `--name`; falls back to a structural plan type when no floor-plan type exists),

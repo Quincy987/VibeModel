@@ -29,6 +29,9 @@ namespace VibeModel.Services.Standards
         public int NotPhased { get; private set; }
         private readonly List<string> _failures = new List<string>();
 
+        /// <summary>"&lt;id&gt;: &lt;Revit message&gt;" per element whose phases could not be set.</summary>
+        public IReadOnlyList<string> Failures => _failures;
+
         public bool IsActive => Mapping != null && Created != null;
 
         /// <summary>Legacy (string) command error form: "ERROR: msg" + "Hint: ..." line.</summary>
@@ -43,17 +46,22 @@ namespace VibeModel.Services.Standards
             if (note != null) sb.AppendLine(note);
         }
 
-        /// <summary>Set Phase Created/Demolished. Call inside the command's open transaction.</summary>
+        /// <summary>
+        /// Set Phase Created/Demolished. Call inside the command's open transaction. On failure the
+        /// element keeps the phases it had (never half-changed) and the failure is reported.
+        /// </summary>
         public void Apply(Element e)
         {
             if (!IsActive || e == null) return;
+            bool phased;
+            try { phased = e.HasPhases() && e.ArePhasesModifiable(); }
+            catch { phased = false; }
+            if (!phased) { NotPhased++; return; }
+
+            var oldCreated = e.CreatedPhaseId;
+            var oldDemolished = e.DemolishedPhaseId;
             try
             {
-                bool phased;
-                try { phased = e.HasPhases() && e.ArePhasesModifiable(); }
-                catch { phased = false; }
-                if (!phased) { NotPhased++; return; }
-
                 // Clear demolished first so a later created phase never conflicts with it.
                 e.DemolishedPhaseId = ElementId.InvalidElementId;
                 e.CreatedPhaseId = Created.Id;
@@ -62,6 +70,13 @@ namespace VibeModel.Services.Standards
             }
             catch (Exception ex)
             {
+                try
+                {
+                    e.DemolishedPhaseId = ElementId.InvalidElementId;
+                    e.CreatedPhaseId = oldCreated;
+                    e.DemolishedPhaseId = oldDemolished;
+                }
+                catch { /* best effort: the original pair was valid, restoring it should not fail */ }
                 _failures.Add(e.Id.IntegerValue + ": " + ex.Message);
             }
         }
@@ -76,6 +91,9 @@ namespace VibeModel.Services.Standards
                 return SkipReason != null ? "phase: default not applied — " + SkipReason : null;
             if (Applied == 0 && _failures.Count == 0)
                 return Explicit && NotPhased > 0 ? "phase: not applicable (this element type has no phases)" : null;
+            if (Applied == 0)
+                return "phase: could not set '" + Created.Name + "' — " + string.Join(", ", _failures.Take(3)) +
+                       " (the element keeps its previous phases; use 'phase <id> <kind>' to retry)";
 
             var line = "phase: " + Created.Name +
                        (Demolished != null ? " → demolished in " + Demolished.Name : "") +
@@ -84,7 +102,7 @@ namespace VibeModel.Services.Standards
                            : " (office default '" + Mapping.Key + "'; override with --phase " +
                              PhaseArgs.KeyList(Pack.PhaseTable.Keys.Where(k => !string.Equals(k, Mapping.Key, StringComparison.OrdinalIgnoreCase))) + ")");
             if (_failures.Count > 0)
-                line += "; FAILED on " + string.Join(", ", _failures.Take(3));
+                line += "; not set on " + string.Join(", ", _failures.Take(3));
 
             var hidden = VisibilityWarning(doc, activeView);
             if (hidden != null) line += Environment.NewLine + hidden;
@@ -133,14 +151,14 @@ namespace VibeModel.Services.Standards
         {
             var pa = PhaseArgs.Parse(args);
             var req = new PhaseRequest { Remaining = pa.Remaining, Explicit = pa.Explicit };
+            var pack = StandardsContext.GetActivePack(doc);
             if (pa.Error != null)
             {
                 req.Error = pa.Error;
-                req.Hint = "Use --phase existing|new|temp|demolish|future.";
+                req.Hint = "Use --phase " + PhaseArgs.KeyList(pack?.PhaseTable?.Keys ?? new[] { "<kind>" }) + ".";
                 return req;
             }
 
-            var pack = StandardsContext.GetActivePack(doc);
             if (pack?.PhaseTable == null)
             {
                 if (pa.Explicit)
