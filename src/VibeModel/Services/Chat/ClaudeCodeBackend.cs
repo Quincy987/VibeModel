@@ -85,7 +85,8 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        private void DetectClaude()
+        /// <summary>Where the Claude Code CLI may live: the bare name (PATH) plus the common install locations.</summary>
+        private static List<string> CliCandidates()
         {
             var candidates = new List<string>();
 
@@ -101,8 +102,17 @@ namespace VibeModel.Services.Chat
             candidates.Add(Path.Combine(appData, "npm", "claude"));
             candidates.Add(Path.Combine(localAppData, "Programs", "claude", "claude.exe"));
             candidates.Add(Path.Combine(userProfile, ".claude", "local", "claude.exe"));
+            return candidates;
+        }
 
-            foreach (var candidate in candidates)
+        /// <summary>
+        /// The first candidate that answers `--version`, or null. Shared with the office-standards
+        /// distiller, which runs one-shot CLI calls.
+        /// </summary>
+        internal static string LocateCli(out string version)
+        {
+            version = null;
+            foreach (var candidate in CliCandidates())
             {
                 // Skip file-path candidates that don't exist on disk
                 if (candidate != "claude" && !File.Exists(candidate))
@@ -122,15 +132,12 @@ namespace VibeModel.Services.Chat
 
                     using (var proc = Process.Start(psi))
                     {
-                        var version = proc.StandardOutput.ReadToEnd().Trim();
+                        var output = proc.StandardOutput.ReadToEnd().Trim();
                         proc.WaitForExit(DetectTimeoutMs);
                         if (proc.ExitCode == 0)
                         {
-                            _claudePath = candidate;
-                            _isAvailable = true;
-                            _statusMessage = "Claude Code " + version;
-                            Logger.Info("Claude Code found at: " + candidate + " (" + version + ")");
-                            return;
+                            version = output;
+                            return candidate;
                         }
                     }
                 }
@@ -138,6 +145,20 @@ namespace VibeModel.Services.Chat
                 {
                     // Not found at this location — try next
                 }
+            }
+            return null;
+        }
+
+        private void DetectClaude()
+        {
+            var path = LocateCli(out var version);
+            if (path != null)
+            {
+                _claudePath = path;
+                _isAvailable = true;
+                _statusMessage = "Claude Code " + version;
+                Logger.Info("Claude Code found at: " + path + " (" + version + ")");
+                return;
             }
 
             _isAvailable = false;
@@ -351,6 +372,11 @@ namespace VibeModel.Services.Chat
                 appendPrompt.AppendLine("you can help with. If the user has elements selected, comment on them.");
                 appendPrompt.Append("Keep suggestions relevant to what's in the model. Use plain language.");
             }
+
+            // Office standards (plan 11): live template facts + the active pack's core rules go
+            // into the per-turn system prompt — not into the prompt FILE, which the model reads
+            // as well (it would carry them twice) and which must not go stale between turns.
+            AppendOfficeContext(appendPrompt, Standards.StandardsPrompt.Combined);
 
             args.Append(" --append-system-prompt ");
             args.Append(EscapeArg(appendPrompt.ToString()));

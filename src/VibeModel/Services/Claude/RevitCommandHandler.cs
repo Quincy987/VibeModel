@@ -7,6 +7,7 @@ using System.Web.Script.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude
 {
@@ -200,7 +201,20 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private string ExecuteSingle(UIApplication app, CommandRequest request)
         {
-            var cr = _registry.ExecuteCore(request.Command, request.Args, app);
+            // Record what a modifying command adds so the office rules can check exactly that.
+            bool modifying = _registry.IsModification(request.Command);
+            List<ElementId> created = null;
+            CommandResult cr;
+            if (modifying) CreatedElementsRecorder.Arm();
+            try
+            {
+                cr = _registry.ExecuteCore(request.Command, request.Args, app);
+            }
+            finally
+            {
+                if (modifying) created = CreatedElementsRecorder.Disarm();
+            }
+            var findings = cr.Success && created != null ? PostCommandCheck.Run(app, created) : null;
             bool json = request.Format == ResponseFormat.Json;
 
             // Take the stamp only when it will actually be delivered — taking it resets the
@@ -209,16 +223,38 @@ namespace VibeModel.Services.Claude
             if (!StampExcluded.Contains(request.Command) && (json || cr.Success))
                 stamp = TryTakeStamp(app);
 
+            var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
+
             if (json)
             {
                 var obj = cr.ToJsonObject();
-                if (stamp != null && obj is Dictionary<string, object> dict)
-                    dict["meta"] = stamp.ToMeta();
+                if (obj is Dictionary<string, object> dict)
+                {
+                    if (stamp != null) dict["meta"] = stamp.ToMeta();
+                    if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
+                }
                 return _json.Serialize(obj);
             }
 
             var text = cr.RenderText();
+            if (checkLine != null) text = AppendLine(text, checkLine);
             return stamp != null ? stamp.AppendToText(text) : text;
+        }
+
+        private static string AppendLine(string text, string line)
+        {
+            if (string.IsNullOrEmpty(text)) return line + "\n";
+            return (text.EndsWith("\n", StringComparison.Ordinal) ? text : text + "\n") + line + "\n";
+        }
+
+        // Additive JSON: only the problems (OK rules are noise after a single command).
+        private static Dictionary<string, object> CheckEnvelope(string summary, List<CheckFinding> findings)
+        {
+            return new Dictionary<string, object>
+            {
+                { "summary", summary },
+                { "findings", CheckReport.ToJson(findings.FindAll(f => f.IsProblem)) }
+            };
         }
 
         /// <summary>
@@ -283,9 +319,11 @@ namespace VibeModel.Services.Claude
             var entries = new List<object>();      // json form (per-command results)
             bool anyModified = false, anyError = false, rolledBack = false;
 
+            List<ElementId> created;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
                 tg.Start();
+                CreatedElementsRecorder.Arm();
                 try
                 {
                     foreach (var item in req.Batch)
@@ -330,7 +368,16 @@ namespace VibeModel.Services.Claude
                     if (tg.HasStarted()) tg.RollBack(); // safety: never leave the group open
                     throw;
                 }
+                finally
+                {
+                    created = CreatedElementsRecorder.Disarm();
+                }
             }
+
+            // Office rules over everything the batch created (nothing when rolled back).
+            List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, created) : null;
+            var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
+            if (checkLine != null) sb.AppendLine(checkLine);
 
             // One stamp for the whole batch, never per sub-command.
             var stamp = TryTakeStamp(app);
@@ -346,6 +393,8 @@ namespace VibeModel.Services.Claude
                 };
                 if (stamp != null)
                     envelope["meta"] = stamp.ToMeta();
+                if (checkLine != null)
+                    envelope["check"] = CheckEnvelope(checkLine, findings);
                 return _json.Serialize(envelope);
             }
 

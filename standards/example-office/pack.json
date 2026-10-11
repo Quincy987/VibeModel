@@ -1,0 +1,168 @@
+{
+  "id": "example-office",
+  "name": "Example Office - Revit office standard (sample pack)",
+  "version": "2026-10-11.1",
+  "owner": "Revit application manager (a role, not a person)",
+  "sources": [
+    {
+      "title": "Revit modelling manual v1.0",
+      "date": "2026-01-01",
+      "path": "\\\\server\\revit\\standards\\Revit modelling manual v1.0.pdf"
+    },
+    {
+      "title": "Model delivery checklist v1.0",
+      "date": "2026-01-01",
+      "path": "\\\\server\\revit\\standards\\Model delivery checklist v1.0.pdf"
+    }
+  ],
+  "template": {
+    "file": "EX_Office_2023_template.rte",
+    "path": "\\\\server\\revit\\admin\\templates\\EX_Office_2023_template.rte"
+  },
+  "fingerprint": {
+    "phases": [
+      "1. Existing",
+      "2. New construction",
+      "3. Final"
+    ],
+    "scopeBoxes": [
+      "Project_extent_WCS",
+      "Project_extent_UCS"
+    ],
+    "views": [
+      "_WCS_DATUM",
+      "EX_Phasing_explained"
+    ],
+    "viewTemplates": [
+      "EX_W_C_Plan",
+      "EX_W_C_3D",
+      "EX_P_C_3D"
+    ],
+    "sharedParameters": [
+      "EX_ObjectCode",
+      "EX_ObjectDescription",
+      "EX_BrowserFolder"
+    ],
+    "aliases": {
+      "Project_extent_WCS": [
+        "Project_Extent_WCS"
+      ]
+    }
+  },
+  "paths": {
+    "library": "\\\\server\\revit\\library\\",
+    "templateFamilies": "\\\\server\\revit\\admin\\families\\",
+    "projectFamilyFolder": "...\\Model\\Project families\\"
+  },
+  "core": "core.md",
+  "coreMaxBytes": 4096,
+  "additionsFile": "additions.md",
+  "topics": {
+    "phasing": "topics/phasing.md",
+    "coordinates": "topics/coordinates.md",
+    "families": "topics/families.md",
+    "views": "topics/views.md",
+    "sheets": "topics/sheets.md",
+    "parameters": "topics/parameters.md",
+    "naming": "topics/naming.md",
+    "export": "topics/export.md",
+    "checklist": "checklist.md",
+    "inventory": "template-inventory.md"
+  },
+  "phaseTable": {
+    "default": "new",
+    "entries": {
+      "existing": {
+        "created": "1. Existing",
+        "demolished": null,
+        "label": "existing, stays"
+      },
+      "new": {
+        "created": "2. New construction",
+        "demolished": null,
+        "label": "new, built in this project"
+      },
+      "temp": {
+        "created": "2. New construction",
+        "demolished": "2. New construction",
+        "label": "temporary works (cofferdam, temporary bridge)"
+      },
+      "demolish": {
+        "created": "1. Existing",
+        "demolished": "2. New construction",
+        "label": "existing, demolished in this project"
+      },
+      "future": {
+        "created": "3. Final",
+        "demolished": null,
+        "label": "built later by a related project"
+      }
+    },
+    "aliases": {
+      "temporary": "temp",
+      "demolished": "demolish"
+    }
+  },
+  "viewDefaults": {
+    "plan": {
+      "template": "EX_W_C_Plan",
+      "phase": "new",
+      "phaseFilter": "2.3 New projected on existing incl. temporary",
+      "parameters": {
+        "EX_BrowserFolder": "01_Work views",
+        "EX_BrowserSubfolder": "02_Plans"
+      }
+    },
+    "threeD": {
+      "template": "EX_W_C_3D",
+      "phase": "new",
+      "phaseFilter": "2.3 New projected on existing incl. temporary",
+      "parameters": {
+        "EX_BrowserFolder": "01_Work views",
+        "EX_BrowserSubfolder": "01_3D"
+      }
+    }
+  },
+  "familyPrefixes": [
+    "EX_",
+    "NLRS_",
+    "GM_"
+  ],
+  "libraryPaths": [
+    "\\\\server\\revit\\library\\",
+    "\\\\server\\revit\\admin\\families\\"
+  ],
+  "checks": "checks.json",
+  "sheets": {
+    "defaultTitleblock": "EX_TITLEBLOCK : A1",
+    "stampParameters": [
+      "EX_META_*"
+    ]
+  },
+  "coordinates": {
+    "roundToMm": 1000
+  },
+  "linkCad": {
+    "pinAfterLink": true,
+    "correctOffAxisLines": false,
+    "orientToView": false,
+    "refuseFirstDgnReason": "Manual section 3: never start a project from a DGN - its placement on coordinates goes wrong. Link the base map (DWG) first and acquire coordinates."
+  },
+  "standardsFolder": "\\\\server\\revit\\standards\\",
+  "distill": {
+    "sources": [
+      {
+        "document": "modelling manual",
+        "chapters": [
+          "4.2",
+          "2.1",
+          "3.1",
+          "1"
+        ]
+      },
+      {
+        "document": "checklist"
+      }
+    ]
+  }
+}

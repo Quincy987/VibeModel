@@ -130,6 +130,53 @@ namespace VibeModel.Infrastructure
             Save(settings);
         }
 
+        // --- Office standards (plan 11) --------------------------------------------------
+
+        /// <summary>
+        /// Folder holding a standards pack (pack.json) or several pack folders. Empty = only the
+        /// default locations (%LOCALAPPDATA%\VibeModel\standards, add-in folder) are searched.
+        /// Point it at the office share to make every modeller use the same pack.
+        /// </summary>
+        public static string GetStandardsPackPath() => GetString("StandardsPackPath", "");
+
+        public static void SetStandardsPackPath(string path) => SetValue("StandardsPackPath", path?.Trim() ?? "");
+
+        /// <summary>Folder with the office's source documents (leidraad PDFs, checklists, .txt).</summary>
+        public static string GetStandardsFolder() => GetString("StandardsFolder", "");
+
+        public static void SetStandardsFolder(string path) => SetValue("StandardsFolder", path?.Trim() ?? "");
+
+        /// <summary>Master switch: when off no pack is ever active (no rules, no defaults, no checks).</summary>
+        public static bool GetStandardsEnabled()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("StandardsEnabled", out val))
+            {
+                if (val is bool b) return b;
+                if (val is string s) return !s.Equals("false", StringComparison.OrdinalIgnoreCase);
+            }
+            return true;
+        }
+
+        public static void SetStandardsEnabled(bool enabled) => SetValue("StandardsEnabled", enabled);
+
+        private static string GetString(string key, string fallback)
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue(key, out val) && val is string s)
+                return s;
+            return fallback;
+        }
+
+        private static void SetValue(string key, object value)
+        {
+            var settings = Load();
+            settings[key] = value;
+            Save(settings);
+        }
+
         public static Dictionary<string, object> Load()
         {
             lock (Lock)

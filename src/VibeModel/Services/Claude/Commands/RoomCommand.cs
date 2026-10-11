@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using VibeModel.Services.Helpers;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -26,6 +27,10 @@ namespace VibeModel.Services.Claude.Commands
 
             if (doc.IsFamilyDocument)
                 return CommandResult.Error("BAD_ARGS", "Rooms can only be created in a project document.", null);
+
+            var phase = PhaseDefaults.Prepare(doc, args);
+            if (phase.Error != null) return phase.ErrorResult;
+            args = phase.Remaining;
 
             var parts = (args ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2)
@@ -53,6 +58,7 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     if (!string.IsNullOrEmpty(name)) room.Name = name;
                     if (!string.IsNullOrEmpty(number)) room.Number = number;
+                    phase.Apply(room);
                 }
             });
             if (error != null)
@@ -76,6 +82,7 @@ namespace VibeModel.Services.Claude.Commands
                 sb.AppendLine("Area: 0 — unbounded (the point is not inside an enclosed region).");
             else
                 sb.AppendLine("Area: " + Math.Round(areaM2, 2) + " m²");
+            phase.AppendNote(sb, doc, uiDoc.ActiveView);
 
             var data = new Dictionary<string, object>
             {
@@ -86,6 +93,7 @@ namespace VibeModel.Services.Claude.Commands
                 { "areaM2", Math.Round(areaM2, 3) },
                 { "unbounded", unbounded }
             };
+            if (phase.ToJson() != null) data["phase"] = phase.ToJson();
             return CommandResult.Ok(sb.ToString(), data);
         }
     }

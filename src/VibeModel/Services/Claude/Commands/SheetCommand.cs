@@ -31,8 +31,18 @@ namespace VibeModel.Services.Claude.Commands
             }
             string tbName = toks.Count > 0 ? string.Join(" ", toks) : null;
 
+            // Office standard: no title block given → the pack's default title block.
+            bool tbFromOffice = false;
+            var pack = Standards.StandardsContext.GetActivePack(doc);
+            if (string.IsNullOrEmpty(tbName) && !string.IsNullOrEmpty(pack?.Sheets?.DefaultTitleblock))
+            {
+                tbName = pack.Sheets.DefaultTitleblock;
+                tbFromOffice = true;
+            }
+
             // Resolve title block (optional).
             ElementId tbId = ElementId.InvalidElementId;
+            string tbLabel = null;
             if (!string.IsNullOrEmpty(tbName))
             {
                 var tb = new FilteredElementCollector(doc)
@@ -42,11 +52,19 @@ namespace VibeModel.Services.Claude.Commands
                     .FirstOrDefault(fs => fs.Name.Equals(tbName, StringComparison.OrdinalIgnoreCase) ||
                                           (fs.Family.Name + " : " + fs.Name).Equals(tbName, StringComparison.OrdinalIgnoreCase) ||
                                           fs.Family.Name.Equals(tbName, StringComparison.OrdinalIgnoreCase));
-                if (tb == null)
+                if (tb == null && !tbFromOffice)
                     return CommandResult.Error("TYPE_NOT_LOADED",
                         "No title block named '" + tbName + "'.",
                         "Run 'familytypes title' to list loaded title blocks, or omit the name for a blank sheet.");
-                tbId = tb.Id;
+                if (tb != null)
+                {
+                    tbId = tb.Id;
+                    tbLabel = tb.FamilyName + " : " + tb.Name + (tbFromOffice ? " (office default)" : "");
+                }
+                else
+                {
+                    tbLabel = "none — office default '" + tbName + "' is not loaded";
+                }
             }
 
             // Validate the view exists before opening the transaction.
@@ -90,6 +108,11 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Name: " + sheet.Name);
             if (placedView != null)
                 sb.AppendLine("Placed view: " + placedView.IntegerValue);
+            if (pack != null && tbLabel != null)
+                sb.AppendLine("Title block: " + tbLabel);
+            if (pack != null && pack.Sheets.StampParameters.Count > 0)
+                sb.AppendLine("Stamp fields (" + string.Join(", ", pack.Sheets.StampParameters) + "): set with 'set " +
+                              sheet.Id.IntegerValue + " <parameter> <value>'");
 
             var data = new Dictionary<string, object>
             {

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Out-of-process PDF text extractor for the office-standards document index (plan 11 §4.0).
+    Runs as its own process so PdfPig and its dependencies (System.Memory etc.) never load into
+    Revit's AppDomain, where they could clash with the versions Revit ships.
+    Usage: VibeModel.PdfText.exe <input.pdf> <output.json>  →  {"pages": ["page 1 text", ...]}
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>VibeModel.PdfText</AssemblyName>
+    <RootNamespace>VibeModel.PdfText</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PdfPig" Version="0.1.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+</Project>

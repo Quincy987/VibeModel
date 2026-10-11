@@ -68,6 +68,39 @@ namespace VibeModel.Tests
             Assert.DoesNotContain(RevitHttpServer.TokenHeader, text);
         }
 
+        // Office standards (plan 11): no office context → the prompt is exactly what it was;
+        // with one → the TEMPLATE/STANDARDS blocks follow after one blank line.
+        [Theory]
+        [InlineData("previous line\r\n")]
+        [InlineData("previous text without newline")]
+        public void OfficeContext_AppendedOnlyWhenPresent_AfterABlankLine(string before)
+        {
+            var sb = new System.Text.StringBuilder(before);
+            ChatBackendBase.AppendOfficeContext(sb, null);
+            ChatBackendBase.AppendOfficeContext(sb, "   ");
+            Assert.Equal(before, sb.ToString());
+
+            ChatBackendBase.AppendOfficeContext(sb, "TEMPLATE: facts\nSTANDARDS: office standard 'x' is ACTIVE\n\n");
+            var text = sb.ToString();
+            Assert.Contains("\r\n\r\nTEMPLATE: facts", text);
+            Assert.EndsWith("STANDARDS: office standard 'x' is ACTIVE" + Environment.NewLine, text);
+        }
+
+        // The on-demand prompt FILE never carries the office blocks (they ride in the per-turn
+        // system prompt; the model reads the file too and would get them twice).
+        [Fact]
+        public void PromptText_HasNoOfficeContext()
+        {
+            VibeModel.Services.Standards.StandardsPrompt.Publish("TEMPLATE: x", "STANDARDS: y");
+            try
+            {
+                var text = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null);
+                Assert.DoesNotContain("STANDARDS:", text);
+                Assert.DoesNotContain("TEMPLATE:", text);
+            }
+            finally { VibeModel.Services.Standards.StandardsPrompt.Publish(null, null); }
+        }
+
         [Fact]
         public void PortDirective_NamesTheLivePortAndOverridesHistory()
         {

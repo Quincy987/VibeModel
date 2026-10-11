@@ -120,6 +120,22 @@ foreach ($version in $revitVersions) {
             Write-Host "    WARNING: $file not found, skipping" -ForegroundColor Yellow
         }
     }
+
+    # Optional: PDF text helper for the office-standards document index (own subfolder so its
+    # dependencies never load into Revit). Without it only .txt sources can be indexed.
+    $pdfTextSource = @(
+        (Join-Path $scriptDir "VibeModel.PdfText"),
+        (Join-Path $scriptDir "src\VibeModel.PdfText\bin\Release")
+    ) | Where-Object { Test-Path (Join-Path $_ "VibeModel.PdfText.exe") } | Select-Object -First 1
+    if ($pdfTextSource) {
+        $pdfTextTarget = Join-Path $targetDir "VibeModel.PdfText"
+        New-Item -ItemType Directory -Path $pdfTextTarget -Force | Out-Null
+        Get-ChildItem $pdfTextSource -File | Where-Object { $_.Extension -in ".exe", ".dll", ".config" } | ForEach-Object {
+            Copy-Item $_.FullName $pdfTextTarget -Force
+            Unblock-File -Path (Join-Path $pdfTextTarget $_.Name) -ErrorAction SilentlyContinue
+        }
+        Write-Host "    Copied VibeModel.PdfText helper" -ForegroundColor Gray
+    }
 }
 
 Write-Host ""

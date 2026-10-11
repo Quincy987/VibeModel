@@ -211,7 +211,23 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Always check revit_info first to understand the current document.");
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
+            AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Office standards (plan 11): the live TEMPLATE facts of the open document and, when an
+        /// office pack matches it, the STANDARDS core rules. Empty when neither applies, so a
+        /// project without office standards gets the exact prompt it got before.
+        /// </summary>
+        internal static void AppendOfficeContext(StringBuilder sb, string officeContext)
+        {
+            if (string.IsNullOrWhiteSpace(officeContext)) return;
+            // Always separated from what precedes it by one blank line.
+            if (sb.Length > 0 && sb[sb.Length - 1] != '\n') sb.AppendLine();
+            sb.AppendLine();
+            sb.Append(officeContext.TrimEnd());
+            sb.AppendLine();
         }
 
         // Backend-specific behavior bullets that follow the common ones (order-preserving).

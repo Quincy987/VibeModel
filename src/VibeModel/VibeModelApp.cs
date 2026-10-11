@@ -86,6 +86,14 @@ namespace VibeModel
                 // "the user changed the model since your last command" (ModelChangeTracker).
                 application.ControlledApplication.DocumentChanged += OnDocumentChanged;
 
+                // Office standards (plan 11): keep the per-turn TEMPLATE/STANDARDS prompt
+                // blocks current. They are rendered on Idling (main thread, only when marked
+                // dirty) because the chat backends build prompts on worker threads.
+                application.Idling += OnStandardsIdling;
+                application.ControlledApplication.DocumentOpened += OnDocumentOpenedOrClosed;
+                application.ControlledApplication.DocumentClosed += OnDocumentOpenedOrClosed;
+                StartStandardsBackgroundWork();
+
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
             }
@@ -103,6 +111,9 @@ namespace VibeModel
                 application.DialogBoxShowing -= OnDialogBoxShowing;
                 application.ViewActivated -= OnViewActivated;
                 application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+                application.Idling -= OnStandardsIdling;
+                application.ControlledApplication.DocumentOpened -= OnDocumentOpenedOrClosed;
+                application.ControlledApplication.DocumentClosed -= OnDocumentOpenedOrClosed;
 
                 if (_usingFallback)
                 {
@@ -227,11 +238,62 @@ namespace VibeModel
             try
             {
                 ActiveDocumentTracker.Update(e.Document != null ? e.Document.Title : "");
+                // The TEMPLATE prompt block names the active view and its phase.
+                Services.Standards.StandardsContext.MarkPromptDirty();
             }
             catch
             {
                 // Title tracking is best-effort; never disturb view activation.
             }
+        }
+
+        private void OnDocumentOpenedOrClosed(object sender, EventArgs e)
+        {
+            Services.Standards.StandardsContext.MarkPromptDirty();
+        }
+
+        private void OnStandardsIdling(object sender, IdlingEventArgs e)
+        {
+            try
+            {
+                if (sender is UIApplication uiApp)
+                    Services.Standards.StandardsContext.RefreshPromptIfDirty(uiApp);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Standards idling refresh failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Off the main thread: mirror a network pack folder, discover packs, and refresh each
+        /// pack's library index and source document index when stale. Network shares can be slow or absent — nothing here may
+        /// block startup, and every failure is only logged.
+        /// </summary>
+        private static void StartStandardsBackgroundWork()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    if (!SettingsManager.GetStandardsEnabled()) return;
+                    // A pack folder on a network share is mirrored locally first; the Revit
+                    // thread only ever reads the mirror.
+                    var share = SettingsManager.GetStandardsPackPath()?.Trim();
+                    if (Services.Standards.PathProbe.IsNetworkPath(share))
+                        Services.Standards.StandardsPackRegistry.SyncShareNow(share);
+                    foreach (var pack in Services.Standards.StandardsPackRegistry.GetPacks())
+                    {
+                        Services.Standards.LibraryIndexService.Get(pack);
+                        if (!string.IsNullOrWhiteSpace(Services.Standards.StandardsPackRegistry.ResolveStandardsFolder(pack)))
+                            Services.Standards.DocumentIndexService.StartIndex(pack);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn("Standards background work failed: " + ex.Message);
+                }
+            });
         }
 
         private void OnDialogBoxShowing(object sender, DialogBoxShowingEventArgs e)
@@ -262,6 +324,13 @@ namespace VibeModel
                 var doc = e.GetDocument();
                 if (doc == null) return;
                 var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+
+                // Office standards: the post-command check looks at what a command added, and
+                // the prompt snapshot is re-rendered on the next idle.
+                Services.Standards.StandardsContext.MarkPromptDirty();
+                if (Services.Standards.CreatedElementsRecorder.IsArmed &&
+                    e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted)
+                    Services.Standards.CreatedElementsRecorder.Record(e.GetAddedElementIds());
 
                 switch (e.Operation)
                 {

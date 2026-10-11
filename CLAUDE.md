@@ -192,6 +192,62 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
+### Office Standards (template / standards / phase / check / coords / library / loadfamily / linkcad)
+An office **standards pack** (folder with `pack.json`, `core.md`, topic sheets, `checks.json` —
+see `standards/README.md`; sample: `standards/example-office/`) teaches VibeModel how an office
+models. A pack is active for a document only when its **fingerprint** matches what the document
+actually contains (its phases, a scope box, a bound shared parameter). Without a matching pack
+every command behaves exactly as before.
+```bash
+curl -s http://localhost:18884/template                         # Live setup inventory + which pack matches (fingerprint)
+curl -s http://localhost:18884/standards                        # Active pack, topics, where packs were searched
+curl -s "http://localhost:18884/standards?args=phasing"         # One topic sheet (verbatim)
+curl -s "http://localhost:18884/standards?args=core"            # The always-on rules block
+curl -s "http://localhost:18884/standards?args=--refresh"       # Re-read packs after editing them
+curl -s "http://localhost:18884/standards?args=--prompt"        # Exactly what the chat receives this turn
+curl -s "http://localhost:18884/standards?args=--index"         # Index the office source documents (PDF/txt) in the background
+curl -s "http://localhost:18884/standards?args=docs"            # Indexed documents + chapters
+curl -s "http://localhost:18884/standards?args=leidraad 4.2"    # One chapter of a source document (+ its subchapters)
+curl -s "http://localhost:18884/standards?args=distill"         # Optional: LLM-distil the manual into core.generated.md
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000 --phase temp"   # Creating commands take --phase
+curl -s "http://localhost:18884/phase?args=12345 12346 demolish"          # Re-phase existing elements (office table)
+curl -s http://localhost:18884/check                            # Audit vs the pack's checks.json (OK/WARN/FAIL + Fix + Verdict)
+curl -s "http://localhost:18884/check?args=selected"            # Element-level rules on the selection only
+curl -s "http://localhost:18884/check?args=--stats"             # Which rules fire most (feedback for the next pack version)
+curl -s http://localhost:18884/coords                           # Survey point / base point / shared coordinates / pins
+curl -s "http://localhost:18884/library?args=damwand"           # Search the office family library (cached index)
+curl -s "http://localhost:18884/loadfamily?args=\"X:\lib\Pile.rfa\""      # Load a library hit
+curl -s "http://localhost:18884/linkcad?args=\"X:\base\map.dwg\" --first" # Link (never import) with the office link settings, pinned
+curl -s "http://localhost:18884/view?args=plan Level 2 --name Werkview --activate"  # Office work view, named, made the active view
+curl -s "http://localhost:18884/activate?args=Werkview"               # Activate a view by name or id (also works after exec)
+```
+- **Default phase.** With an active pack, `wall`, `floor`, `place`, `placeid` and `room` set
+  Phase Created/Demolished from the pack's `phaseTable` (default kind, usually `new`) and add a
+  `phase: …` line — including a warning when the active view's phase cannot show the element.
+  `--phase existing|new|temp|demolish|future` (or a pack alias) overrides.
+- **Office views / sheets.** `view plan|3d` applies the pack's view template, phase, phase filter
+  and browser-folder parameters (`--template <name>` / `--no-template` override, `--name <viewName>`;
+  flag values run to the next `--` flag, so put flags after the level name; `--activate` opens the new
+  view — new work on the office phase is invisible in the template's existing-phase work views); `sheet` without
+  a title block uses the pack default. Every automatic choice is printed.
+- **Post-command check.** After any modifying command or batch, the element-level rules run on
+  exactly what it created; problems add one line: `-- check: 1 WARN (param-filled) → run 'check' for fixes`
+  (JSON: an additive `check` object).
+- **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
+  phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
+- **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
+  e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`.
+  A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
+  background (startup, `--refresh`, Settings → Save) and only the mirror is read.
+  Settings → *Office source documents folder* (`StandardsFolder`) is what `standards --index` reads.
+  Settings → *Apply office standards* (`StandardsEnabled`) switches everything off.
+- Network shares are never read on Revit's main thread without a deadline: the library and the
+  source documents are indexed in the background and cached under
+  `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack>\`; PDF text comes from a separate helper
+  process (`VibeModel.PdfText.exe`, deployed next to the add-in).
+- Real office packs contain internal paths — keep them out of this public repo (`standards/*` is
+  gitignored except the README and the example pack).
+
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:
 ```bash

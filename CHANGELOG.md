@@ -2,6 +2,57 @@
 
 ## [Unreleased]
 
+### Added — Plan 11: Office Standards
+- **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`
+  + on-demand topic sheets + `checks.json`. Packs are found via the new `StandardsPackPath`
+  setting (a network share is mirrored locally in the background and only the mirror is read
+  on Revit's thread), `%LOCALAPPDATA%\VibeModel\standards\`, or the add-in folder;
+  a pack is active for a document only when its fingerprint (phases, scope box, shared
+  parameter — measured names, aliases for alternative spellings) matches. No hardcoded office
+  names in code; the repo ships only a fictional `standards/example-office` sample.
+- **`template`** — live inventory of how the document was set up (phases + filters, view
+  templates grouped by prefix, scope boxes, coordinates and pins, CAD links vs imports, family
+  prefix classes, sheets, title blocks) and which pack matches.
+- **`standards`** — active pack overview and search diagnostics, `standards <topic>`, `core`,
+  `--refresh`, `--prompt` (exactly what the chat receives), `--pack <id>`; plus the office's own source documents: `--index` (PDF/txt split into numbered
+  chapters, cached by file hash, PDF text via an out-of-process helper), `docs`,
+  `standards <doc> <chapter>`, and an explicit `distill` that turns the manual's rule chapters
+  (pack `distill.sources`: documents + chapters, most important first) into `core.generated.md`
+  (used when the pack says `"core": "generated"`). Cached indexes are keyed on file content and
+  splitter version, so improved chapter detection re-splits them.
+- **Prompt injection.** Every chat turn (all three backends) gets a `TEMPLATE:` block (≤1 kB)
+  and, with an active pack, a `STANDARDS:` block with the core rules (Claude Code: in the per-turn
+  appended system prompt). Rendered on Idling on the Revit thread (at most every 3 s after
+  edits), read lock-free by the chat backends.
+- **Default phase on creation.** `wall`, `floor`, `place`, `placeid`, `room` take
+  `--phase existing|new|temp|demolish|future` and, with an active pack, default to the pack's
+  phase (new work → e.g. `2. New construction` instead of the active view's existing phase),
+  warning when the element will not show in the active view (rooms: Revit does not allow
+  re-phasing them; an explicit `--phase` reports "not applicable"). A phase Revit refuses leaves
+  the element's previous phases intact and is reported. New **`phase`** command re-phases
+  existing elements from the office table.
+- **Office defaults** for `view` (view template, phase, phase filter, browser-folder parameters;
+  `--template`/`--no-template`, plus `--name` and `--activate`) and `sheet` (default title block,
+  stamp-field hint). New **`activate <viewId|name>`** opens a view — the AI could not switch views
+  through `exec`, so new work on the office phase stayed invisible in the template's work views.
+- **`check`** — audit (OK/WARN/FAIL/SKIPPED per rule, Fix lines, Verdict) against the pack's
+  rules (13 rule kinds: pins, phases, phase filter digits, plot-view templates, family prefixes, required parameters, survey/base
+  point, file name, schedule phase, links vs imports), `check selected|<ids>`, `check --stats`.
+  After every modifying command/batch the element-level rules run on what was just created and
+  add one `-- check: …` line (JSON: additive `check` object). Hits are logged (rule id + count).
+- **`library` / `loadfamily`** — background-built, cached index of the office family library
+  (an offline share is retried at most every 5 min; `library --rebuild` forces it);
+  `place` suggests `loadfamily "<path>"` when a family is not loaded.
+- **`linkcad`** (link, never import; off-axis correction and orient-to-view off; shared
+  coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN until a base map
+  is linked and shared coordinates exist, `--force` overrides; `--dgnview <model view>`, default
+  `Default`; an unreadable file is an error, not a link with id -1) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
+- Optional office additions file (`additionsFile`) appended to the core, next to the pack or in
+  the source-documents folder (cached locally by the background index run).
+- Settings dialog: *Office standards* section (enable switch, pack folder, source-documents folder).
+- New helper `VibeModel.PdfText.exe` (PdfPig) for PDF text, built with the add-in and deployed to
+  its own `VibeModel.PdfText\` subfolder by `build.ps1` and `install.ps1`.
+
 ## v1.2.5 — Chat Pane Loopback Fix (2026-09-03)
 
 ### Fixed
