@@ -495,3 +495,20 @@ namespace VibeModel.Tests
         }
     }
 }
+
+namespace VibeModel.Tests
+{
+    public class CropFitSpreadTests
+    {
+        [Fact]
+        public void FitKeep_ScatteredContextDoesNotWidenTheQuay()
+        {
+            var boxes = new List<MmRect>();
+            for (int i = 0; i < 200; i++) boxes.Add(new MmRect(i * 1000, 0, i * 1000 + 300, 600));       // 200 m quay, dense
+            for (int i = 0; i < 30; i++) boxes.Add(new MmRect(-180000 + i * 13000, 120000, -179000 + i * 13000, 121000)); // 13% scattered far north
+            var keep = SheetLayout.FitKeep(boxes);
+            Assert.True(keep.All(i => i < 200), "scattered context should be dropped");
+            Assert.Equal(200, keep.Count);   // the evenly spread quay ends survive the trim
+        }
+    }
+}

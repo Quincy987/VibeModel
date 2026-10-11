@@ -64,7 +64,7 @@ namespace VibeModel.Services.Claude.Commands
                 var empty = new List<string>();
                 foreach (var n in names)
                 {
-                    var val = FormattingHelper.GetParameterValue(fields[n]);
+                    var val = fields[n].HasValue ? fields[n].AsString() : null;   // stamp fields are text; "(no value)" must count as empty
                     bool blank = StampPatterns.IsBlank(val);
                     if (blank) empty.Add(n); else sb.AppendLine("  " + n + ": " + val);
                     stamp.Add(new Dictionary<string, object> { { "name", n }, { "value", blank ? null : val } });

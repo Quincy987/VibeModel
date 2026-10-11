@@ -144,21 +144,38 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
-        /// The region a `crop --fit` should show: the union of the boxes whose centres lie in the
-        /// dense middle of the model (2nd–98th percentile of centres, ±10% of that span). One far-off
-        /// object (a stray family 150 m away) then cannot blow a quay-wall plan up to 400 m.
+        /// The elements a `crop --fit` should show: the largest cluster of boxes, where boxes within
+        /// <paramref name="gapMm"/> of each other belong together. Scattered context (trees, street
+        /// furniture, site objects tens to hundreds of metres out) then cannot blow a quay-wall plan
+        /// up: measured on PRG1002, a plain union was 395×219 m and a 2–98% percentile trim still
+        /// 300×219 m for a 185 m quay, because 15% of the elements are spread over 400 m.
         /// Fewer than 10 boxes: no trimming. Returns the indices kept.
         /// </summary>
-        public static List<int> FitKeep(IList<MmRect> boxes)
+        public static List<int> FitKeep(IList<MmRect> boxes, double gapMm = 5000)
         {
-            var all = Enumerable.Range(0, boxes.Count).ToList();
-            if (boxes.Count < 10) return all;
-            var xs = boxes.Select(b => b.Cx).OrderBy(v => v).ToList();
-            var ys = boxes.Select(b => b.Cy).OrderBy(v => v).ToList();
-            Func<List<double>, double, double> pct = (l, p) => l[(int)Math.Round(p * (l.Count - 1))];
-            double x0 = pct(xs, 0.02), x1 = pct(xs, 0.98), y0 = pct(ys, 0.02), y1 = pct(ys, 0.98);
-            double px = Math.Max(1000, (x1 - x0) * 0.1), py = Math.Max(1000, (y1 - y0) * 0.1);
-            return all.Where(i => boxes[i].Cx >= x0 - px && boxes[i].Cx <= x1 + px && boxes[i].Cy >= y0 - py && boxes[i].Cy <= y1 + py).ToList();
+            int n = boxes.Count;
+            if (n < 10) return Enumerable.Range(0, n).ToList();
+            var parent = Enumerable.Range(0, n).ToArray();
+            Func<int, int> find = null;
+            find = x => parent[x] == x ? x : (parent[x] = find(parent[x]));
+            // Sort by X0 so the inner loop can stop early (sweep): O(n log n + overlaps).
+            var order = Enumerable.Range(0, n).OrderBy(k => boxes[k].X0).ToList();
+            for (int a = 0; a < n; a++)
+            {
+                var ra = boxes[order[a]];
+                for (int b = a + 1; b < n; b++)
+                {
+                    var rb = boxes[order[b]];
+                    if (rb.X0 > ra.X1 + gapMm) break;
+                    if (rb.Y0 <= ra.Y1 + gapMm && ra.Y0 <= rb.Y1 + gapMm)
+                    {
+                        int pa = find(order[a]), pb = find(order[b]);
+                        if (pa != pb) parent[pa] = pb;
+                    }
+                }
+            }
+            var best = Enumerable.Range(0, n).GroupBy(k => find(k)).OrderByDescending(g => g.Count()).First();
+            return best.OrderBy(k => k).ToList();
         }
 
         /// <summary>Common paper names for a width × height in mm (either orientation), or null.</summary>
