@@ -7,10 +7,10 @@ For the werkvoorbereiders' most time-consuming job — putting an A0 together �
 build and check a sheet from the conversation.
 - **`section`** — a section view along a line (mm) or straight across a wall (`section <wallId>`),
   with depth, vertical range (auto from the model elements it cuts), name, scale and the office
-  pack's section template/phase. Reports which compass direction it looks and the in-view coordinate
-  frame the annotation commands use.
-- **`crop`** — crop a view to its model elements (`--fit`, DWG underlays / point clouds / links
-  ignored; `--elements` to choose), to a rectangle (`--box`), or `--off`; 3D views get a section
+  pack's section template/phase. Reports which compass direction it looks and the in-view x range the
+  annotation commands use (position along the view, stable when the view is cropped later).
+- **`crop`** — crop a view to its model elements (`--fit`: the largest cluster, so scattered context
+  far away is dropped; DWG underlays / point clouds / links ignored; `--elements` to choose), to a rectangle (`--box`), or `--off`; 3D views get a section
   box. Without it an uncropped plan over a BGT underlay is metres wide on paper and fits no cell.
 - **`viewport`** — put one view at a paper position (`--at x y`) or several in a grid (`--grid CxR`,
   optionally inside `--area`), with `--scale`, `--margin`, `--reserve` (stamp strip) and `--title off`.
@@ -27,7 +27,8 @@ build and check a sheet from the conversation.
 - **`sheetinfo`** — the sensor: paper size, title block, stamp fields (office pack list or the title
   block's own text parameters; patterns like `NL_META_*` and `X_1..5` expand, filled fields are listed
   and empty ones counted), viewports with paper outlines, text and schedules on the sheet, and overlap /
-  off-paper checks (a ≤ 30 mm overlap strip is INFO — on a finished IB A0 every harmless overlap was one).
+  off-paper checks (a ≤ 30 mm overlap strip is INFO, anything bigger WARN — the crop-margin overlaps on a
+  finished IB A0 were 10–27 mm strips).
 - **Extended:** `sheet --number --name --set "Param=Value"` (sheet or title-block field); `tag --leader
   --at x y`; `screenshot --view <id|name|sheet number>` (sheets were refused before; now exported, and
   without having to activate them); `list dimensions|text` with values; `list sheets` with view counts;

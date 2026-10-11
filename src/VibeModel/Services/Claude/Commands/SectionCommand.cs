@@ -132,8 +132,11 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Depth: " + Mm.F(depthMm) + " mm beyond the cut plane");
             sb.AppendLine("Vertical range: " + Mm.F(bottomMm) + " .. " + Mm.F(topMm) + " mm" +
                           (a.Top.HasValue || a.Bottom.HasValue ? "" : " (from the model elements it cuts, ±" + Mm.F(VerticalMarginMm) + ")"));
-            sb.AppendLine("In-view coordinates (text/tag/dimension --levels): x = 0 at the middle of the line, " +
-                          Mm.F(-frame.Length / 2) + " .. " + Mm.F(frame.Length / 2) + "; y = elevation mm");
+            // The annotation commands' x for this view (SheetHelper.Along): stable when the view is cropped later.
+            double ax1 = RevitUnitHelper.FeetToMm(SheetHelper.Along(view, Mm2Ft(frame.Ox - frame.Dx * frame.Length / 2, frame.Oy - frame.Dy * frame.Length / 2)));
+            double ax2 = RevitUnitHelper.FeetToMm(SheetHelper.Along(view, Mm2Ft(frame.Ox + frame.Dx * frame.Length / 2, frame.Oy + frame.Dy * frame.Length / 2)));
+            sb.AppendLine("In-view coordinates (text/tag --at/dimension --levels/crop --box): x runs " + Mm.F(Math.Min(ax1, ax2)) + " .. " +
+                          Mm.F(Math.Max(ax1, ax2)) + " along the line (project x,y projected on the view), y = elevation mm");
             setup?.AppendReport(sb);
 
             var data = new Dictionary<string, object>
@@ -159,6 +162,8 @@ namespace VibeModel.Services.Claude.Commands
                           "'screenshot --view " + view.Id.IntegerValue + "' to look at it.");
             return CommandResult.Ok(sb.ToString(), data);
         }
+
+        private static XYZ Mm2Ft(double xMm, double yMm) => new XYZ(RevitUnitHelper.MmToFeet(xMm), RevitUnitHelper.MmToFeet(yMm), 0);
 
         /// <summary>Sets 1:n, or explains why not (a view template that controls the scale).</summary>
         internal static string SetScale(View view, int scale)
@@ -188,7 +193,7 @@ namespace VibeModel.Services.Claude.Commands
             bottom = top = null;
             double x1 = f.Ox - f.Dx * f.Length / 2, y1 = f.Oy - f.Dy * f.Length / 2;
             double x2 = f.Ox + f.Dx * f.Length / 2, y2 = f.Oy + f.Dy * f.Length / 2;
-            // Region seen by the section: the line swept depth mm along the looking direction (−BasisZ).
+            // Region seen by the section: the line swept depth mm along the looking direction.
             double lx = f.Lx * depthMm, ly = f.Ly * depthMm;
             var xs = new[] { x1, x2, x1 + lx, x2 + lx }; var ys = new[] { y1, y2, y1 + ly, y2 + ly };
             var outline = new Outline(
@@ -196,12 +201,9 @@ namespace VibeModel.Services.Claude.Commands
                 new XYZ(RevitUnitHelper.MmToFeet(xs.Max()), RevitUnitHelper.MmToFeet(ys.Max()), 1e4));
             var elems = new FilteredElementCollector(doc).WhereElementIsNotElementType()
                 .WherePasses(new BoundingBoxIntersectsFilter(outline))
-                .Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model &&
-                            !(e is ImportInstance) && !(e is PointCloudInstance) && !(e is RevitLinkInstance) &&
-                            e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Topography &&
-                            e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras)   // 3D views are "model" elements too
+                .Where(SheetHelper.IsModelContent)
                 .Take(2000);
-            var spans = new List<MmRect>();   // (z-low, 0) - (z-high, 1): FitKeep trims on the z centres
+            var spans = new List<MmRect>();   // (z-low, 0) - (z-high, 1): FitKeep then clusters on height alone
             foreach (var e in elems)
             {
                 var bb = e.get_BoundingBox(null);

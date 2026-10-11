@@ -16,8 +16,8 @@ namespace VibeModel.Services.Claude.Commands
     public class TextCommand : IClaudeCommand, IModificationCommand, IStructuredCommand
     {
         public string Name => "text";
-        public string Description => "Place a text note in the active view (plan: project x,y mm; section/elevation: x along the view from the " +
-                                     "middle of the section line, y = elevation mm; sheet: paper mm). '\\n' = new line. --leader x y points at something";
+        public string Description => "Place a text note in the active view (plan: project x,y mm; section/elevation: x = position along the view as " +
+                                     "printed by 'section', y = elevation mm; sheet: paper mm). '\\n' = new line. --leader x y points at something";
         public string Usage => TextArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -39,6 +39,7 @@ namespace VibeModel.Services.Claude.Commands
             if (types.Count == 0) return CommandResult.Error("TYPE_NOT_LOADED", "No text note types in the document.", null);
             TextNoteType type;
             string typeNote = null;
+            bool needType = false;   // --size with no type of that height: copy the nearest one inside the transaction
             if (a.Type != null)
             {
                 type = types.FirstOrDefault(t => t.Name.Equals(a.Type, StringComparison.OrdinalIgnoreCase));
@@ -48,7 +49,7 @@ namespace VibeModel.Services.Claude.Commands
             else if (a.Size.HasValue)
             {
                 type = types.OrderBy(t => Math.Abs(SizeMm(t) - a.Size.Value)).First();
-                if (Math.Abs(SizeMm(type) - a.Size.Value) > 0.05) { typeNote = "new"; }
+                needType = Math.Abs(SizeMm(type) - a.Size.Value) > 0.05;
             }
             else type = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType)) as TextNoteType ?? types[0];
 
@@ -58,7 +59,7 @@ namespace VibeModel.Services.Claude.Commands
             TextNote note = null;
             var error = TransactionHelper.Execute(doc, "VibeModel: Create Text", () =>
             {
-                if (typeNote == "new")
+                if (needType)
                 {
                     // No type at that size: copy the nearest and set its height (paper mm).
                     var name = "VibeModel " + Mm.F1(a.Size.Value) + " mm";
@@ -88,7 +89,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("ID: " + note.Id.IntegerValue);
             sb.AppendLine("View: " + view.Name + " (" + view.ViewType + ")");
             sb.AppendLine("At: " + Mm.F(a.X) + ", " + Mm.F(a.Y) + " (" + convention + ")" + (a.Leader != null ? ", leader to " + Mm.F(a.Leader[0]) + ", " + Mm.F(a.Leader[1]) : ""));
-            sb.AppendLine("Type: " + type.Name + " (" + Mm.F1(SizeMm(type)) + " mm on paper)" + (typeNote != null && typeNote != "new" ? " — " + typeNote : ""));
+            sb.AppendLine("Type: " + type.Name + " (" + Mm.F1(SizeMm(type)) + " mm on paper)" + (typeNote != null ? " — " + typeNote : ""));
             sb.AppendLine("Text: " + a.Text.Replace("\n", " ⏎ "));
 
             var data = new Dictionary<string, object>

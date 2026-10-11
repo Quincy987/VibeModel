@@ -74,7 +74,8 @@ namespace VibeModel.Services.Claude.Commands
                     return CommandResult.Error("BAD_ARGS", "Only " + refs.Count + " level(s) are visible in '" + view.Name + "'; a level string needs two.",
                         "Check the levels' extents reach this view, or dimension elements instead ('dimension <id> <id> --dir y').");
                 double u;
-                if (a.LevelsX.HasValue) u = RevitUnitHelper.MmToFeet(a.LevelsX.Value);
+                // u is relative to o; the user's x is the stable "along the view" coordinate (SheetHelper.Along).
+                if (a.LevelsX.HasValue) u = RevitUnitHelper.MmToFeet(a.LevelsX.Value) - SheetHelper.Along(view, o);
                 else
                 {
                     u = LeftEdge(view) - offsetFt;
@@ -119,7 +120,7 @@ namespace VibeModel.Services.Claude.Commands
                 refs = new List<Cand>();
                 foreach (var e in elems)
                 {
-                    var c = References(doc, view, e, d, vdir, o);
+                    var c = References(view, e, d, vdir, o);
                     if (c.Count == 0)
                         notes.Add("element " + e.Id.IntegerValue + " (" + (e.Category?.Name ?? e.GetType().Name) + ") has no face/plane perpendicular to the dimension direction in this view — skipped");
                     refs.AddRange(c);
@@ -131,13 +132,16 @@ namespace VibeModel.Services.Claude.Commands
                         "Try the other direction (--dir x / --dir y), add a second element, or check the elements are visible in this view.");
 
                 // Dimension line beside the elements: past their far side across the dimension direction.
+                // Datums (levels/grids/reference planes) run across the whole view, so they only
+                // count when nothing else was given — otherwise the line would land at the view's edge.
                 var perp = vdir.CrossProduct(d).Normalize();
+                var solids = elems.Where(e => !(e is Level) && !(e is Grid) && !(e is ReferencePlane)).ToList();
                 double far = double.MinValue;
-                foreach (var e in elems)
+                foreach (var e in solids.Count > 0 ? solids : elems)
                 {
                     var bb = e.get_BoundingBox(view) ?? e.get_BoundingBox(null);
                     if (bb == null) continue;
-                    foreach (var corner in Corners(bb)) far = Math.Max(far, (corner - o).DotProduct(perp));
+                    foreach (var corner in SheetHelper.Corners(bb.Min, bb.Max)) far = Math.Max(far, (corner - o).DotProduct(perp));
                 }
                 if (far == double.MinValue) far = 0;
                 double q = far + offsetFt;
@@ -203,17 +207,11 @@ namespace VibeModel.Services.Claude.Commands
             try
             {
                 var cb = view.CropBox;
-                var pts = Corners(cb).Select(p => cb.Transform.OfPoint(p));
+                var pts = SheetHelper.Corners(cb.Min, cb.Max).Select(p => cb.Transform.OfPoint(p));
                 var o = SheetHelper.SectionOrigin(view);
                 return pts.Min(p => (p - o).DotProduct(view.RightDirection));
             }
             catch { return 0; }
-        }
-
-        private static IEnumerable<XYZ> Corners(BoundingBoxXYZ bb)
-        {
-            for (int i = 0; i < 8; i++)
-                yield return new XYZ((i & 1) == 0 ? bb.Min.X : bb.Max.X, (i & 2) == 0 ? bb.Min.Y : bb.Max.Y, (i & 4) == 0 ? bb.Min.Z : bb.Max.Z);
         }
 
         private static List<Cand> Order(List<Cand> refs)
@@ -257,8 +255,9 @@ namespace VibeModel.Services.Claude.Commands
             {
                 var bb = first.get_BoundingBox(view) ?? first.get_BoundingBox(null);
                 if (bb == null) return right;
-                double ex = Corners(bb).Max(p => p.DotProduct(right)) - Corners(bb).Min(p => p.DotProduct(right));
-                double ey = Corners(bb).Max(p => p.DotProduct(up)) - Corners(bb).Min(p => p.DotProduct(up));
+                var corners = SheetHelper.Corners(bb.Min, bb.Max).ToList();
+                double ex = corners.Max(p => p.DotProduct(right)) - corners.Min(p => p.DotProduct(right));
+                double ey = corners.Max(p => p.DotProduct(up)) - corners.Min(p => p.DotProduct(up));
                 d = ex >= ey ? right : up;
             }
             // Read left-to-right / bottom-to-top.
@@ -274,7 +273,7 @@ namespace VibeModel.Services.Claude.Commands
 
         // ---------------------------------------------------------------- references
 
-        private static List<Cand> References(Document doc, View view, Element e, XYZ d, XYZ vdir, XYZ o)
+        private static List<Cand> References(View view, Element e, XYZ d, XYZ vdir, XYZ o)
         {
             var res = new List<Cand>();
             int id = e.Id.IntegerValue;
@@ -367,7 +366,7 @@ namespace VibeModel.Services.Claude.Commands
                         best = new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = "grid '" + g.Name + "'", Dist = dist };
                     continue;
                 }
-                if (e.Category == null || e.Category.CategoryType != CategoryType.Model || e is ImportInstance || e is PointCloudInstance) continue;
+                if (!SheetHelper.IsModelContent(e)) continue;
                 foreach (var f in PlanarFaces(e, view))
                 {
                     if (Math.Abs(f.FaceNormal.DotProduct(d)) < 0.995) continue;

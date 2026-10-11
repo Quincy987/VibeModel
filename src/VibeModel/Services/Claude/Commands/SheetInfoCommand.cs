@@ -92,12 +92,11 @@ namespace VibeModel.Services.Claude.Commands
                 rects.Add(new KeyValuePair<string, MmRect>(label, r));
                 string scale = v == null ? "?" : v.Scale > 0 ? "1:" + v.Scale : "perspective";
                 sb.AppendLine("  " + vp.Id.IntegerValue + "  " + label + " [" + v?.ViewType + "] " + scale + "  " + r +
-                              (title ? "" : "  (no title)") + (v != null && !v.CropBoxActive && !(v is View3D) && !(v is ViewDrafting) ? "  (crop off)" : ""));
+                              (title ? "" : "  (no title)") + (v != null && !(v is View3D) && SheetHelper.HasCropRegion(v) && !v.CropBoxActive ? "  (crop off)" : ""));
                 vps.Add(new Dictionary<string, object>
                 {
                     { "id", vp.Id.IntegerValue }, { "view", vp.ViewId.IntegerValue }, { "viewName", v?.Name }, { "viewType", v?.ViewType.ToString() },
-                    { "scale", v?.Scale }, { "title", title },
-                    { "outlineMm", new List<object> { Math.Round(r.X0), Math.Round(r.Y0), Math.Round(r.X1), Math.Round(r.Y1) } }
+                    { "scale", v?.Scale }, { "title", title }, { "outlineMm", r.ToJson() }
                 });
             }
             var schedules = new FilteredElementCollector(doc, sheet.Id).OfClass(typeof(ScheduleSheetInstance)).Cast<ScheduleSheetInstance>()
@@ -109,8 +108,7 @@ namespace VibeModel.Services.Claude.Commands
                 var r = SheetHelper.ToPaper(origin, bb);
                 rects.Add(new KeyValuePair<string, MmRect>("schedule '" + s.Name + "'", r));
                 sb.AppendLine("  " + s.Id.IntegerValue + "  schedule '" + s.Name + "'  " + r);
-                vps.Add(new Dictionary<string, object> { { "id", s.Id.IntegerValue }, { "schedule", s.Name },
-                    { "outlineMm", new List<object> { Math.Round(r.X0), Math.Round(r.Y0), Math.Round(r.X1), Math.Round(r.Y1) } } });
+                vps.Add(new Dictionary<string, object> { { "id", s.Id.IntegerValue }, { "schedule", s.Name }, { "outlineMm", r.ToJson() } });
             }
 
             // Annotation directly on the sheet.
@@ -131,12 +129,12 @@ namespace VibeModel.Services.Claude.Commands
             var overlaps = SheetLayout.Overlaps(rects);
             var overlapLines = SheetLayout.OverlapLines(rects);
             var off = SheetLayout.OffPaper(rects, paper);
+            var offLines = SheetLayout.OffPaperLines(rects, paper);
             sb.AppendLine();
             sb.AppendLine("CHECKS");
             if (rects.Count == 0) sb.AppendLine("  INFO  no views on this sheet yet ('viewport " + sheet.SheetNumber + " <view>')");
             foreach (var l in overlapLines) sb.AppendLine("  " + l);
-            foreach (var o in off)
-                sb.AppendLine("  WARN  " + o + " runs " + Mm.F(rects.First(r => r.Key == o).Value.Overhang(paper)) + " mm off the paper");
+            foreach (var l in offLines) sb.AppendLine("  " + l);
             if (rects.Count > 0 && !overlapLines.Any(l => l.StartsWith("WARN")) && off.Count == 0) sb.AppendLine("  OK    no conflicting overlaps, everything on the paper");
 
             var data = new Dictionary<string, object>

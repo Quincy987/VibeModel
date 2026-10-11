@@ -200,7 +200,7 @@ curl -s "http://localhost:18884/section?args=-92722 14921 -73243 10385 --name Do
 curl -s "http://localhost:18884/section?args=1543814 --offset 2000 --depth 1000"     # Straight across a wall, at its midpoint
 curl -s "http://localhost:18884/crop?args=Bovenaanzicht --fit --margin 2000"                       # Crop to the model elements (DWG/point clouds ignored)
 curl -s "http://localhost:18884/crop?args=Bovenaanzicht --box 100000 -10000 230000 10000"            # ...or to a rectangle; 3D views get a section box
-curl -s "http://localhost:18884/sheet?args=--number 0001 --name Situatie 0 --set \"Opsteller=Q. de Klerk\""
+curl -s "http://localhost:18884/sheet?args=--number 0001 --name Situatie 0 --set \"Drawn By=J. Jansen\""
 curl -s "http://localhost:18884/viewport?args=0001 101,102,103,104 --grid 2x2 --scale 50"            # Grid over the free sheet area
 curl -s "http://localhost:18884/viewport?args=0001 Bovenaanzicht --at 500 650"                       # One view centred at paper mm
 curl -s "http://localhost:18884/viewport?args=0001 201,202,203 --grid 3x1 --area 20 20 980 300"      # Grid inside a band
@@ -215,15 +215,19 @@ curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
 curl -s "http://localhost:18884/list?args=dimensions --view"                                         # Values in mm; also 'list text', 'list sheets' (view counts)
 ```
-- **Coordinates.** Paper mm are measured from the sheet's lower-left (A0 = 1189×841). `text`, `tag --at`
-  and `dimension --levels <x>` use the active view's own frame: plan → project x,y mm; section/elevation →
-  x = mm along the view from the middle of the section line, y = elevation mm; sheet → paper mm.
+- **Coordinates.** Paper mm are measured from the sheet's lower-left (A0 = 1189×841). `text`, `tag --at`,
+  `dimension --levels <x>` and `crop --box` use the view's own frame: plan → project x,y mm;
+  section/elevation → x = position along the view (project x,y projected on its horizontal axis — the
+  `section` response prints the range; it does not move when the view is cropped), y = elevation mm;
+  sheet → paper mm.
 - **`section`** looks to the LEFT of the line direction x1,y1→x2,y2 (the response names the compass
   direction). Default depth 3000 mm; the vertical range comes from the model elements it cuts ±1 m
   (`--top/--bottom` override). An active office pack's `viewDefaults.section` template/phase applies.
 - **`crop`** first: an uncropped view spans everything visible — with a BGT underlay hundreds of
-  metres — so it never fits a cell. `--fit` crops to the model elements (or `--elements`), `--box`
-  to a rectangle, `--off` undoes; the response gives the paper size at the view's scale.
+  metres — so it never fits a cell. `--fit` crops to the largest cluster of model elements (DWG,
+  point clouds, links, topography ignored; far-off stragglers dropped and counted) or to `--elements`,
+  `--box` to a rectangle, `--off` undoes; the response gives the paper size at the view's scale. On an
+  already-cropped view `--fit` can only shrink (`--off` first).
 - **`viewport`** keeps the margin (default 10 mm) and, when the title block is a full-sheet border, a
   200 mm strip on the right for the stamp (`--reserve 0` / `--area` to change). A view that does not fit
   its cell is still placed and gets a `WARN` naming the scale that would fit. A view already on another

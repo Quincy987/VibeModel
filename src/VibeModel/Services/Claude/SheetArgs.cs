@@ -81,8 +81,6 @@ namespace VibeModel.Services.Claude
             return v == null || v.Count == 0 ? null : string.Join(" ", v);
         }
 
-        public IEnumerable<string> FlagNames => _flags.Select(f => f.Key);
-
         /// <summary>Flags that are not in the allowed set — reported, never silently ignored.</summary>
         public string Unknown(params string[] allowed)
         {
@@ -261,8 +259,9 @@ namespace VibeModel.Services.Claude
                 else if (t == "off" || t == "no" || t == "false") r.Title = false;
                 else { r.Error = "--title is on or off."; return r; }
             }
-            if (r.At != null && r.Views.Count > 1 && r.Cols == 0)
-            { r.Error = "--at places a single view; for several views use --grid (optionally inside --area)."; return r; }
+            // --at is one view at one point; combined with a grid/area every view would land on that point.
+            if (r.At != null && (r.Views.Count > 1 || r.Cols > 0 || r.Area != null))
+            { r.Error = "--at places a single view; for several views (or a band) use --grid and/or --area instead."; return r; }
             return r;
         }
 
@@ -277,7 +276,7 @@ namespace VibeModel.Services.Claude
 
     internal enum DimDirection { Auto, X, Y }
 
-    /// <summary>`dimension id id ... | dimension x1 y1 x2 y2 | dimension --levels [x]`.</summary>
+    /// <summary>`dimension id id ... | dimension --points x1 y1 x2 y2 | dimension --levels [x]`.</summary>
     internal sealed class DimensionArgs
     {
         public List<int> Ids = new List<int>();
@@ -311,6 +310,7 @@ namespace VibeModel.Services.Claude
                 else if (d == "auto") r.Dir = DimDirection.Auto;
                 else { r.Error = "--dir is x, y or auto (x/y are the view's horizontal/vertical)."; return r; }
             }
+            if (f.Has("levels") && f.Has("points")) { r.Error = "Use --levels or --points, not both."; return r; }
             if (f.Has("levels"))
             {
                 r.Levels = true;
@@ -325,6 +325,7 @@ namespace VibeModel.Services.Claude
             }
             if (f.Has("points"))
             {
+                if (f.Positional.Count > 0) { r.Error = "--points takes no element ids."; return r; }
                 if (!f.TryNums("points", 4, out r.Points, out r.Error)) return r;
                 if (Math.Abs(r.Points[0] - r.Points[2]) < 1 && Math.Abs(r.Points[1] - r.Points[3]) < 1)
                 { r.Error = "The two points are the same."; return r; }
@@ -372,6 +373,7 @@ namespace VibeModel.Services.Claude
             }
             if (f.Has("leader") && !f.TryNums("leader", 2, out r.Leader, out r.Error)) return r;
             r.Type = f.Text("type");
+            if (r.Type != null && r.Size.HasValue) { r.Error = "Use --type or --size, not both (a type has its own size)."; return r; }
             return r;
         }
     }
@@ -431,10 +433,7 @@ namespace VibeModel.Services.Claude
             return r;
         }
     }
-}
 
-namespace VibeModel.Services.Claude
-{
     /// <summary>`crop &lt;view&gt; --fit [--margin mm] | --box x0 y0 x1 y1 | --off`.</summary>
     internal sealed class CropArgs
     {
@@ -465,6 +464,7 @@ namespace VibeModel.Services.Claude
             }
             if (f.Has("margin"))
             {
+                if (!r.Fit) { r.Error = "--margin goes with --fit (a --box is taken as given)."; return r; }
                 if (!f.TryNum("margin", out double m, out r.Error)) return r;
                 if (m < 0) { r.Error = "--margin cannot be negative."; return r; }
                 r.Margin = m;

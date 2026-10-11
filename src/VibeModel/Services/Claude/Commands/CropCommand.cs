@@ -34,7 +34,7 @@ namespace VibeModel.Services.Claude.Commands
 
             var view = SheetHelper.FindView(doc, a.View);
             if (view == null) return CommandResult.Error("ELEMENT_NOT_FOUND", "No view '" + a.View + "'.", "Run 'views'.");
-            if (view is ViewSheet || view is ViewSchedule || view.ViewType == ViewType.Legend)
+            if (!SheetHelper.HasCropRegion(view))
                 return CommandResult.Error("BAD_ARGS", "'" + view.Name + "' (" + view.ViewType + ") has no crop region.", null);
             var v3 = view as View3D;
             if (v3 != null && v3.IsPerspective)
@@ -63,11 +63,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 IEnumerable<Element> elems = a.Elements.Count > 0
                     ? a.Elements.Select(id => doc.GetElement(new ElementId(id))).Where(e => e != null)
-                    : new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
-                        .Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model &&
-                                    !(e is ImportInstance) && !(e is PointCloudInstance) && !(e is RevitLinkInstance) &&
-                                    e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Topography &&
-                                    e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras);
+                    : new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().Where(SheetHelper.IsModelContent);
                 min = max = null;
                 var boxes = new List<BoundingBoxXYZ>();
                 foreach (var e in elems)
@@ -117,6 +113,7 @@ namespace VibeModel.Services.Claude.Commands
             }
 
             // ---- apply ----
+            bool wasCropped = v3 != null ? v3.IsSectionBoxActive : view.CropBoxActive;
             double wMm = 0, hMm = 0, viewW = 0, viewH = 0;
             var error = TransactionHelper.Execute(doc, "VibeModel: Crop View", () =>
             {
@@ -127,40 +124,11 @@ namespace VibeModel.Services.Claude.Commands
                     wMm = RevitUnitHelper.FeetToMm(max.X - min.X); hMm = RevitUnitHelper.FeetToMm(max.Y - min.Y);
                     // A section box alone does not shrink the view's extent on a sheet: also crop the
                     // view to the box as seen from the view's orientation.
-                    var vcb = v3.CropBox;
-                    var vinv = vcb.Transform.Inverse;
-                    double vx0 = double.MaxValue, vy0 = double.MaxValue, vx1 = double.MinValue, vy1 = double.MinValue;
-                    foreach (var c in Corners(min, max))
-                    {
-                        var l = vinv.OfPoint(c);
-                        vx0 = Math.Min(vx0, l.X); vy0 = Math.Min(vy0, l.Y); vx1 = Math.Max(vx1, l.X); vy1 = Math.Max(vy1, l.Y);
-                    }
-                    vcb.Min = new XYZ(vx0, vy0, vcb.Min.Z);
-                    vcb.Max = new XYZ(vx1, vy1, vcb.Max.Z);
-                    v3.CropBox = vcb;
-                    v3.CropBoxActive = true;
-                    viewW = RevitUnitHelper.FeetToMm(vx1 - vx0); viewH = RevitUnitHelper.FeetToMm(vy1 - vy0);
+                    CropTo(view, min, max, false, out viewW, out viewH);
                     return;
                 }
-                var cb = view.CropBox;
-                var inv = cb.Transform.Inverse;
-                double lx0 = double.MaxValue, ly0 = double.MaxValue, lx1 = double.MinValue, ly1 = double.MinValue;
-                foreach (var c in Corners(min, max))
-                {
-                    var l = inv.OfPoint(c);
-                    lx0 = Math.Min(lx0, l.X); ly0 = Math.Min(ly0, l.Y); lx1 = Math.Max(lx1, l.X); ly1 = Math.Max(ly1, l.Y);
-                }
-                if (view is ViewPlan == false && a.Box == null)
-                {
-                    // Section/elevation fit: keep the horizontal extent to the elements but never wider than the section itself.
-                    lx0 = Math.Max(lx0, cb.Min.X); lx1 = Math.Min(lx1, cb.Max.X);
-                    if (lx1 <= lx0) throw new InvalidOperationException("The elements lie outside this section's width.");
-                }
-                cb.Min = new XYZ(lx0, ly0, cb.Min.Z);
-                cb.Max = new XYZ(lx1, ly1, cb.Max.Z);
-                view.CropBox = cb;
-                view.CropBoxActive = true;
-                wMm = RevitUnitHelper.FeetToMm(lx1 - lx0); hMm = RevitUnitHelper.FeetToMm(ly1 - ly0);
+                // A section/elevation fit keeps to the section's own width (its cut is that wide).
+                CropTo(view, min, max, !(view is ViewPlan) && a.Box == null, out wMm, out hMm);
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error, "REVIT_ERROR", "The view template may lock the crop region.");
@@ -171,6 +139,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("============");
             sb.AppendLine("View: " + view.Name + " (" + view.ViewType + ", 1:" + view.Scale + ")");
             sb.AppendLine((v3 != null ? "Section box" : "Crop region") + ": " + Mm.F(wMm) + " × " + Mm.F(hMm) + " mm in the model (" + source + ")");
+            if (a.Fit && wasCropped && a.Elements.Count == 0)
+                sb.AppendLine("Note: the view was already cropped, so --fit only saw what was inside; 'crop " + a.View + " --off' first to grow it.");
             if (v3 == null)
                 sb.AppendLine("On paper at 1:" + scale + ": " + Mm.F(wMm / scale) + " × " + Mm.F(hMm / scale) + " mm");
             else
@@ -186,10 +156,30 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(sb.ToString(), data);
         }
 
-        private static IEnumerable<XYZ> Corners(XYZ a, XYZ b)
+        /// <summary>
+        /// Set the view's crop region (in its own frame) to the world box min..max as seen in the
+        /// view; depth is kept. Returns the region's size in mm.
+        /// </summary>
+        private static void CropTo(View view, XYZ min, XYZ max, bool clampWidth, out double wMm, out double hMm)
         {
-            for (int i = 0; i < 8; i++)
-                yield return new XYZ((i & 1) == 0 ? a.X : b.X, (i & 2) == 0 ? a.Y : b.Y, (i & 4) == 0 ? a.Z : b.Z);
+            var cb = view.CropBox;
+            var inv = cb.Transform.Inverse;
+            double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+            foreach (var c in SheetHelper.Corners(min, max))
+            {
+                var l = inv.OfPoint(c);
+                x0 = Math.Min(x0, l.X); y0 = Math.Min(y0, l.Y); x1 = Math.Max(x1, l.X); y1 = Math.Max(y1, l.Y);
+            }
+            if (clampWidth)
+            {
+                x0 = Math.Max(x0, cb.Min.X); x1 = Math.Min(x1, cb.Max.X);
+                if (x1 <= x0) throw new InvalidOperationException("The elements lie outside this section's width.");
+            }
+            cb.Min = new XYZ(x0, y0, cb.Min.Z);
+            cb.Max = new XYZ(x1, y1, cb.Max.Z);
+            view.CropBox = cb;
+            view.CropBoxActive = true;
+            wMm = RevitUnitHelper.FeetToMm(x1 - x0); hMm = RevitUnitHelper.FeetToMm(y1 - y0);
         }
     }
 }

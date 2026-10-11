@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -84,7 +85,7 @@ namespace VibeModel.Services.Claude.Commands
                 ImageResolution = ImageResolution.DPI_150
             };
 
-            if (!isActive) opts.SetViewsAndSheets(new System.Collections.Generic.List<ElementId> { view.Id });
+            if (!isActive) opts.SetViewsAndSheets(new List<ElementId> { view.Id });
 
             try
             {
@@ -110,7 +111,7 @@ namespace VibeModel.Services.Claude.Commands
             // stable — this is the text contract until Plan 03 (structured I/O) replaces it.
             sb.AppendLine("Path: " + png);
             sb.AppendLine();
-            sb.AppendLine("The PNG at the path above shows the active view. " +
+            sb.AppendLine("The PNG at the path above shows " + (target == null ? "the active view" : "'" + view.Name + "'") + ". " +
                           "Open/read it to see the current state of the model.");
             return sb.ToString();
         }

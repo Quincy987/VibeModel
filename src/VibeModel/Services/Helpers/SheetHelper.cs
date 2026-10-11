@@ -101,8 +101,9 @@ namespace VibeModel.Services.Helpers
 
         /// <summary>
         /// Converts the coordinates the annotation commands accept into a model point in the
-        /// view: plan → project x,y (mm); section/elevation → x along the view from its origin
-        /// (0 = middle of a section line), y = absolute elevation (mm); sheet/drafting → paper mm.
+        /// view: plan → project x,y (mm); section/elevation → x = position along the view (the
+        /// project x,y projected on the view's horizontal axis, mm — so it does not move when the
+        /// view is cropped), y = absolute elevation (mm); sheet/drafting → paper mm.
         /// </summary>
         public static XYZ ViewPoint(Document doc, View view, double xMm, double yMm, out string convention)
         {
@@ -120,17 +121,42 @@ namespace VibeModel.Services.Helpers
             }
             if (view is ViewPlan)
             {
-                double z = view.GenLevel != null ? view.GenLevel.Elevation : view.Origin.Z;
+                double z = view.GenLevel != null ? view.GenLevel.ProjectElevation : view.Origin.Z;
                 convention = "project x,y mm (plan)";
                 return new XYZ(x, y, z);
             }
-            // Section / elevation / detail: horizontal offset along the view, absolute height.
-            var right = view.RightDirection;
+            // Section / elevation / detail: a point on the cut plane at "along" x, height y.
+            var right = HorizontalRight(view);
             var o = SectionOrigin(view);
-            var p = new XYZ(o.X, o.Y, 0) + new XYZ(right.X, right.Y, 0).Normalize() * x;
-            convention = "x = mm along the view from its origin (0 = middle of a section line), y = elevation mm";
+            var p = new XYZ(o.X, o.Y, 0) + right * (x - Along(view, o));
+            convention = SectionConvention;
             return new XYZ(p.X, p.Y, y);
         }
+
+        public const string SectionConvention = "x = position along the view (project x,y projected on its horizontal axis, mm), y = elevation mm";
+
+        /// <summary>The view's horizontal axis (a section's RightDirection) — unit, z = 0.</summary>
+        public static XYZ HorizontalRight(View view) => new XYZ(view.RightDirection.X, view.RightDirection.Y, 0).Normalize();
+
+        /// <summary>The section/elevation "x" coordinate of a model point, in feet: its projection on the view's horizontal axis.</summary>
+        public static double Along(View view, XYZ p) => new XYZ(p.X, p.Y, 0).DotProduct(HorizontalRight(view));
+
+        /// <summary>
+        /// Model content that drawings are about: model categories, but not DWG imports, point
+        /// clouds, linked models, topography or the "camera" elements behind 3D views — the
+        /// filter `crop --fit`, `section`'s height range and `dimension --points` share.
+        /// </summary>
+        public static bool IsModelContent(Element e)
+        {
+            if (e.Category == null || e.Category.CategoryType != CategoryType.Model) return false;
+            if (e is ImportInstance || e is PointCloudInstance || e is RevitLinkInstance) return false;
+            int c = e.Category.Id.IntegerValue;
+            return c != (int)BuiltInCategory.OST_Topography && c != (int)BuiltInCategory.OST_Cameras;
+        }
+
+        /// <summary>Views whose extent is a crop region (sheets, schedules and legends have none; 3D views use a section box).</summary>
+        public static bool HasCropRegion(View v)
+            => !(v is ViewSheet) && !(v is ViewSchedule) && v.ViewType != ViewType.Legend && v.ViewType != ViewType.DraftingView;
 
         /// <summary>
         /// The in-view origin of a section/elevation: the middle of its crop region on the cut
@@ -147,6 +173,13 @@ namespace VibeModel.Services.Helpers
             }
             catch { /* some view types have no crop box */ }
             return view.Origin;
+        }
+
+        /// <summary>The 8 corners of the box min..max.</summary>
+        public static IEnumerable<XYZ> Corners(XYZ min, XYZ max)
+        {
+            for (int i = 0; i < 8; i++)
+                yield return new XYZ((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
         }
 
         public static bool IsDimensionable(View v)

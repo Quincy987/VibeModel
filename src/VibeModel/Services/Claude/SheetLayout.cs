@@ -39,7 +39,8 @@ namespace VibeModel.Services.Claude
         public bool Inside(MmRect outer, double tol = 0.5)
             => X0 >= outer.X0 - tol && Y0 >= outer.Y0 - tol && X1 <= outer.X1 + tol && Y1 <= outer.Y1 + tol;
 
-        public MmRect Offset(double dx, double dy) => new MmRect(X0 + dx, Y0 + dy, X1 + dx, Y1 + dy);
+        /// <summary>[x0, y0, x1, y1] rounded to whole mm — the JSON shape every sheet command uses.</summary>
+        public List<object> ToJson() => new List<object> { Math.Round(X0), Math.Round(Y0), Math.Round(X1), Math.Round(Y1) };
 
         public override string ToString()
             => "(" + Mm.F(X0) + "," + Mm.F(Y0) + ")-(" + Mm.F(X1) + "," + Mm.F(Y1) + ") " + Mm.F(W) + "×" + Mm.F(H) + " mm";
@@ -109,39 +110,43 @@ namespace VibeModel.Services.Claude
             => "WARN: view " + view + " at 1:" + scale + " is " + Mm.F(w) + "×" + Mm.F(h) + " mm, cell is " +
                Mm.F(cell.W) + "×" + Mm.F(cell.H) + " mm — use --scale " + suggested + ", a bigger grid/--area, or crop the view";
 
-        /// <summary>Pairs of labelled rectangles that overlap (each pair once).</summary>
-        public static List<Tuple<string, string>> Overlaps(IList<KeyValuePair<string, MmRect>> rects)
+        /// <summary>Index pairs (each once) of labelled rectangles that overlap, with the shared width and height.</summary>
+        private static IEnumerable<Tuple<int, int, double, double>> OverlapPairs(IList<KeyValuePair<string, MmRect>> rects)
         {
-            var res = new List<Tuple<string, string>>();
             for (int i = 0; i < rects.Count; i++)
                 for (int j = i + 1; j < rects.Count; j++)
-                    if (rects[i].Value.Overlaps(rects[j].Value)) res.Add(Tuple.Create(rects[i].Key, rects[j].Key));
-            return res;
+                {
+                    if (!rects[i].Value.Overlaps(rects[j].Value)) continue;
+                    rects[i].Value.OverlapSize(rects[j].Value, out double w, out double h);
+                    yield return Tuple.Create(i, j, w, h);
+                }
         }
+
+        /// <summary>Label pairs of rectangles that overlap (each pair once).</summary>
+        public static List<Tuple<string, string>> Overlaps(IList<KeyValuePair<string, MmRect>> rects)
+            => OverlapPairs(rects).Select(t => Tuple.Create(rects[t.Item1].Key, rects[t.Item2].Key)).ToList();
 
         public static List<string> OffPaper(IList<KeyValuePair<string, MmRect>> rects, MmRect paper)
             => rects.Where(r => !r.Value.Inside(paper)).Select(r => r.Key).ToList();
 
         /// <summary>
         /// One line per overlapping pair. Viewport boxes include empty crop margin, so a thin
-        /// overlap strip (≤ 30 mm across) is usually harmless — INFO; anything bigger is WARN.
-        /// Measured on a finished IB A0: every harmless overlap was a 10–27 mm strip.
+        /// overlap strip (≤ 30 mm across) is graded INFO and anything bigger WARN. Measured on a
+        /// finished IB A0: its harmless crop-margin overlaps were 10–27 mm strips.
         /// </summary>
         public static List<string> OverlapLines(IList<KeyValuePair<string, MmRect>> rects)
-        {
-            var lines = new List<string>();
-            for (int i = 0; i < rects.Count; i++)
-                for (int j = i + 1; j < rects.Count; j++)
-                {
-                    var a = rects[i].Value; var b = rects[j].Value;
-                    if (!a.Overlaps(b)) continue;
-                    a.OverlapSize(b, out double w, out double h);
-                    bool thin = Math.Min(w, h) <= 30;
-                    lines.Add((thin ? "INFO  " : "WARN  ") + rects[i].Key + " and " + rects[j].Key + " boxes overlap " + Mm.F(w) + "×" + Mm.F(h) + " mm" +
-                              (thin ? " (thin strip — usually empty crop margin)" : " — check the screenshot whether the drawings collide"));
-                }
-            return lines;
-        }
+            => OverlapPairs(rects).Select(t =>
+            {
+                bool thin = Math.Min(t.Item3, t.Item4) <= 30;
+                return (thin ? "INFO  " : "WARN  ") + rects[t.Item1].Key + " and " + rects[t.Item2].Key + " boxes overlap " +
+                       Mm.F(t.Item3) + "×" + Mm.F(t.Item4) + " mm" +
+                       (thin ? " (thin strip — usually empty crop margin)" : " — check the screenshot whether the drawings collide");
+            }).ToList();
+
+        /// <summary>One WARN line per rectangle that leaves the paper, with how far it sticks out.</summary>
+        public static List<string> OffPaperLines(IList<KeyValuePair<string, MmRect>> rects, MmRect paper)
+            => rects.Where(r => !r.Value.Inside(paper))
+                    .Select(r => "WARN  " + r.Key + " runs " + Mm.F(r.Value.Overhang(paper)) + " mm off the paper").ToList();
 
         /// <summary>
         /// The elements a `crop --fit` should show: the largest cluster of boxes, where boxes within
@@ -150,32 +155,50 @@ namespace VibeModel.Services.Claude
         /// up: measured on PRG1002, a plain union was 395×219 m and a 2–98% percentile trim still
         /// 300×219 m for a 185 m quay, because 15% of the elements are spread over 400 m.
         /// Fewer than 10 boxes: no trimming. Returns the indices kept.
+        /// More than <paramref name="maxClustered"/> boxes (the pair sweep must stay cheap on Revit's
+        /// thread): an even sample is clustered, then every box whose centre lies in the winning
+        /// cluster's extent (+ gap) is kept.
         /// </summary>
-        public static List<int> FitKeep(IList<MmRect> boxes, double gapMm = 5000)
+        public static List<int> FitKeep(IList<MmRect> boxes, double gapMm = 5000, int maxClustered = 4000)
         {
             int n = boxes.Count;
-            if (n < 10) return Enumerable.Range(0, n).ToList();
-            var parent = Enumerable.Range(0, n).ToArray();
-            Func<int, int> find = null;
-            find = x => parent[x] == x ? x : (parent[x] = find(parent[x]));
-            // Sort by X0 so the inner loop can stop early (sweep): O(n log n + overlaps).
-            var order = Enumerable.Range(0, n).OrderBy(k => boxes[k].X0).ToList();
-            for (int a = 0; a < n; a++)
+            var all = Enumerable.Range(0, n).ToList();
+            if (n < 10) return all;
+
+            var idx = n <= maxClustered ? all
+                : Enumerable.Range(0, maxClustered).Select(k => (int)((long)k * n / maxClustered)).ToList();
+            int m = idx.Count;
+            var parent = Enumerable.Range(0, m).ToArray();
+            // Sweep in X0 order so the inner loop stops at the first box beyond reach.
+            var order = Enumerable.Range(0, m).OrderBy(k => boxes[idx[k]].X0).ToList();
+            for (int a = 0; a < m; a++)
             {
-                var ra = boxes[order[a]];
-                for (int b = a + 1; b < n; b++)
+                var ra = boxes[idx[order[a]]];
+                for (int b = a + 1; b < m; b++)
                 {
-                    var rb = boxes[order[b]];
+                    var rb = boxes[idx[order[b]]];
                     if (rb.X0 > ra.X1 + gapMm) break;
                     if (rb.Y0 <= ra.Y1 + gapMm && ra.Y0 <= rb.Y1 + gapMm)
                     {
-                        int pa = find(order[a]), pb = find(order[b]);
+                        int pa = Find(parent, order[a]), pb = Find(parent, order[b]);
                         if (pa != pb) parent[pa] = pb;
                     }
                 }
             }
-            var best = Enumerable.Range(0, n).GroupBy(k => find(k)).OrderByDescending(g => g.Count()).First();
-            return best.OrderBy(k => k).ToList();
+            var best = Enumerable.Range(0, m).GroupBy(k => Find(parent, k)).OrderByDescending(g => g.Count()).First()
+                                 .Select(k => idx[k]).OrderBy(k => k).ToList();
+            if (n <= maxClustered) return best;
+
+            double x0 = best.Min(k => boxes[k].X0) - gapMm, x1 = best.Max(k => boxes[k].X1) + gapMm;
+            double y0 = best.Min(k => boxes[k].Y0) - gapMm, y1 = best.Max(k => boxes[k].Y1) + gapMm;
+            return all.Where(k => boxes[k].Cx >= x0 && boxes[k].Cx <= x1 && boxes[k].Cy >= y0 && boxes[k].Cy <= y1).ToList();
+        }
+
+        /// <summary>Union-find root with path halving (iterative: long chains cannot overflow the stack).</summary>
+        private static int Find(int[] parent, int x)
+        {
+            while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+            return x;
         }
 
         /// <summary>Common paper names for a width × height in mm (either orientation), or null.</summary>
@@ -227,7 +250,7 @@ namespace VibeModel.Services.Claude
             return FromLine(mx - nx * halfLength, my - ny * halfLength, mx + nx * halfLength, my + ny * halfLength);
         }
 
-        /// <summary>Looking direction (−BasisZ) as a compass word in project coordinates (+Y = project north).</summary>
+        /// <summary>A horizontal direction (e.g. where a section looks) as a compass word; +Y = project north.</summary>
         public static string Compass(double lx, double ly)
         {
             var names = new[] { "east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east" };
@@ -269,10 +292,7 @@ namespace VibeModel.Services.Claude
         public static string Segments(IList<double> valuesMm)
             => string.Join(" + ", valuesMm.Select(Mm.F1)) + (valuesMm.Count > 1 ? " = " + Mm.F1(valuesMm.Sum()) : "") + " mm";
     }
-}
 
-namespace VibeModel.Services.Claude
-{
     /// <summary>
     /// Office stamp-field patterns (pack `sheets.stampParameters`) against the parameter names a
     /// sheet really has: `NL_META_*` (glob) and `IB_BEPALING_1..5` (numeric range) expand; a
@@ -301,8 +321,9 @@ namespace VibeModel.Services.Claude
                 int a = int.Parse(range.Groups[2].Value), b = int.Parse(range.Groups[3].Value);
                 for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++)
                 {
-                    var n = range.Groups[1].Value + i + range.Groups[4].Value;
-                    if (available.Contains(n)) yield return n;
+                    var want = range.Groups[1].Value + i + range.Groups[4].Value;
+                    var n = available.FirstOrDefault(x => x.Equals(want, StringComparison.OrdinalIgnoreCase));   // the field's real spelling
+                    if (n != null) yield return n;
                 }
                 yield break;
             }
@@ -319,6 +340,6 @@ namespace VibeModel.Services.Claude
 
         /// <summary>Blank, or one of the invisible placeholder characters title blocks use to look empty.</summary>
         public static bool IsBlank(string v)
-            => string.IsNullOrWhiteSpace(v) || v.Trim().All(c => c == 'ㅤ' || c == '​' || c == ' ' || char.IsWhiteSpace(c));
+            => string.IsNullOrWhiteSpace(v) || v.All(c => c == '\u3164' || c == '\u200B' || c == '\u00A0' || char.IsWhiteSpace(c));
     }
 }

@@ -106,20 +106,21 @@ namespace VibeModel.Services.Claude.Commands
                             ElementTransformUtils.MoveElement(doc, ssi.Id, SheetHelper.ToSheet(XYZ.Zero, cx - r.Cx, cy - r.Cy));
                             doc.Regenerate();
                             r = SheetHelper.ToPaper(origin, ssi.get_BoundingBox(sheet));
-                            lines.Add("OK   schedule '" + v.Name + "' → " + r + "  (id " + ssi.Id.IntegerValue + ")");
-                            placed.Add(Json(ssi.Id, v, r, true, null));
+                            bool sFits = Fits(a, r, cell, paper);
+                            lines.Add((sFits ? "OK   " : "WARN ") + "schedule '" + v.Name + "' → " + r + "  (id " + ssi.Id.IntegerValue + ")" +
+                                      (sFits ? "" : "  — does not fit " + (a.At != null ? "on the paper" : "its cell " + Mm.F(cell.W) + "×" + Mm.F(cell.H) + " mm")));
+                            placed.Add(Json(ssi.Id, v, r, sFits, null));
                             continue;
                         }
                         var vp = Viewport.Create(doc, sheet.Id, v.Id, SheetHelper.ToSheet(origin, cx, cy));
                         if (titleOffType != null) vp.ChangeTypeId(titleOffType.Id);
                         else if (a.Title == true) EnsureTitleOn(doc, vp);
                         doc.Regenerate();
-                        // Viewport.Create centres the box incl. annotation crop; re-centre on the view box.
+                        // The type change can move the label; pin the view box centre to the target.
                         vp.SetBoxCenter(SheetHelper.ToSheet(origin, cx, cy));
                         doc.Regenerate();
                         var box = SheetHelper.ToPaper(origin, vp.GetBoxOutline());
-                        // --at: the view only has to stay on the paper; in a grid/area it has to fit its cell.
-                        bool fits = a.At != null ? box.Inside(paper) : (v.Scale <= 0 || SheetLayout.Fits(box.W, box.H, cell));
+                        bool fits = (v.Scale <= 0 && a.At == null) || Fits(a, box, cell, paper);   // perspective: no scale to suggest
                         string tag = fits ? "OK  " : "WARN";
                         lines.Add(tag + " '" + v.Name + "' " + (v.Scale > 0 ? "1:" + v.Scale : "perspective") + " → " + box + "  (viewport " + vp.Id.IntegerValue + ")" +
                                   (scaleNote != null ? "  [" + scaleNote + "]" : ""));
@@ -173,12 +174,15 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(sb.ToString(), data);
         }
 
+        /// <summary>--at: the view only has to stay on the paper; in a grid/area it has to fit its cell.</summary>
+        private static bool Fits(ViewportArgs a, MmRect placed, MmRect cell, MmRect paper)
+            => a.At != null ? placed.Inside(paper) : SheetLayout.Fits(placed.W, placed.H, cell);
+
         private static Dictionary<string, object> Json(ElementId id, View v, MmRect r, bool fits, string scaleNote)
             => new Dictionary<string, object>
             {
                 { "id", id.IntegerValue }, { "view", v.Id.IntegerValue }, { "viewName", v.Name }, { "scale", v is ViewSchedule ? 0 : v.Scale },
-                { "outlineMm", new List<object> { Math.Round(r.X0), Math.Round(r.Y0), Math.Round(r.X1), Math.Round(r.Y1) } },
-                { "fits", fits }, { "note", scaleNote }
+                { "outlineMm", r.ToJson() }, { "fits", fits }, { "note", scaleNote }
             };
 
         /// <summary>A viewport type that shows no title: an existing one, or a duplicate of the default with Show Title off.</summary>
@@ -188,7 +192,10 @@ namespace VibeModel.Services.Claude.Commands
                 .Where(t => t.FamilyName == "Viewport" || t.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL) != null).ToList();
             var off = types.FirstOrDefault(t => t.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL)?.AsInteger() == 0);
             if (off != null) { note = "viewport type '" + off.Name + "' (shows no title)"; return off; }
-            var src = types.FirstOrDefault(t => t.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL) != null);
+            // Copy the type new viewports get by default, so the copy only differs in its title.
+            var src = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.ViewportType)) as ElementType;
+            if (src?.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL) == null)
+                src = types.FirstOrDefault(t => t.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL) != null);
             if (src == null) { note = "no viewport type found — titles left as they are"; return null; }
             var dup = src.Duplicate(src.Name + " - geen titel") as ElementType;
             dup.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL).Set(0);
@@ -233,7 +240,7 @@ namespace VibeModel.Services.Claude.Commands
             });
             if (error != null) return CommandResult.FromTransactionError(error);
             return CommandResult.Ok("VIEWPORT MOVED\n==============\n" + a.MoveId + " on " + SheetHelper.Label(sheet) + " → " + r + "\n",
-                new Dictionary<string, object> { { "id", a.MoveId.Value }, { "outlineMm", new List<object> { Math.Round(r.X0), Math.Round(r.Y0), Math.Round(r.X1), Math.Round(r.Y1) } } });
+                new Dictionary<string, object> { { "id", a.MoveId.Value }, { "outlineMm", r.ToJson() } });
         }
 
         private static CommandResult Remove(Document doc, int id)

@@ -379,10 +379,7 @@ namespace VibeModel.Tests
             Assert.Equal("3000 mm", DimensionMath.Segments(new[] { 3000.0 }));
         }
     }
-}
 
-namespace VibeModel.Tests
-{
     /// <summary>Plan 12 — sheetinfo: office stamp patterns, overlap grading, overhang.</summary>
     public class SheetInfoLogicTests
     {
@@ -434,10 +431,7 @@ namespace VibeModel.Tests
             Assert.True(new MmRect(10, 10, 20, 20).Overhang(paper) < 0);
         }
     }
-}
 
-namespace VibeModel.Tests
-{
     public class CropArgsTests
     {
         [Fact]
@@ -468,10 +462,7 @@ namespace VibeModel.Tests
         [InlineData("12 --off --elements 3", "goes with --fit")]
         public void Errors(string args, string fragment) => Assert.Contains(fragment, CropArgs.Parse(args).Error);
     }
-}
 
-namespace VibeModel.Tests
-{
     public class CropFitTests
     {
         [Fact]
@@ -494,10 +485,7 @@ namespace VibeModel.Tests
             Assert.Equal(2, SheetLayout.FitKeep(boxes).Count);
         }
     }
-}
 
-namespace VibeModel.Tests
-{
     public class CropFitSpreadTests
     {
         [Fact]
@@ -510,5 +498,56 @@ namespace VibeModel.Tests
             Assert.True(keep.All(i => i < 200), "scattered context should be dropped");
             Assert.Equal(200, keep.Count);   // the evenly spread quay ends survive the trim
         }
+    }
+
+    /// <summary>Review pass: flag combinations that used to be accepted and silently misbehave.</summary>
+    public class SheetArgsConflictTests
+    {
+        [Theory]
+        [InlineData("0001 101 --at 500 500 --grid 1x1", "--at places a single view")]
+        [InlineData("0001 101 --at 500 500 --area 10 10 900 300", "--at places a single view")]
+        public void Viewport_AtWithGridOrArea(string args, string fragment)
+            => Assert.Contains(fragment, ViewportArgs.Parse(args).Error);
+
+        [Theory]
+        [InlineData("--levels --points 0 0 1 1", "not both")]
+        [InlineData("12 --points 0 0 5000 0", "no element ids")]
+        public void Dimension_Conflicts(string args, string fragment)
+            => Assert.Contains(fragment, DimensionArgs.Parse(args).Error);
+
+        [Fact]
+        public void Text_TypeAndSize() => Assert.Contains("not both", TextArgs.Parse("0 0 hi --type 2.5_NLCS --size 3.5").Error);
+
+        [Fact]
+        public void Crop_MarginOnlyWithFit() => Assert.Contains("goes with --fit", CropArgs.Parse("12 --box 0 0 10 10 --margin 5").Error);
+    }
+
+    public class SheetLayoutReviewTests
+    {
+        [Fact]
+        public void FitKeep_LargeViewsClusterASampleAndKeepEverythingInsideIt()
+        {
+            var boxes = new List<MmRect>();
+            for (int i = 0; i < 6000; i++) boxes.Add(new MmRect(i * 30, 0, i * 30 + 20, 600));              // 180 m quay, 6000 piles
+            for (int i = 0; i < 50; i++) boxes.Add(new MmRect(-300000 - i * 13000, 90000, -299000 - i * 13000, 91000)); // scattered far away
+            var keep = SheetLayout.FitKeep(boxes, 5000, 1000);
+            Assert.Equal(6000, keep.Count);
+            Assert.True(keep.All(k => k < 6000));
+        }
+
+        [Fact]
+        public void OffPaperLines_SayHowFar()
+        {
+            var rects = new List<KeyValuePair<string, MmRect>>
+            {
+                new KeyValuePair<string, MmRect>("'in'", new MmRect(10, 10, 100, 100)),
+                new KeyValuePair<string, MmRect>("'out'", new MmRect(1100, 700, 1201, 830)),
+            };
+            Assert.Equal(new[] { "WARN  'out' runs 12 mm off the paper" }, SheetLayout.OffPaperLines(rects, new MmRect(0, 0, 1189, 841)));
+        }
+
+        [Fact]
+        public void MmRect_ToJson_RoundsToWholeMm()
+            => Assert.Equal(new object[] { 10.0, 20.0, 1000.0, 841.0 }, new MmRect(9.6, 20.4, 999.5, 841.2).ToJson());
     }
 }
