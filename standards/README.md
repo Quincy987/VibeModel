@@ -71,7 +71,8 @@ Derived data (library index, document index, generated core, check log, addition
   },
   "viewDefaults": {
     "plan":   { "template": "EX_W_C_Plan", "phase": "new", "phaseFilter": "...", "parameters": { "EX_BrowserFolder": "01_Work views" } },
-    "threeD": { ... }
+    "threeD": { ... },
+    "section": { ... }
   },
   "familyPrefixes": ["EX_", "NLRS_", "GM_"],
   "libraryPaths": ["\\\\server\\revit\\library\\"],

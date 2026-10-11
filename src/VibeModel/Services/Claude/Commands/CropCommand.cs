@@ -46,8 +46,9 @@ namespace VibeModel.Services.Claude.Commands
             {
                 var err = TransactionHelper.Execute(doc, "VibeModel: Crop Off", () =>
                 {
+                    // --fit on a 3D view also cropped it to the box; undo both.
                     if (v3 != null) v3.IsSectionBoxActive = false;
-                    else view.CropBoxActive = false;
+                    view.CropBoxActive = false;
                 });
                 if (err != null) return CommandResult.FromTransactionError(err);
                 return CommandResult.Ok("CROP OFF\n========\n'" + view.Name + "' now shows everything visible.\n",

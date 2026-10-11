@@ -38,9 +38,11 @@ namespace VibeModel.Services.Claude.Commands
 
             // ---- resolve + pre-check every view before touching the document ----
             var views = new List<View>();
+            var slots = new List<int>();   // the cell each view asked for: a skipped view leaves its cell empty
             var problems = new List<string>();
-            foreach (var q in a.Views)
+            for (int slot = 0; slot < a.Views.Count; slot++)
             {
+                var q = a.Views[slot];
                 var v = SheetHelper.FindView(doc, q);
                 if (v == null) { problems.Add("'" + q + "': no such view (id or exact name)"); continue; }
                 if (v is ViewSheet) { problems.Add("'" + v.Name + "' is a sheet; sheets cannot go on sheets"); continue; }
@@ -54,6 +56,7 @@ namespace VibeModel.Services.Claude.Commands
                     continue;
                 }
                 views.Add(v);
+                slots.Add(slot);
             }
             if (views.Count == 0)
                 return CommandResult.Error("BAD_ARGS", "Nothing to place: " + string.Join("; ", problems), "Run 'views' for view ids and names.");
@@ -74,8 +77,8 @@ namespace VibeModel.Services.Claude.Commands
             {
                 if (cols == 0)
                 {
-                    if (views.Count == 1) { cols = rows = 1; }
-                    else SheetLayout.AutoGrid(views.Count, out cols, out rows);
+                    if (a.Views.Count == 1) { cols = rows = 1; }
+                    else SheetLayout.AutoGrid(a.Views.Count, out cols, out rows);
                 }
                 cells = SheetLayout.Cells(area, cols, rows, a.Margin);
             }
@@ -90,7 +93,7 @@ namespace VibeModel.Services.Claude.Commands
                 for (int i = 0; i < views.Count; i++)
                 {
                     var v = views[i];
-                    var cell = cells[i];
+                    var cell = a.At != null ? cells[0] : cells[slots[i]];
                     double cx = a.At != null ? a.At[0] : cell.Cx, cy = a.At != null ? a.At[1] : cell.Cy;
                     string scaleNote = null;
                     if (a.Scale.HasValue && !(v is ViewSchedule) && v.Scale != a.Scale.Value)
@@ -141,12 +144,13 @@ namespace VibeModel.Services.Claude.Commands
                         placed.Add(new Dictionary<string, object> { { "view", v.Id.IntegerValue }, { "error", ex.Message } });
                     }
                 }
+                // Nothing placed: roll back the side effects (scales, a new no-title type) too.
+                if (placed.All(p => p is Dictionary<string, object> d && d.ContainsKey("error")))
+                    throw new InvalidOperationException("No view could be placed: " + string.Join(" | ", lines));
             });
             if (error != null) return CommandResult.FromTransactionError(error);
 
             int ok = placed.Count(p => p is Dictionary<string, object> d && !d.ContainsKey("error"));
-            if (ok == 0)
-                return CommandResult.Error("TRANSACTION_FAILED", "No view could be placed: " + string.Join(" | ", lines), null);
 
             var sb = new StringBuilder();
             sb.AppendLine("VIEWPORTS PLACED on " + SheetHelper.Label(sheet) + " (" + ok + "/" + views.Count + ")");

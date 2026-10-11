@@ -10,13 +10,14 @@ build and check a sheet from the conversation.
   pack's section template/phase. Reports which compass direction it looks and the in-view x range the
   annotation commands use (position along the view, stable when the view is cropped later).
 - **`crop`** — crop a view to its model elements (`--fit`: the largest cluster, so scattered context
-  far away is dropped; DWG underlays / point clouds / links ignored; `--elements` to choose), to a rectangle (`--box`), or `--off`; 3D views get a section
-  box. Without it an uncropped plan over a BGT underlay is metres wide on paper and fits no cell.
+  far away is dropped; DWG underlays / point clouds / links ignored; `--elements` to choose), to a
+  rectangle (`--box`), or `--off`; 3D views get a section box and are cropped to it. Without it an
+  uncropped plan over a BGT underlay is metres wide on paper and fits no cell.
 - **`viewport`** — put one view at a paper position (`--at x y`) or several in a grid (`--grid CxR`,
   optionally inside `--area`), with `--scale`, `--margin`, `--reserve` (stamp strip) and `--title off`.
   Every placement reports its paper outline; a view that does not fit its cell is still placed with a
   `WARN` and the scale that would fit; a view already on another sheet is refused with that sheet's
-  number. Schedules too. `--move` / `--remove` for corrections.
+  number and its cell stays empty. Schedules too. `--move` / `--remove` for corrections.
 - **`dimension`** — linear dimensions in the active plan/section/elevation through element ids (outer
   faces, grids, levels, reference planes, family centre planes), between two points (`--points`,
   nearest face/grid within 100 mm), or a vertical level string (`--levels`). Reports every segment in
@@ -33,8 +34,9 @@ build and check a sheet from the conversation.
   --at x y`; `screenshot --view <id|name|sheet number>` (sheets were refused before; now exported, and
   without having to activate them); `list dimensions|text` with values; `list sheets` with view counts;
   `activate <sheet number>`.
-- Arg parsing, layout maths (cells, fit, suggested scale, overlaps), the section frame and dimension
-  bookkeeping are Revit-free and covered by headless tests.
+- Arg parsing (including refused flag combinations), layout maths (cells, fit, suggested scale,
+  overlaps), the `crop --fit` clustering, stamp patterns, the section frame and dimension bookkeeping
+  are Revit-free and covered by headless tests.
 
 ### Added — Plan 11: Office Standards
 - **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`

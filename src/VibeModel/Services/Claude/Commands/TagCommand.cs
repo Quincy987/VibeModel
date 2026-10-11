@@ -78,6 +78,9 @@ namespace VibeModel.Services.Claude.Commands
 
             var bbox = element.get_BoundingBox(view) ?? element.get_BoundingBox(null);
             XYZ mid = bbox != null ? (bbox.Min + bbox.Max) * 0.5 : XYZ.Zero;
+            if (ta.At != null && view is View3D)
+                return CommandResult.Error("BAD_ARGS", "--at needs a plan, section or elevation (a 3D view has no 2D frame to place it in).",
+                    "Leave out --at to tag at the element.");
             XYZ head = ta.At != null ? SheetHelper.ViewPoint(doc, view, ta.At[0], ta.At[1], out _) : mid;
 
             IndependentTag tag = null;
