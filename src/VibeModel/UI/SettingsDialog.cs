@@ -55,6 +55,11 @@ namespace VibeModel.UI
         private TextBlock _statusText;
         private Button _saveButton;
 
+        // Office standards
+        private CheckBox _standardsEnabledCheck;
+        private TextBox _packPathBox;
+        private TextBox _standardsFolderBox;
+
         /// <summary>True if the user changed the backend selection (caller should reset chat).</summary>
         public bool BackendChanged { get; private set; }
 
@@ -62,7 +67,7 @@ namespace VibeModel.UI
         {
             Title = "VibeModel Settings";
             Width = 500;
-            Height = 480;
+            Height = 700;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode = ResizeMode.NoResize;
             Background = BgDark;
@@ -95,6 +100,9 @@ namespace VibeModel.UI
             mainPanel.Children.Add(_cliPanel);
             mainPanel.Children.Add(_apiPanel);
             mainPanel.Children.Add(_localPanel);
+
+            // Office standards (plan 11) — independent of the backend tabs.
+            mainPanel.Children.Add(CreateStandardsPanel());
 
             // Status text
             _statusText = new TextBlock
@@ -236,6 +244,78 @@ namespace VibeModel.UI
             });
 
             return panel;
+        }
+
+        // --- Office standards panel ---
+
+        private StackPanel CreateStandardsPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Office standards",
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            _standardsEnabledCheck = new CheckBox
+            {
+                Content = "Apply office standards (rules in chat, default phase, checks)",
+                IsChecked = SettingsManager.GetStandardsEnabled(),
+                Foreground = FgPrimary,
+                FontSize = 12,
+                Margin = new Thickness(0, 4, 0, 6)
+            };
+            panel.Children.Add(_standardsEnabledCheck);
+
+            panel.Children.Add(CreateLabel("Standards pack folder (pack.json, or a folder of packs) — empty = local copy in %LOCALAPPDATA%\\VibeModel\\standards"));
+            _packPathBox = CreateTextBox(SettingsManager.GetStandardsPackPath());
+            panel.Children.Add(CreateFolderRow(_packPathBox, "pack.json|pack.json|All files|*.*"));
+
+            panel.Children.Add(CreateLabel("Office source documents folder (leidraad PDFs) — empty = the pack's default"));
+            _standardsFolderBox = CreateTextBox(SettingsManager.GetStandardsFolder());
+            panel.Children.Add(CreateFolderRow(_standardsFolderBox, "Documents|*.pdf;*.txt;*.md|All files|*.*"));
+            return panel;
+        }
+
+        // Text box + Browse (pick any file in the folder) + Clear. A file dialog avoids a
+        // WinForms dependency just for a folder picker.
+        private Grid CreateFolderRow(TextBox box, string filter)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Grid.SetColumn(box, 0);
+            grid.Children.Add(box);
+
+            var browse = CreateButton("Browse…");
+            browse.MinWidth = 0;
+            browse.Margin = new Thickness(6, 0, 0, 4);
+            browse.Click += (s, e) =>
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter = filter,
+                    CheckFileExists = true,
+                    Title = "Pick a file inside the folder"
+                };
+                if (dlg.ShowDialog(this) == true)
+                    box.Text = System.IO.Path.GetDirectoryName(dlg.FileName);
+            };
+            Grid.SetColumn(browse, 1);
+            grid.Children.Add(browse);
+
+            var clear = CreateButton("Clear");
+            clear.MinWidth = 0;
+            clear.Margin = new Thickness(6, 0, 0, 4);
+            clear.Click += (s, e) => box.Text = "";
+            Grid.SetColumn(clear, 2);
+            grid.Children.Add(clear);
+            return grid;
         }
 
         // --- Anthropic API panel ---
@@ -656,7 +736,13 @@ namespace VibeModel.UI
             SettingsManager.SetLocalLlmToolUse(_toolUseCheck.IsChecked == true);
             SettingsManager.SetLocalLlmTimeout((int)_timeoutSlider.Value);
 
+            SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
+            SettingsManager.SetStandardsPackPath(_packPathBox.Text);
+            SettingsManager.SetStandardsFolder(_standardsFolderBox.Text);
+
             SettingsManager.ClearCache();
+            // Pick up a new pack location / switch immediately (no Revit API involved).
+            Services.Standards.StandardsContext.Reset();
 
             BackendChanged = _selectedBackend != previousBackend;
 

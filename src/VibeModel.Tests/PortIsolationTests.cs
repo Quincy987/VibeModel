@@ -68,6 +68,22 @@ namespace VibeModel.Tests
             Assert.DoesNotContain(RevitHttpServer.TokenHeader, text);
         }
 
+        // Office standards (plan 11): no office context → the prompt is exactly what it was;
+        // with one → the TEMPLATE/STANDARDS blocks are appended at the end.
+        [Fact]
+        public void PromptText_OfficeContext_AppendedOnlyWhenPresent()
+        {
+            var plain = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null);
+            Assert.Equal(plain, ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null, null));
+            Assert.Equal(plain, ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null, "   "));
+            Assert.DoesNotContain("STANDARDS:", plain);
+
+            var office = ClaudeCodeBackend.BuildSystemPromptText(Commands, 18884, null,
+                "TEMPLATE: facts\nSTANDARDS: office standard 'x' is ACTIVE");
+            Assert.StartsWith(plain.TrimEnd(), office);
+            Assert.EndsWith("STANDARDS: office standard 'x' is ACTIVE" + System.Environment.NewLine, office);
+        }
+
         [Fact]
         public void PortDirective_NamesTheLivePortAndOverridesHistory()
         {

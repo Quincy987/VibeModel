@@ -5,6 +5,7 @@ using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Services.Helpers;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -12,11 +13,17 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "wall";
         public string Description => "Create a wall (coordinates in mm)";
-        public string Usage => "wall <x1> <y1> <x2> <y2> [height]";
+        public string Usage => "wall <x1> <y1> <x2> <y2> [height] [--phase <kind>]";
 
         public string Execute(string args, UIApplication uiApp)
         {
             var doc = uiApp.ActiveUIDocument.Document;
+
+            // Office standard: strip --phase and resolve the phase new elements get (inert
+            // when no pack is active and no --phase was given).
+            var phase = PhaseDefaults.Prepare(doc, args);
+            if (phase.Error != null) return phase.ErrorText;
+            args = phase.Remaining;
 
             var parts = (args ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4)
@@ -63,6 +70,7 @@ namespace VibeModel.Services.Claude.Commands
                 var endPoint = new XYZ(x2, y2, level.Elevation);
                 var line = Line.CreateBound(startPoint, endPoint);
                 newWall = Wall.Create(doc, line, wallType.Id, level.Id, height, 0, false, false);
+                phase.Apply(newWall);
             });
 
             if (error != null) return error;
@@ -78,6 +86,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("End: (" + x2mm + ", " + y2mm + ") mm");
             sb.AppendLine("Length: " + FormattingHelper.FormatLength(newWall.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH)?.AsDouble() ?? 0));
             sb.AppendLine("Height: " + heightMm + " mm");
+            phase.AppendNote(sb, doc, uiApp.ActiveUIDocument.ActiveView);
 
             return sb.ToString();
         }

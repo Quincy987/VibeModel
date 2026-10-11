@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using VibeModel.Services.Helpers;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -13,11 +14,15 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "place";
         public string Description => "Place a family instance by family/type name";
-        public string Usage => "place <family> <type> <x> <y> [z]";
+        public string Usage => "place <family> <type> <x> <y> [z] [--phase <kind>]";
 
         public string Execute(string args, UIApplication uiApp)
         {
             var doc = uiApp.ActiveUIDocument.Document;
+
+            var phase = PhaseDefaults.Prepare(doc, args);
+            if (phase.Error != null) return phase.ErrorText;
+            args = phase.Remaining;
 
             var parts = (args ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4)
@@ -47,7 +52,34 @@ namespace VibeModel.Services.Claude.Commands
             return PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm);
         }
 
-        internal static string PlaceSymbol(Document doc, UIDocument uiDoc, FamilySymbol symbol, double xMm, double yMm, double zMm)
+        /// <summary>
+        /// When an office pack is active, a family that is not loaded is looked up in the office
+        /// library index, so the answer is "load this file" instead of a dead end.
+        /// </summary>
+        private static string LibraryHint(Document doc, string familyName)
+        {
+            try
+            {
+                var pack = StandardsContext.GetActivePack(doc);
+                if (pack == null || pack.LibraryPaths.Count == 0) return "";
+                var idx = LibraryIndexService.Get(pack);
+                if (idx == null)
+                    return "\nThe office library index is not ready yet" +
+                           (LibraryIndexService.IsBuilding(pack) ? " (building in the background)" : "") +
+                           " — try 'library " + familyName + "' in a moment.";
+                var hits = idx.Search(familyName, 5);
+                if (hits.Count == 0) return "\nNo match in the office library either ('library <term>' searches it).";
+                var sb = new StringBuilder("\nFamily not loaded. Found in the office library:");
+                foreach (var h in hits)
+                    sb.Append("\n  loadfamily \"" + h.Path + "\"");
+                sb.Append("\nLoad one, then run 'place' again.");
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        internal static string PlaceSymbol(Document doc, UIDocument uiDoc, FamilySymbol symbol, double xMm, double yMm, double zMm,
+            PhaseRequest phase = null)
         {
             var point = new XYZ(
                 RevitUnitHelper.MmToFeet(xMm),
@@ -83,11 +115,13 @@ namespace VibeModel.Services.Claude.Commands
                     if (level != null)
                     {
                         instance = doc.Create.NewFamilyInstance(point, symbol, level, structuralType);
+                        phase?.Apply(instance);
                         return;
                     }
                 }
 
                 instance = doc.Create.NewFamilyInstance(point, symbol, structuralType);
+                phase?.Apply(instance);
             });
 
             if (error != null) return error;
@@ -102,6 +136,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Location: (" + xMm + ", " + yMm + ", " + zMm + ") mm");
             if (structuralType != StructuralType.NonStructural)
                 sb.AppendLine("Structural Type: " + structuralType);
+            phase?.AppendNote(sb, doc, uiDoc.ActiveView);
 
             return sb.ToString();
         }
@@ -111,11 +146,15 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "placeid";
         public string Description => "Place a family instance by type ID";
-        public string Usage => "placeid <typeId> <x> <y> [z]";
+        public string Usage => "placeid <typeId> <x> <y> [z] [--phase <kind>]";
 
         public string Execute(string args, UIApplication uiApp)
         {
             var doc = uiApp.ActiveUIDocument.Document;
+
+            var phase = PhaseDefaults.Prepare(doc, args);
+            if (phase.Error != null) return phase.ErrorText;
+            args = phase.Remaining;
 
             var parts = (args ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 3)
@@ -136,7 +175,7 @@ namespace VibeModel.Services.Claude.Commands
             if (symbol == null)
                 return "ERROR: Element ID " + typeId + " is not a FamilySymbol";
 
-            return PlaceCommand.PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm);
+            return PlaceCommand.PlaceSymbol(doc, uiApp.ActiveUIDocument, symbol, xMm, yMm, zMm, phase);
         }
     }
 }

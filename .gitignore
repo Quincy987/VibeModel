@@ -30,3 +30,10 @@ Desktop.ini
 ## Claude
 .claude/
 .worktrees/
+
+## Office standards: real office packs contain internal network paths and names and must
+## never land in this public repo. Only the fictional standards/example-office is committed.
+standards/*
+!standards/README.md
+!standards/example-office/
+docs/reference/ib-revit-leidraad-map.md

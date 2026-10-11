@@ -85,7 +85,11 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        private void DetectClaude()
+        /// <summary>
+        /// Where the Claude Code CLI may live: the bare name (PATH) plus the common install
+        /// locations. Shared with the standards distiller, which runs one-shot CLI calls.
+        /// </summary>
+        internal static List<string> CliCandidates()
         {
             var candidates = new List<string>();
 
@@ -101,6 +105,12 @@ namespace VibeModel.Services.Chat
             candidates.Add(Path.Combine(appData, "npm", "claude"));
             candidates.Add(Path.Combine(localAppData, "Programs", "claude", "claude.exe"));
             candidates.Add(Path.Combine(userProfile, ".claude", "local", "claude.exe"));
+            return candidates;
+        }
+
+        private void DetectClaude()
+        {
+            var candidates = CliCandidates();
 
             foreach (var candidate in candidates)
             {
@@ -153,7 +163,7 @@ namespace VibeModel.Services.Chat
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_systemPromptPath));
                 File.WriteAllText(_systemPromptPath,
-                    BuildSystemPromptText(_commands, _httpPort, _authToken), Encoding.UTF8);
+                    BuildSystemPromptText(_commands, _httpPort, _authToken, Standards.StandardsPrompt.Combined), Encoding.UTF8);
                 Logger.Info("System prompt written to: " + _systemPromptPath);
             }
             catch (Exception ex)
@@ -163,7 +173,8 @@ namespace VibeModel.Services.Chat
         }
 
         internal static string BuildSystemPromptText(
-            IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken)
+            IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken,
+            string officeContext = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
@@ -209,6 +220,9 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
+
+            // Office standards (plan 11): live template facts + the active pack's core rules.
+            AppendOfficeContext(sb, officeContext);
 
             return sb.ToString();
         }
@@ -350,6 +364,16 @@ namespace VibeModel.Services.Chat
                 appendPrompt.AppendLine("IMPORTANT: Be proactive. Based on the context above, suggest 2-3 specific things");
                 appendPrompt.AppendLine("you can help with. If the user has elements selected, comment on them.");
                 appendPrompt.Append("Keep suggestions relevant to what's in the model. Use plain language.");
+            }
+
+            // Office standards (plan 11): the prompt FILE is only read on demand, so the live
+            // template facts and the active pack's core rules go into the system prompt itself.
+            var office = Standards.StandardsPrompt.Combined;
+            if (!string.IsNullOrWhiteSpace(office))
+            {
+                appendPrompt.AppendLine();
+                appendPrompt.AppendLine();
+                appendPrompt.Append(office.TrimEnd());
             }
 
             args.Append(" --append-system-prompt ");

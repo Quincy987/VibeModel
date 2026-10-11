@@ -68,6 +68,14 @@
     <PackageReference Include="Markdig" Version="0.44.0" />
   </ItemGroup>
 
+  <!-- Build the PDF text helper with the add-in (deployed beside it, never referenced). -->
+  <ItemGroup>
+    <ProjectReference Include="..\VibeModel.PdfText\VibeModel.PdfText.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
   <!-- Expose internal parsing helpers to the test project (net48-safe, no Revit needed). -->
   <ItemGroup>
     <InternalsVisibleTo Include="VibeModel.Tests" />
@@ -114,6 +122,17 @@
       DestinationFolder="$(RevitAddinFolder)"
       SkipUnchangedFiles="true"
       Condition="Exists('$(TargetDir)Markdig.dll')" />
+
+    <!-- Out-of-process PDF text helper (office-standards document index) into its own
+         subfolder, so its dependencies never sit next to VibeModel.dll in Revit's AppDomain. -->
+    <ItemGroup>
+      <PdfTextFiles Include="$(MSBuildProjectDirectory)\..\VibeModel.PdfText\bin\$(Configuration)\*.exe;$(MSBuildProjectDirectory)\..\VibeModel.PdfText\bin\$(Configuration)\*.dll;$(MSBuildProjectDirectory)\..\VibeModel.PdfText\bin\$(Configuration)\*.config" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(PdfTextFiles)"
+      DestinationFolder="$(RevitAddinFolder)\VibeModel.PdfText"
+      SkipUnchangedFiles="true"
+      Condition="'@(PdfTextFiles)' != ''" />
 
     <!-- Copy .addin manifest (from solution root) -->
     <Copy

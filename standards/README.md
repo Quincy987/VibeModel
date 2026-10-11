@@ -1,0 +1,124 @@
+# Office standards packs
+
+A **standards pack** teaches VibeModel how *your office* models: which phases new work goes in,
+which view templates and title blocks to use, where the family library lives, which rules the
+model is audited against. It is plain data — markdown and JSON — so the person who owns the
+office Revit standard (the application manager) can maintain it without touching code.
+
+`example-office/` is a complete, fictional sample. Real office packs contain internal network
+paths and are **not** committed to this public repository; keep them on the office share or in
+`%LOCALAPPDATA%\VibeModel\standards\` (see *Where packs are found*).
+
+## What VibeModel does with a pack
+
+| Mechanism | Command | Effect |
+|---|---|---|
+| Template facts | `template` | Reads phases, view templates, scope boxes, coordinates, families, sheets live from the open model, and tells which pack's **fingerprint** it matches. |
+| Rules in every chat turn | — | The matching pack's `core.md` (≤ `coreMaxBytes`) and a compact template summary are added to the AI system prompt. |
+| Rule sheets on demand | `standards`, `standards <topic>` | Full topic sheets, read only when a task touches them. |
+| Default-correct creation | `wall`, `floor`, `place`, `placeid`, `room` (+ `--phase`), `phase` | New elements get the pack's default phase (`phaseTable.default`); `--phase existing\|new\|temp\|demolish\|future` overrides. |
+| Office views and sheets | `view`, `sheet` | New views get the pack's view template, phase, phase filter and browser-folder parameters; new sheets get the default title block. Every choice is reported. |
+| Library | `library <terms>`, `loadfamily "<path>"` | Searches a cached index of `libraryPaths`; `place` suggests a library family when the requested one is not loaded. |
+| Underlays | `linkcad`, `coords` | Links (never imports) with the pack's link settings, pins; reports the coordinate setup. |
+| Audit | `check`, `check --stats` | Runs `checks.json`; after every modifying command the element-level rules run on what was just created and a one-line summary is appended. |
+| Source documents | `standards --index`, `standards docs`, `standards <doc> <chapter>`, `standards distill` | Indexes the office manuals (PDF/txt) by chapter; optional LLM distillation into `core.generated.md`. |
+
+Nothing changes for a model whose fingerprint matches no pack: commands behave exactly as
+without standards.
+
+## Where packs are found
+
+First occurrence of a pack `id` wins:
+
+1. **Setting `StandardsPackPath`** (VibeModel Settings → Office standards) — a pack folder, or a
+   folder containing pack folders. Point this at the office share to give every modeller the
+   same pack without an add-in release.
+2. `%LOCALAPPDATA%\VibeModel\standards\<pack>\pack.json` — a local working copy.
+3. `<add-in folder>\standards\<pack>\pack.json` — packs shipped with the add-in.
+
+`standards` lists every folder it looked at and why a pack was skipped or not active.
+After editing a pack, run `standards --refresh` (or reopen Settings and Save).
+
+Derived data (library index, document index, generated core, check log) is cached per pack in
+`%LOCALAPPDATA%\VibeModel\standards\_cache\<pack id>\`.
+
+## pack.json
+
+```jsonc
+{
+  "id": "example-office",            // unique; folder name if omitted
+  "name": "...", "version": "2026-10-11.1", "owner": "...", "language": "en",
+  "sources": [{ "title": "...", "date": "...", "path": "..." }],   // indexed by `standards --index`
+  "fingerprint": {                   // when does this pack apply to a document?
+    "phases": ["1. Existing", "2. New construction", "3. Final"],  // ALL must exist
+    "scopeBoxes": ["Project_extent_WCS"],                          // at least ONE must exist
+    "sharedParameters": ["EX_ObjectCode"],                         // at least ONE must be bound
+    "views": [...], "viewTemplates": [...],                        // supporting evidence only
+    "aliases": { "Project_extent_WCS": ["Project_Extent_WCS"] }    // alternative spellings
+  },
+  "core": "core.md",                 // or "generated" to use core.generated.md from `standards distill`
+  "coreMaxBytes": 4096,              // hard cap for the per-turn STANDARDS block
+  "topics": { "phasing": "topics/phasing.md", ... },
+  "phaseTable": {
+    "default": "new",
+    "entries": { "new": { "created": "2. New construction", "demolished": null }, ... },
+    "aliases": { "temporary": "temp" }
+  },
+  "viewDefaults": {
+    "plan":   { "template": "EX_W_C_Plan", "phase": "new", "phaseFilter": "...", "parameters": { "EX_BrowserFolder": "01_Work views" } },
+    "threeD": { ... }
+  },
+  "familyPrefixes": ["EX_", "NLRS_", "GM_"],
+  "libraryPaths": ["\\\\server\\revit\\library\\"],
+  "checks": "checks.json",
+  "sheets": { "defaultTitleblock": "EX_TITLEBLOCK : A1", "stampParameters": ["EX_META_*"] },
+  "coordinates": { "roundToMm": 1000 },
+  "linkCad": { "pinAfterLink": true, "correctOffAxisLines": false, "orientToView": false, "refuseFirstDgnReason": "..." },
+  "standardsFolder": "\\\\server\\revit\\standards\\",   // default for the Settings "source documents folder"
+  "distill": { "chapters": ["1", "2.1", "4.2"] }        // chapters `standards distill` reads
+}
+```
+
+Every section is optional. Missing files or sections degrade to "not available" — a broken pack
+is skipped and reported by `standards`, never fatal.
+
+## checks.json
+
+```json
+{ "rules": [
+  { "id": "param-filled", "kind": "param-filled", "severity": "warn",
+    "message": "Checklist E1: object code filled on new work",
+    "fix": "Fill EX_ObjectCode with 'set <id> EX_ObjectCode <code>'.",
+    "params": { "parameters": ["EX_ObjectCode"], "phaseKey": "new" } }
+] }
+```
+
+`severity`: `warn` | `fail` | `info`. `enabled: false` switches a rule off. Rule **kinds** and
+their parameters:
+
+- `pinned` — `targets`: `cadLinks`, `pointClouds`, `grids`, `revitLinks`; `requireSetup` (default true: skip until a link or shared coordinates exist).
+- `phase-not-none` — model elements without a creation phase.
+- `phase-filter-digit` — a view's phase and phase filter must start with the same digit.
+- `view-phase-for-new-work` — the active view is on the pack's *existing* phase.
+- `view-template-required` — `namePattern` (regex for plot views), `onSheets` (views placed on sheets).
+- `family-source` — loaded model families without one of `prefixes` (default: `familyPrefixes`); `ignoreCategories`.
+- `param-filled` — `parameters` empty on elements created in the phase of `phaseKey` (default `new`).
+- `survey-point-origin` — `toleranceMm`.
+- `base-point-rounded` — `roundToMm` (only once shared coordinates exist).
+- `base-point-pinned` — `requireSetup`.
+- `file-name` — `pattern` (regex on the file name); always flags Revit backups `*.0001.rvt`.
+- `schedule-phase` — `namePattern`, `phaseKey`, `phaseFilter`.
+- `links-are-links` — imported (instead of linked) CAD.
+
+Element-level kinds (`phase-not-none`, `param-filled`, `family-source`, `pinned`) also run after
+each modifying command on exactly the elements it created.
+
+## Updating a pack (application manager)
+
+1. Edit the files; bump `version` in pack.json.
+2. Re-measure the template after a template change (`template` in a fresh model from it) and
+   update fingerprint names — always the *measured* spelling, with the manual's spelling as alias.
+3. `check --stats` shows which rules fire most across sessions: candidates for a better default
+   or a clearer core rule in the next version.
+4. Optional `aanvullingen.md` / additions file next to the pack or in the source-documents folder
+   is appended to the core verbatim — for decisions not (yet) in the manual.

@@ -6,6 +6,7 @@ using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Services.Helpers;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -13,11 +14,15 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "floor";
         public string Description => "Create a floor from points (coordinates in mm)";
-        public string Usage => "floor <x1,y1> <x2,y2> <x3,y3> [<x4,y4>] ...";
+        public string Usage => "floor <x1,y1> <x2,y2> <x3,y3> [<x4,y4>] ... [--phase <kind>]";
 
         public string Execute(string args, UIApplication uiApp)
         {
             var doc = uiApp.ActiveUIDocument.Document;
+
+            var phase = PhaseDefaults.Prepare(doc, args);
+            if (phase.Error != null) return phase.ErrorText;
+            args = phase.Remaining;
 
             var points = ParsePoints(args);
             if (points == null || points.Count < 3)
@@ -60,6 +65,7 @@ namespace VibeModel.Services.Claude.Commands
                 }
 
                 newFloor = Floor.Create(doc, new List<CurveLoop> { curveLoop }, floorType.Id, level.Id);
+                phase.Apply(newFloor);
             });
 
             if (error != null) return error;
@@ -76,6 +82,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 sb.AppendLine("  P" + (i + 1) + ": (" + points[i].X + ", " + points[i].Y + ") mm");
             }
+            phase.AppendNote(sb, doc, uiApp.ActiveUIDocument.ActiveView);
 
             return sb.ToString();
         }

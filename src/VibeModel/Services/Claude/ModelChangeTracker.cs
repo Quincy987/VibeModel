@@ -108,6 +108,19 @@ namespace VibeModel.Services.Claude
             }
         }
 
+        /// <summary>
+        /// Read-only peek at the committed-edit counter (no reset). Caches keyed on
+        /// "document + edits" (office-standards template facts) use it to refresh only after
+        /// the model actually changed.
+        /// </summary>
+        public static long GetTotalEdits(string docKey)
+        {
+            lock (Sync)
+            {
+                return Docs.TryGetValue(docKey ?? "", out var state) ? state.TotalEdits : 0;
+            }
+        }
+
         // Test seam: wipe all state between unit tests.
         internal static void ResetAll()
         {
