@@ -223,6 +223,8 @@ namespace VibeModel.Services.Chat
         internal static void AppendOfficeContext(StringBuilder sb, string officeContext)
         {
             if (string.IsNullOrWhiteSpace(officeContext)) return;
+            // Always separated from what precedes it by one blank line.
+            if (sb.Length > 0 && sb[sb.Length - 1] != '\n') sb.AppendLine();
             sb.AppendLine();
             sb.Append(officeContext.TrimEnd());
             sb.AppendLine();

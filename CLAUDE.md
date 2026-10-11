@@ -204,6 +204,7 @@ curl -s http://localhost:18884/standards                        # Active pack, t
 curl -s "http://localhost:18884/standards?args=phasing"         # One topic sheet (verbatim)
 curl -s "http://localhost:18884/standards?args=core"            # The always-on rules block
 curl -s "http://localhost:18884/standards?args=--refresh"       # Re-read packs after editing them
+curl -s "http://localhost:18884/standards?args=--prompt"        # Exactly what the chat receives this turn
 curl -s "http://localhost:18884/standards?args=--index"         # Index the office source documents (PDF/txt) in the background
 curl -s "http://localhost:18884/standards?args=docs"            # Indexed documents + chapters
 curl -s "http://localhost:18884/standards?args=leidraad 4.2"    # One chapter of a source document (+ its subchapters)
@@ -233,6 +234,8 @@ curl -s "http://localhost:18884/linkcad?args=\"X:\base\map.dwg\" --first" # Link
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
 - **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
   e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`.
+  A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
+  background (startup, `--refresh`, Settings → Save) and only the mirror is read.
   Settings → *Office source documents folder* (`StandardsFolder`) is what `standards --index` reads.
   Settings → *Apply office standards* (`StandardsEnabled`) switches everything off.
 - Network shares are never read on Revit's main thread without a deadline: the library and the

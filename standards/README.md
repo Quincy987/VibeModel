@@ -32,14 +32,18 @@ First occurrence of a pack `id` wins:
 
 1. **Setting `StandardsPackPath`** (VibeModel Settings → Office standards) — a pack folder, or a
    folder containing pack folders. Point this at the office share to give every modeller the
-   same pack without an add-in release.
+   same pack without an add-in release. A **network** path (UNC or mapped drive) is never read
+   on Revit's thread: at startup, on `standards --refresh` and on Settings → Save it is copied in
+   the background to `%LOCALAPPDATA%\VibeModel\standards\_mirror\`, and VibeModel reads that
+   mirror — so a missing VPN costs nothing, the last synced pack simply stays in force.
 2. `%LOCALAPPDATA%\VibeModel\standards\<pack>\pack.json` — a local working copy.
 3. `<add-in folder>\standards\<pack>\pack.json` — packs shipped with the add-in.
 
 `standards` lists every folder it looked at and why a pack was skipped or not active.
 After editing a pack, run `standards --refresh` (or reopen Settings and Save).
+`standards --prompt` shows exactly what the chat receives this turn.
 
-Derived data (library index, document index, generated core, check log) is cached per pack in
+Derived data (library index, document index, generated core, check log, additions copy) is cached per pack in
 `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack id>\`.
 
 ## pack.json
@@ -47,17 +51,19 @@ Derived data (library index, document index, generated core, check log) is cache
 ```jsonc
 {
   "id": "example-office",            // unique; folder name if omitted
-  "name": "...", "version": "2026-10-11.1", "owner": "...", "language": "en",
+  "name": "...", "version": "2026-10-11.1", "owner": "...",
   "sources": [{ "title": "...", "date": "...", "path": "..." }],   // indexed by `standards --index`
   "fingerprint": {                   // when does this pack apply to a document?
     "phases": ["1. Existing", "2. New construction", "3. Final"],  // ALL must exist
     "scopeBoxes": ["Project_extent_WCS"],                          // at least ONE must exist
     "sharedParameters": ["EX_ObjectCode"],                         // at least ONE must be bound
     "views": [...], "viewTemplates": [...],                        // supporting evidence only
+    // none of phases / scopeBoxes / sharedParameters declared → the pack applies to EVERY document
     "aliases": { "Project_extent_WCS": ["Project_Extent_WCS"] }    // alternative spellings
   },
   "core": "core.md",                 // or "generated" to use core.generated.md from `standards distill`
   "coreMaxBytes": 4096,              // hard cap for the per-turn STANDARDS block
+  "additionsFile": "additions.md",   // optional extra rules, appended to the core (see below)
   "topics": { "phasing": "topics/phasing.md", ... },
   "phaseTable": {
     "default": "new",
@@ -103,7 +109,7 @@ their parameters:
 - `view-template-required` — `namePattern` (regex for plot views), `onSheets` (views placed on sheets).
 - `family-source` — model families without one of `prefixes` (default: `familyPrefixes`); `ignoreCategories`; `onlyPlaced` (default true: only families with instances — a template's unused families are not the modeller's choice).
 - `param-filled` — `parameters` empty on elements created in the phase of `phaseKey` (default `new`).
-- `survey-point-origin` — `toleranceMm`.
+- `survey-point-origin` — the survey point's own shared coordinates must read 0,0,0 (`toleranceMm`); its distance from the internal origin is not judged (acquiring coordinates legitimately moves it far away).
 - `base-point-rounded` — `roundToMm` (only once shared coordinates exist).
 - `base-point-pinned` — `requireSetup`.
 - `file-name` — `pattern` (regex on the file name); always flags Revit backups `*.0001.rvt`.
@@ -120,5 +126,9 @@ each modifying command on exactly the elements it created.
    update fingerprint names — always the *measured* spelling, with the manual's spelling as alias.
 3. `check --stats` shows which rules fire most across sessions: candidates for a better default
    or a clearer core rule in the next version.
-4. Optional `aanvullingen.md` / additions file next to the pack or in the source-documents folder
-   is appended to the core verbatim — for decisions not (yet) in the manual.
+4. Optional additions file (`additionsFile`, default `additions.md`) next to pack.json or in the
+   source-documents folder is appended to the core verbatim — for decisions not (yet) in the
+   manual. The copy in the source-documents folder is picked up at the next document index run
+   (Revit startup or `standards --index`).
+5. Keys VibeModel does not know (e.g. `template`, `paths`, phase-table `label`s) are ignored —
+   use them freely as documentation.

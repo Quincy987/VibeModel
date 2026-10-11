@@ -65,14 +65,11 @@ namespace VibeModel.Services.Standards
                 {
                     Category cat = null;
                     try { cat = fam.FamilyCategory; } catch { }
-                    int types = 0;
-                    try { types = fam.GetFamilySymbolIds().Count; } catch { }
                     f.Families.Add(new FamilyFact
                     {
                         Name = fam.Name,
                         Category = cat?.Name ?? "",
-                        IsModelCategory = cat != null && cat.CategoryType == CategoryType.Model,
-                        TypeCount = types
+                        IsModelCategory = cat != null && cat.CategoryType == CategoryType.Model
                     });
                 }
             });

@@ -112,7 +112,8 @@ namespace VibeModel.Services.Claude.Commands
                         { "baseNorthMm", c.BaseNorthMm }, { "baseEastMm", c.BaseEastMm },
                         { "baseElevationMm", c.BaseElevationMm }, { "baseAngleDeg", c.BaseAngleDeg },
                         { "basePinned", c.BasePinned }, { "surveyPinned", c.SurveyPinned },
-                        { "surveyOffsetMm", c.SurveyOffsetFromOriginMm }, { "sharedCoordinates", c.SharedCoordinates },
+                        { "surveyAtSharedOrigin", c.SurveyAtSharedOrigin }, { "surveyOffsetMm", c.SurveyOffsetFromOriginMm },
+                        { "sharedCoordinates", c.SharedCoordinates },
                         { "site", c.SiteName }
                     } },
                 { "cadLinks", f.CadLinks }, { "cadLinksPinned", f.CadLinksPinned }, { "cadImports", f.CadImports },

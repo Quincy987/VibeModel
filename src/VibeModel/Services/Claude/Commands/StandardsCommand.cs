@@ -56,7 +56,10 @@ namespace VibeModel.Services.Claude.Commands
                 StandardsContext.Reset();
                 tokens.RemoveAt(0);
                 if (tokens.Count == 0)
-                    return Overview(doc, packId, "Packs re-read from disk.");
+                    return Overview(doc, packId, "Packs re-read from disk." +
+                        (PathProbe.IsNetworkPath(SettingsManager.GetStandardsPackPath())
+                            ? " The network pack folder is being re-synced in the background — run 'standards' again in a moment."
+                            : ""));
             }
 
             var eval = StandardsContext.Evaluate(doc, false);
@@ -180,6 +183,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine();
             sb.AppendLine("Packs found (search order: setting StandardsPackPath → " + StandardsPackRegistry.LocalStandardsRoot +
                           " → add-in folder\\standards):");
+            if (StandardsPackRegistry.ShareSyncStatus != null && PathProbe.IsNetworkPath(SettingsManager.GetStandardsPackPath()))
+                sb.AppendLine("  network pack folder: " + StandardsPackRegistry.ShareSyncStatus);
             if (discovered.Count == 0) sb.AppendLine("  (none)");
             foreach (var d in discovered)
                 sb.AppendLine("  " + (d.Pack != null ? "✓ " + d.Pack.Id + " v" + d.Pack.Version : "✗ " + d.Error) +

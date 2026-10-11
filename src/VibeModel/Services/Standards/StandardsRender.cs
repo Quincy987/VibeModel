@@ -104,7 +104,7 @@ namespace VibeModel.Services.Standards
         {
             var c = f.Coordinates;
             if (c == null || !c.Available) return "unknown";
-            return "survey point " + (c.SurveyOffsetFromOriginMm < 1 ? "at internal origin" : "moved " + Mm(c.SurveyOffsetFromOriginMm)) +
+            return "survey point " + (c.SurveyAtSharedOrigin ? "at shared 0,0,0" : "NOT at shared 0,0,0 (N " + Mm(c.SurveyNorthMm) + " E " + Mm(c.SurveyEastMm) + ")") +
                    (c.SurveyPinned ? " (pinned)" : "") +
                    ", base point N " + Mm(c.BaseNorthMm) + " E " + Mm(c.BaseEastMm) +
                    (Math.Abs(c.BaseAngleDeg) > 1e-6 ? " angle " + c.BaseAngleDeg.ToString("0.###", CultureInfo.InvariantCulture) + "°" : "") +

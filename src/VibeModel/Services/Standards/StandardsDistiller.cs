@@ -102,7 +102,7 @@ namespace VibeModel.Services.Standards
             }
 
             var apiKey = SettingsManager.GetApiKey();
-            var cli = apiKey == null ? FindCli() : null;
+            var cli = apiKey == null ? ClaudeCodeBackend.LocateCli(out _) : null;
             if (apiKey == null && cli == null)
             {
                 message = "No LLM available: set an Anthropic API key in Settings or install the Claude Code CLI.";
@@ -149,27 +149,6 @@ namespace VibeModel.Services.Standards
                 lock (Sync) LastStatus[pack.Id] = "FAILED: " + ex.Message + " (previous core kept)";
                 Logger.Warn("Standards distillation failed: " + ex.Message);
             }
-        }
-
-        private static string FindCli()
-        {
-            foreach (var c in ClaudeCodeBackend.CliCandidates())
-            {
-                if (c != "claude" && File.Exists(c)) return c;
-            }
-            // Bare name on PATH: probe it.
-            try
-            {
-                var psi = new ProcessStartInfo("claude", "--version")
-                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-                using (var p = Process.Start(psi))
-                {
-                    p.WaitForExit(3000);
-                    if (p.HasExited && p.ExitCode == 0) return "claude";
-                }
-            }
-            catch { }
-            return null;
         }
 
         private static string CallCli(string cli, string prompt)

@@ -9,7 +9,7 @@ using VibeModel.Services.Standards;
 namespace VibeModel.Services.Claude.Commands
 {
     /// <summary>
-    /// Audit the model against the office rules (the pack's checks.json), whyhidden-style:
+    /// Audit the model against the office rules (the pack's checks.json):
     /// one OK/WARN/FAIL/SKIPPED line per rule, a Fix line per problem, and a Verdict.
     /// </summary>
     public class CheckCommand : IClaudeCommand, IStructuredCommand

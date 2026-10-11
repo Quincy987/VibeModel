@@ -85,11 +85,8 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        /// <summary>
-        /// Where the Claude Code CLI may live: the bare name (PATH) plus the common install
-        /// locations. Shared with the standards distiller, which runs one-shot CLI calls.
-        /// </summary>
-        internal static List<string> CliCandidates()
+        /// <summary>Where the Claude Code CLI may live: the bare name (PATH) plus the common install locations.</summary>
+        private static List<string> CliCandidates()
         {
             var candidates = new List<string>();
 
@@ -108,11 +105,14 @@ namespace VibeModel.Services.Chat
             return candidates;
         }
 
-        private void DetectClaude()
+        /// <summary>
+        /// The first candidate that answers `--version`, or null. Shared with the office-standards
+        /// distiller, which runs one-shot CLI calls.
+        /// </summary>
+        internal static string LocateCli(out string version)
         {
-            var candidates = CliCandidates();
-
-            foreach (var candidate in candidates)
+            version = null;
+            foreach (var candidate in CliCandidates())
             {
                 // Skip file-path candidates that don't exist on disk
                 if (candidate != "claude" && !File.Exists(candidate))
@@ -132,15 +132,12 @@ namespace VibeModel.Services.Chat
 
                     using (var proc = Process.Start(psi))
                     {
-                        var version = proc.StandardOutput.ReadToEnd().Trim();
+                        var output = proc.StandardOutput.ReadToEnd().Trim();
                         proc.WaitForExit(DetectTimeoutMs);
                         if (proc.ExitCode == 0)
                         {
-                            _claudePath = candidate;
-                            _isAvailable = true;
-                            _statusMessage = "Claude Code " + version;
-                            Logger.Info("Claude Code found at: " + candidate + " (" + version + ")");
-                            return;
+                            version = output;
+                            return candidate;
                         }
                     }
                 }
@@ -148,6 +145,20 @@ namespace VibeModel.Services.Chat
                 {
                     // Not found at this location — try next
                 }
+            }
+            return null;
+        }
+
+        private void DetectClaude()
+        {
+            var path = LocateCli(out var version);
+            if (path != null)
+            {
+                _claudePath = path;
+                _isAvailable = true;
+                _statusMessage = "Claude Code " + version;
+                Logger.Info("Claude Code found at: " + path + " (" + version + ")");
+                return;
             }
 
             _isAvailable = false;
@@ -163,7 +174,7 @@ namespace VibeModel.Services.Chat
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_systemPromptPath));
                 File.WriteAllText(_systemPromptPath,
-                    BuildSystemPromptText(_commands, _httpPort, _authToken, Standards.StandardsPrompt.Combined), Encoding.UTF8);
+                    BuildSystemPromptText(_commands, _httpPort, _authToken), Encoding.UTF8);
                 Logger.Info("System prompt written to: " + _systemPromptPath);
             }
             catch (Exception ex)
@@ -173,8 +184,7 @@ namespace VibeModel.Services.Chat
         }
 
         internal static string BuildSystemPromptText(
-            IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken,
-            string officeContext = null)
+            IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken)
         {
             var sb = new StringBuilder();
             sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
@@ -220,9 +230,6 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
-
-            // Office standards (plan 11): live template facts + the active pack's core rules.
-            AppendOfficeContext(sb, officeContext);
 
             return sb.ToString();
         }
@@ -366,15 +373,10 @@ namespace VibeModel.Services.Chat
                 appendPrompt.Append("Keep suggestions relevant to what's in the model. Use plain language.");
             }
 
-            // Office standards (plan 11): the prompt FILE is only read on demand, so the live
-            // template facts and the active pack's core rules go into the system prompt itself.
-            var office = Standards.StandardsPrompt.Combined;
-            if (!string.IsNullOrWhiteSpace(office))
-            {
-                appendPrompt.AppendLine();
-                appendPrompt.AppendLine();
-                appendPrompt.Append(office.TrimEnd());
-            }
+            // Office standards (plan 11): live template facts + the active pack's core rules go
+            // into the per-turn system prompt — not into the prompt FILE, which the model reads
+            // as well (it would carry them twice) and which must not go stale between turns.
+            AppendOfficeContext(appendPrompt, Standards.StandardsPrompt.Combined);
 
             args.Append(" --append-system-prompt ");
             args.Append(EscapeArg(appendPrompt.ToString()));

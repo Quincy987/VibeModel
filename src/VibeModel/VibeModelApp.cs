@@ -266,8 +266,8 @@ namespace VibeModel
         }
 
         /// <summary>
-        /// Off the main thread: discover packs, and refresh each pack's library index and source
-        /// document index when stale. Network shares can be slow or absent — nothing here may
+        /// Off the main thread: mirror a network pack folder, discover packs, and refresh each
+        /// pack's library index and source document index when stale. Network shares can be slow or absent — nothing here may
         /// block startup, and every failure is only logged.
         /// </summary>
         private static void StartStandardsBackgroundWork()
@@ -277,6 +277,11 @@ namespace VibeModel
                 try
                 {
                     if (!SettingsManager.GetStandardsEnabled()) return;
+                    // A pack folder on a network share is mirrored locally first; the Revit
+                    // thread only ever reads the mirror.
+                    var share = SettingsManager.GetStandardsPackPath()?.Trim();
+                    if (Services.Standards.PathProbe.IsNetworkPath(share))
+                        Services.Standards.StandardsPackRegistry.SyncShareNow(share);
                     foreach (var pack in Services.Standards.StandardsPackRegistry.GetPacks())
                     {
                         Services.Standards.LibraryIndexService.Get(pack);

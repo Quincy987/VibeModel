@@ -50,7 +50,6 @@ namespace VibeModel.Services.Standards
         public string Name { get; set; }
         public string Category { get; set; }
         public bool IsModelCategory { get; set; }
-        public int TypeCount { get; set; }
     }
 
     public sealed class CoordinateFacts
@@ -60,12 +59,19 @@ namespace VibeModel.Services.Standards
         public double SurveyEastMm { get; set; }
         public double SurveyElevationMm { get; set; }
         public bool SurveyPinned { get; set; }
+        /// <summary>
+        /// The survey point's own shared coordinates are 0,0,0 — it IS the shared origin. Its
+        /// distance from the internal origin is legitimately large on a georeferenced project
+        /// (that is what acquiring coordinates does), so that distance is NOT a fault.
+        /// </summary>
+        public bool SurveyAtSharedOrigin =>
+            Math.Abs(SurveyNorthMm) < 1 && Math.Abs(SurveyEastMm) < 1 && Math.Abs(SurveyElevationMm) < 1;
         public double BaseNorthMm { get; set; }
         public double BaseEastMm { get; set; }
         public double BaseElevationMm { get; set; }
         public double BaseAngleDeg { get; set; }
         public bool BasePinned { get; set; }
-        /// <summary>Survey point offset from the internal origin (0 when it was never moved).</summary>
+        /// <summary>Survey point distance from the internal origin (informational).</summary>
         public double SurveyOffsetFromOriginMm { get; set; }
         public string SiteName { get; set; }
         /// <summary>True when the document has acquired/published shared coordinates.</summary>
@@ -153,7 +159,7 @@ namespace VibeModel.Services.Standards
                 if (n > 0) r.Reasons.Add(n + "/" + fp.Views.Count + " views");
             }
 
-            r.Matched = ok && r.Max > 0;
+            r.Matched = ok; // IsEmpty returned early, so at least one required criterion was tested
             return r;
         }
 

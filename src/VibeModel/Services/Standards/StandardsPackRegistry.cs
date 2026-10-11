@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using VibeModel.Infrastructure;
 
 namespace VibeModel.Services.Standards
@@ -15,24 +17,49 @@ namespace VibeModel.Services.Standards
         public string Origin { get; set; }
     }
 
+    /// <summary>One place to look for packs, in search order.</summary>
+    public sealed class SearchRoot
+    {
+        public string Path { get; set; }
+        public string Origin { get; set; }
+        /// <summary>Report a missing folder (true only for a folder the user configured).</summary>
+        public bool ReportMissing { get; set; }
+    }
+
     /// <summary>
     /// Finds every standards pack on this machine and decides which one applies to a document.
     ///
     /// Search order (first occurrence of a pack id wins):
-    ///   1. the StandardsPackPath setting — a pack folder, or a folder of pack folders
-    ///      (this is the knob that later points at the office share instead of a local copy);
+    ///   1. the StandardsPackPath setting — a pack folder, or a folder of pack folders. A local
+    ///      path is read directly; a NETWORK path (UNC or mapped drive) is never read on Revit's
+    ///      main thread: a background sync copies its packs to %LOCALAPPDATA%\VibeModel\standards\
+    ///      _mirror\ and discovery reads that mirror;
     ///   2. %LOCALAPPDATA%\VibeModel\standards\*\pack.json (the local working copy);
     ///   3. &lt;add-in dll folder&gt;\standards\*\pack.json (anything shipped with the add-in).
     /// Every pack is loaded; the active one per document is the matching pack with the most
-    /// specific fingerprint. Discovery is pure file IO and safe off the Revit thread.
+    /// specific fingerprint.
     /// </summary>
     public static class StandardsPackRegistry
     {
+        public const string MirrorSourceFile = "_source.txt";
+        public static readonly TimeSpan ShareListTimeout = TimeSpan.FromSeconds(20);
+        private const long MaxMirroredFileBytes = 5 * 1024 * 1024;
+
         private static readonly object Sync = new object();
         private static List<DiscoveredPack> _discovered;
+        private static int _generation;
+        private static Task _shareSync;
+
+        /// <summary>Bumped whenever the pack set may have changed; consumers compare it to invalidate.</summary>
+        public static int Generation => Volatile.Read(ref _generation);
+
+        /// <summary>Outcome of the last share sync (null when the setting is not a network path).</summary>
+        public static string ShareSyncStatus { get; private set; }
 
         public static string LocalStandardsRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VibeModel", "standards");
+
+        public static string MirrorRoot => Path.Combine(LocalStandardsRoot, "_mirror");
 
         public static string AddinStandardsRoot
         {
@@ -47,17 +74,17 @@ namespace VibeModel.Services.Standards
             }
         }
 
-        /// <summary>Ordered (root, origin) pairs to search, per the documented order.</summary>
-        public static List<KeyValuePair<string, string>> ResolveSearchRoots(
-            string settingPath, string localRoot, string addinRoot)
+        /// <summary>Ordered roots to search, per the documented order.</summary>
+        public static List<SearchRoot> ResolveSearchRoots(string settingPath, string localRoot, string addinRoot,
+            string settingOrigin = "setting StandardsPackPath")
         {
-            var roots = new List<KeyValuePair<string, string>>();
+            var roots = new List<SearchRoot>();
             if (!string.IsNullOrWhiteSpace(settingPath))
-                roots.Add(new KeyValuePair<string, string>(settingPath.Trim(), "setting StandardsPackPath"));
+                roots.Add(new SearchRoot { Path = settingPath.Trim(), Origin = settingOrigin, ReportMissing = true });
             if (!string.IsNullOrWhiteSpace(localRoot))
-                roots.Add(new KeyValuePair<string, string>(localRoot, "local copy"));
+                roots.Add(new SearchRoot { Path = localRoot, Origin = "local copy" });
             if (!string.IsNullOrWhiteSpace(addinRoot))
-                roots.Add(new KeyValuePair<string, string>(addinRoot, "shipped with add-in"));
+                roots.Add(new SearchRoot { Path = addinRoot, Origin = "shipped with add-in" });
             return roots;
         }
 
@@ -66,7 +93,7 @@ namespace VibeModel.Services.Standards
         /// pack.json) or contain pack folders one level down. Duplicated ids: first wins, later
         /// copies are reported as shadowed so "why is my edit not picked up" is answerable.
         /// </summary>
-        public static List<DiscoveredPack> Discover(IEnumerable<KeyValuePair<string, string>> roots)
+        public static List<DiscoveredPack> Discover(IEnumerable<SearchRoot> roots)
         {
             var result = new List<DiscoveredPack>();
             var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -74,7 +101,24 @@ namespace VibeModel.Services.Standards
 
             foreach (var root in roots)
             {
-                foreach (var folder in CandidateFolders(root.Key, result, root.Value))
+                List<string> folders;
+                try
+                {
+                    folders = FindPackFolders(root.Path);
+                    if (folders == null)
+                    {
+                        if (root.ReportMissing)
+                            result.Add(new DiscoveredPack { Folder = root.Path, Origin = root.Origin, Error = "folder not found" });
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Add(new DiscoveredPack { Folder = root.Path, Origin = root.Origin, Error = ex.Message });
+                    continue;
+                }
+
+                foreach (var folder in folders)
                 {
                     string norm;
                     try { norm = Path.GetFullPath(folder).TrimEnd('\\', '/'); }
@@ -84,50 +128,33 @@ namespace VibeModel.Services.Standards
                     var pack = StandardsPack.TryLoad(folder, out var error);
                     if (pack == null)
                     {
-                        result.Add(new DiscoveredPack { Folder = folder, Error = error, Origin = root.Value });
+                        result.Add(new DiscoveredPack { Folder = folder, Error = error, Origin = root.Origin });
                         continue;
                     }
                     if (!seenIds.Add(pack.Id))
                     {
                         result.Add(new DiscoveredPack
                         {
-                            Folder = folder, Origin = root.Value,
+                            Folder = folder, Origin = root.Origin,
                             Error = "shadowed: pack id '" + pack.Id + "' already loaded from an earlier search root"
                         });
                         continue;
                     }
-                    result.Add(new DiscoveredPack { Folder = folder, Pack = pack, Origin = root.Value });
+                    result.Add(new DiscoveredPack { Folder = folder, Pack = pack, Origin = root.Origin });
                 }
             }
             return result;
         }
 
-        private static IEnumerable<string> CandidateFolders(string root, List<DiscoveredPack> report, string origin)
+        /// <summary>Pack folders under a root (the root itself, or its direct subfolders); null when the root is missing.</summary>
+        internal static List<string> FindPackFolders(string root)
         {
-            var list = new List<string>();
-            try
-            {
-                if (!Directory.Exists(root))
-                {
-                    // Only the explicit setting is worth reporting; absent defaults are normal.
-                    if (origin.StartsWith("setting", StringComparison.Ordinal))
-                        report.Add(new DiscoveredPack { Folder = root, Origin = origin, Error = "folder not found or unreachable" });
-                    return list;
-                }
-                if (File.Exists(Path.Combine(root, StandardsPack.PackFileName)))
-                {
-                    list.Add(root);
-                    return list;
-                }
-                foreach (var sub in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
-                    if (File.Exists(Path.Combine(sub, StandardsPack.PackFileName)))
-                        list.Add(sub);
-            }
-            catch (Exception ex)
-            {
-                report.Add(new DiscoveredPack { Folder = root, Origin = origin, Error = ex.Message });
-            }
-            return list;
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return null;
+            if (File.Exists(Path.Combine(root, StandardsPack.PackFileName))) return new List<string> { root };
+            return Directory.GetDirectories(root)
+                .Where(sub => File.Exists(Path.Combine(sub, StandardsPack.PackFileName)))
+                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         /// <summary>
@@ -158,25 +185,43 @@ namespace VibeModel.Services.Standards
 
         // --- Process-wide cache (setting + default roots) ----------------------------------
 
+        /// <summary>
+        /// The discovered packs. Reads LOCAL folders only (a network setting is served from its
+        /// mirror), so it is safe on Revit's main thread.
+        /// </summary>
         public static List<DiscoveredPack> GetDiscovered()
         {
             lock (Sync)
             {
-                if (_discovered == null)
+                if (_discovered != null) return _discovered;
+
+                var setting = SettingsManager.GetStandardsPackPath()?.Trim();
+                var settingRoot = setting;
+                var settingOrigin = "setting StandardsPackPath";
+                var report = new List<DiscoveredPack>();
+                if (PathProbe.IsNetworkPath(setting))
                 {
-                    var roots = ResolveSearchRoots(SettingsManager.GetStandardsPackPath(),
-                        LocalStandardsRoot, AddinStandardsRoot);
-                    _discovered = Discover(roots);
-                    foreach (var d in _discovered)
-                    {
-                        if (d.Pack != null)
+                    settingRoot = MirrorMatches(setting) ? MirrorRoot : null;
+                    settingOrigin = "setting StandardsPackPath (local mirror of " + setting + ")";
+                    if (settingRoot == null)
+                        report.Add(new DiscoveredPack
                         {
-                            AttachRuntimePaths(d.Pack);
-                            Logger.Info("Standards pack loaded: " + d.Pack.Id + " " + d.Pack.Version + " (" + d.Origin + ": " + d.Folder + ")");
-                        }
-                        else
-                            Logger.Info("Standards pack skipped: " + d.Folder + " — " + d.Error);
+                            Folder = setting, Origin = settingOrigin,
+                            Error = "network share not mirrored yet" + (ShareSyncStatus != null ? " (" + ShareSyncStatus + ")" : "") +
+                                    " — it is copied in the background; run 'standards --refresh' to retry"
+                        });
+                }
+
+                _discovered = report.Concat(Discover(ResolveSearchRoots(settingRoot, LocalStandardsRoot, AddinStandardsRoot, settingOrigin))).ToList();
+                foreach (var d in _discovered)
+                {
+                    if (d.Pack != null)
+                    {
+                        AttachRuntimePaths(d.Pack);
+                        Logger.Info("Standards pack loaded: " + d.Pack.Id + " " + d.Pack.Version + " (" + d.Origin + ": " + d.Folder + ")");
                     }
+                    else
+                        Logger.Info("Standards pack skipped: " + d.Folder + " — " + d.Error);
                 }
                 return _discovered;
             }
@@ -185,13 +230,103 @@ namespace VibeModel.Services.Standards
         public static List<StandardsPack> GetPacks() =>
             GetDiscovered().Where(d => d.Pack != null).Select(d => d.Pack).ToList();
 
-        /// <summary>Forget everything; the next call rediscovers (after a setting change or --refresh).</summary>
+        /// <summary>Forget everything; the next call rediscovers (after a setting change, a sync or --refresh).</summary>
         public static void Refresh()
         {
             lock (Sync) { _discovered = null; }
+            Interlocked.Increment(ref _generation);
         }
 
-        /// <summary>Per-pack cache folder for derived data (index, generated core, check log).</summary>
+        // --- Network share mirror ------------------------------------------------------------
+
+        private static bool MirrorMatches(string share)
+        {
+            try
+            {
+                var source = File.ReadAllText(Path.Combine(MirrorRoot, MirrorSourceFile)).Trim();
+                return string.Equals(source.TrimEnd('\\', '/'), share.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// Start a background copy of the network StandardsPackPath into the local mirror.
+        /// No-op (false) when the setting is empty or local. On success the registry refreshes.
+        /// </summary>
+        public static bool StartShareSync()
+        {
+            var setting = SettingsManager.GetStandardsPackPath()?.Trim();
+            if (!PathProbe.IsNetworkPath(setting)) return false;
+            lock (Sync)
+            {
+                if (_shareSync == null || _shareSync.IsCompleted)
+                    _shareSync = Task.Run(() => SyncShareNow(setting));
+            }
+            return true;
+        }
+
+        /// <summary>Synchronous sync (background callers only). Never throws.</summary>
+        public static void SyncShareNow(string share)
+        {
+            var status = SyncShare(share, MirrorRoot);
+            ShareSyncStatus = status;
+            Logger.Info("Standards share sync (" + share + "): " + status);
+            Refresh();
+        }
+
+        /// <summary>
+        /// Copy every pack folder under <paramref name="share"/> into <paramref name="mirrorRoot"/>
+        /// (staged, then swapped in, so readers never see a half copy). An unreachable share
+        /// leaves the previous mirror untouched. Returns a one-line status.
+        /// </summary>
+        internal static string SyncShare(string share, string mirrorRoot)
+        {
+            var folders = PathProbe.Run(() => FindPackFolders(share), ShareListTimeout, null);
+            if (folders == null)
+                return "share unreachable at " + DateTime.Now.ToString("HH:mm") + " — using the previous mirror";
+
+            var staging = mirrorRoot + ".staging";
+            try
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, true);
+                Directory.CreateDirectory(staging);
+                int files = 0;
+                foreach (var folder in folders)
+                {
+                    var name = new DirectoryInfo(folder).Name;
+                    files += CopyTree(folder, Path.Combine(staging, name));
+                }
+                File.WriteAllText(Path.Combine(staging, MirrorSourceFile), share);
+
+                if (Directory.Exists(mirrorRoot)) Directory.Delete(mirrorRoot, true);
+                Directory.Move(staging, mirrorRoot);
+                return "synced " + folders.Count + " pack(s), " + files + " file(s) at " + DateTime.Now.ToString("HH:mm");
+            }
+            catch (Exception ex)
+            {
+                try { if (Directory.Exists(staging)) Directory.Delete(staging, true); } catch { }
+                return "sync failed: " + ex.Message;
+            }
+        }
+
+        private static int CopyTree(string from, string to)
+        {
+            Directory.CreateDirectory(to);
+            int n = 0;
+            foreach (var f in Directory.GetFiles(from))
+            {
+                if (new FileInfo(f).Length > MaxMirroredFileBytes) continue; // packs are text; skip stray binaries
+                File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+                n++;
+            }
+            foreach (var d in Directory.GetDirectories(from))
+                n += CopyTree(d, Path.Combine(to, new DirectoryInfo(d).Name));
+            return n;
+        }
+
+        // --- Per-pack local paths -------------------------------------------------------------
+
+        /// <summary>Per-pack cache folder for derived data (index, generated core, check log, additions copy).</summary>
         public static string CacheDir(string packId) => Path.Combine(LocalStandardsRoot, "_cache", Sanitize(packId));
 
         /// <summary>The office standards folder: setting first, then the pack's own default.</summary>
@@ -202,13 +337,18 @@ namespace VibeModel.Services.Standards
             return pack?.StandardsFolder;
         }
 
+        /// <summary>Local copy of the additions file found in the standards folder (refreshed by the document index run).</summary>
+        public static string CachedAdditionsPath(StandardsPack pack) => Path.Combine(CacheDir(pack.Id), pack.AdditionsFile);
+
+        // Only LOCAL paths: the core is rendered on Revit's main thread.
         private static void AttachRuntimePaths(StandardsPack pack)
         {
             pack.GeneratedCorePath = Path.Combine(CacheDir(pack.Id), "core.generated.md");
-            pack.AdditionsPaths = new List<string> { Path.Combine(pack.Folder, "aanvullingen.md") };
-            var folder = ResolveStandardsFolder(pack);
-            if (!string.IsNullOrWhiteSpace(folder))
-                pack.AdditionsPaths.Add(Path.Combine(folder, "aanvullingen.md"));
+            pack.AdditionsPaths = new List<string>
+            {
+                Path.Combine(pack.Folder, pack.AdditionsFile),
+                CachedAdditionsPath(pack)
+            };
         }
 
         internal static string Sanitize(string s)

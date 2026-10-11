@@ -113,7 +113,7 @@ namespace VibeModel.Services.Standards
         }
     }
 
-    /// <summary>whyhidden-style rendering: one OK/WARN/FAIL line per rule, Fix lines, a Verdict.</summary>
+    /// <summary>Report rendering: one OK/WARN/FAIL/SKIPPED line per rule, a Fix line per problem, a Verdict.</summary>
     public static class CheckReport
     {
         public const int MaxIdsShown = 12;

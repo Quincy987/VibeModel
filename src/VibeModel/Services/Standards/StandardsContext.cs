@@ -11,6 +11,8 @@ namespace VibeModel.Services.Standards
     public sealed class StandardsEvaluation
     {
         public string CacheKey { get; set; }
+        /// <summary>Registry generation the verdict was made against (packs/settings may change).</summary>
+        public int Generation { get; set; }
         public TemplateFacts Facts { get; set; }
         public StandardsPack Active { get; set; }
         public FingerprintResult Match { get; set; }
@@ -31,21 +33,31 @@ namespace VibeModel.Services.Standards
         private static readonly Dictionary<string, StandardsEvaluation> Cache =
             new Dictionary<string, StandardsEvaluation>(StringComparer.OrdinalIgnoreCase);
         private static volatile bool _promptDirty = true;
+        private static int _promptGeneration = -1;
+        private static readonly System.Diagnostics.Stopwatch SinceRefresh = System.Diagnostics.Stopwatch.StartNew();
+
+        /// <summary>
+        /// The prompt snapshot needs a full fact collection; after a burst of user edits it is
+        /// re-rendered at most this often (it stays dirty, so the next idle after that catches up).
+        /// </summary>
+        public static readonly TimeSpan MinPromptRefreshInterval = TimeSpan.FromSeconds(3);
 
         public static StandardsEvaluation Evaluate(Document doc, bool full)
         {
             if (doc == null) return new StandardsEvaluation();
             var docKey = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
             var cacheKey = docKey + "#" + ModelChangeTracker.GetTotalEdits(docKey);
+            var generation = StandardsPackRegistry.Generation;
 
             lock (Sync)
             {
-                if (Cache.TryGetValue(docKey, out var hit) && hit.CacheKey == cacheKey && (!full || hit.Facts.IsFull))
+                if (Cache.TryGetValue(docKey, out var hit) && hit.CacheKey == cacheKey &&
+                    hit.Generation == generation && (!full || hit.Facts.IsFull))
                     return hit;
             }
 
             var facts = TemplateFactsCollector.Collect(doc, full);
-            var eval = new StandardsEvaluation { CacheKey = cacheKey, Facts = facts };
+            var eval = new StandardsEvaluation { CacheKey = cacheKey, Generation = generation, Facts = facts };
             if (!SettingsManager.GetStandardsEnabled())
             {
                 eval.Disabled = true;
@@ -72,13 +84,16 @@ namespace VibeModel.Services.Standards
             }
         }
 
-        /// <summary>Drop every cached verdict and re-read the packs (setting change, --refresh).</summary>
+        /// <summary>
+        /// Re-read settings and packs (setting change, --refresh); a network pack folder is
+        /// re-synced in the background. Cached verdicts are invalidated through the registry
+        /// generation, so nothing else needs clearing.
+        /// </summary>
         public static void Reset()
         {
             SettingsManager.ClearCache(); // pick up settings.json edits made outside the dialog
             StandardsPackRegistry.Refresh();
-            lock (Sync) Cache.Clear();
-            _promptDirty = true;
+            StandardsPackRegistry.StartShareSync();
         }
 
         public static void MarkPromptDirty() => _promptDirty = true;
@@ -86,8 +101,12 @@ namespace VibeModel.Services.Standards
         /// <summary>Idling hook: re-render the prompt snapshot only when something changed.</summary>
         public static void RefreshPromptIfDirty(UIApplication app)
         {
-            if (!_promptDirty) return;
+            var generation = StandardsPackRegistry.Generation;
+            if (!_promptDirty && generation == _promptGeneration) return;
+            if (SinceRefresh.Elapsed < MinPromptRefreshInterval && generation == _promptGeneration) return;
             _promptDirty = false;
+            _promptGeneration = generation;
+            SinceRefresh.Restart();
             RefreshPrompt(app);
         }
 

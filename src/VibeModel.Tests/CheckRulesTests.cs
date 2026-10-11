@@ -7,7 +7,7 @@ using Xunit;
 
 namespace VibeModel.Tests
 {
-    /// <summary>checks.json parsing, whyhidden-style rendering, the post-command line and the hit log.</summary>
+    /// <summary>checks.json parsing, report rendering (OK/WARN/FAIL lines, Fix, Verdict), the post-command line and the hit log.</summary>
     public class CheckRulesTests
     {
         [Fact]
@@ -61,7 +61,7 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void Render_IsWhyHiddenStyle()
+        public void Render_HasRuleLinesFixesAndVerdict()
         {
             var text = CheckReport.Render("CHECK — test", SampleFindings());
             Assert.Contains("WARN:    param-filled — Object code — 2 elements empty [ids: 1, 2", text);

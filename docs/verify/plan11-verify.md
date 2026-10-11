@@ -8,8 +8,9 @@ internal names and network paths, so they are kept outside this public repo
 
 Environment: Revit 2023.1, add-in built from this branch and deployed with `build.ps1`; the
 office network share was **unreachable** during the whole run (weekend, no VPN), which also
-exercised every offline path. Four rounds: round 1 found 4 defects (fixed), round 2 ran the
-full script, rounds 3–4 re-checked the fixes on fresh Revit sessions. Unit tests: 282/282 pass.
+exercised every offline path. Six rounds: round 1 found 4 defects (fixed), round 2 ran the
+full script, rounds 3–4 re-checked the fixes, rounds 5–6 verified the code-review fixes below on
+a fresh Revit session. Unit tests: 296/296 pass.
 
 ## Results
 
@@ -55,10 +56,36 @@ full script, rounds 3–4 re-checked the fixes on fresh Revit sessions. Unit tes
 Also: unreachable-source status shortened to a count + 2 examples; phase note uses the
 platform newline; `standards --prompt` added to show exactly what the chat receives.
 
+## Code-review fixes (verified in rounds 5–6)
+
+- **Network pack folder.** A network `StandardsPackPath` was read on Revit's main thread (pack
+  files, plus an additions file in the share) — a dead VPN could freeze Revit. Now a background
+  sync mirrors the share to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` and only the mirror is
+  read. Round 6: setting pointed at a UNC path to this machine's admin share (`\\localhost\c$\…`); `--refresh` reported "not
+  mirrored yet — copied in the background", seconds later the share's pack (version
+  `mirror-test`) was active from the mirror and the local copy was reported as shadowed;
+  clearing the setting brought the local copy back.
+- **`survey-point-origin` false FAIL.** The rule judged the survey point's distance from the
+  internal origin — which is large on every correctly georeferenced project. It now judges the
+  survey point's own shared coordinates (0,0,0). Round 5: `coords`/`check`/prompt say "survey
+  point at shared 0,0,0".
+- **Rules twice in the CLI prompt.** The office blocks went into both the appended system prompt
+  and the commands file the model reads; now only the appended prompt.
+- **Scoped `pinned` rule** nagged after `grid` on a project without coordinates; it now follows
+  the same precondition as the full audit (round 5: `grid` → no check line).
+- Smaller: post-command check only after a successful command; prompt re-render throttled to
+  every 3 s after edit bursts; registry generation invalidates cached verdicts; a share that timed
+  out is probed once per index run; documents removed from a reachable folder leave the index;
+  the additions file name is a pack setting (`additionsFile`); dead members removed; one shared
+  Claude CLI lookup.
+
 ## Not verified here
 
 - The Settings dialog's new *Office standards* section (WPF; not driven by automation to avoid
   clicking on the user's desktop) — compiled, not exercised visually.
 - The real office share (K:) paths: library scan, manual PDFs and shared-coordinate workflow on
-  a real project, because the share was unreachable. Every offline path was exercised instead.
+  a real project, because the share was unreachable. Every offline path was exercised instead,
+  and the share mirror was exercised through a UNC path to this machine.
+- `survey-point-origin` on a georeferenced project (no such model available); the template
+  case and the rule's unit tests pass.
 - Revit 2024/2025 builds.

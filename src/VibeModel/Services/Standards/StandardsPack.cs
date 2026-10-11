@@ -23,10 +23,8 @@ namespace VibeModel.Services.Standards
         public string Folder { get; private set; }
         public string Id { get; private set; }
         public string Name { get; private set; }
-        public string Language { get; private set; }
         public string Version { get; private set; }
         public string Owner { get; private set; }
-        public string RevitVersion { get; private set; }
         public List<PackSource> Sources { get; private set; } = new List<PackSource>();
         public PackFingerprint Fingerprint { get; private set; } = new PackFingerprint();
         public Dictionary<string, string> Paths { get; private set; } =
@@ -51,6 +49,12 @@ namespace VibeModel.Services.Standards
         public LinkCadDefaults LinkCad { get; private set; } = new LinkCadDefaults();
         public string StandardsFolder { get; private set; }
         public List<string> DistillChapters { get; private set; } = new List<string>();
+
+        /// <summary>
+        /// Name of the optional office additions file — rules not (yet) in the manual, appended to
+        /// the core verbatim. Looked for next to pack.json and in the standards folder.
+        /// </summary>
+        public string AdditionsFile { get; private set; } = "additions.md";
 
         /// <summary>
         /// Set by the registry: where a distilled core (core.generated.md) and the office
@@ -90,7 +94,7 @@ namespace VibeModel.Services.Standards
                     error = PackFileName + " is not a JSON object";
                     return null;
                 }
-                return FromJson(root, folder, out error);
+                return FromJson(root, folder);
             }
             catch (Exception ex)
             {
@@ -99,19 +103,16 @@ namespace VibeModel.Services.Standards
             }
         }
 
-        internal static StandardsPack FromJson(Dictionary<string, object> root, string folder, out string error)
+        internal static StandardsPack FromJson(Dictionary<string, object> root, string folder)
         {
-            error = null;
             var pack = new StandardsPack { Folder = folder };
 
             pack.Id = PackJson.GetString(root, "id");
             if (string.IsNullOrWhiteSpace(pack.Id))
                 pack.Id = string.IsNullOrEmpty(folder) ? "pack" : new DirectoryInfo(folder).Name;
             pack.Name = PackJson.GetString(root, "name");
-            pack.Language = PackJson.GetString(root, "language");
             pack.Version = PackJson.GetString(root, "version");
             pack.Owner = PackJson.GetString(root, "owner");
-            pack.RevitVersion = PackJson.GetString(root, "revitVersion");
 
             foreach (var s in PackJson.GetDictList(root, "sources"))
                 pack.Sources.Add(new PackSource
@@ -165,6 +166,9 @@ namespace VibeModel.Services.Standards
             pack.LinkCad = LinkCadDefaults.FromJson(PackJson.GetDict(root, "linkCad"));
             pack.StandardsFolder = PackJson.GetString(root, "standardsFolder");
             pack.DistillChapters = PackJson.GetStrings(PackJson.GetDict(root, "distill"), "chapters");
+            var additions = PackJson.GetString(root, "additionsFile");
+            if (!string.IsNullOrWhiteSpace(additions) && additions.IndexOfAny(Path.GetInvalidFileNameChars()) < 0)
+                pack.AdditionsFile = additions.Trim();
 
             return pack;
         }
@@ -267,8 +271,11 @@ namespace VibeModel.Services.Standards
         public Dictionary<string, List<string>> Aliases { get; set; } =
             new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
-        public bool IsEmpty => Phases.Count == 0 && ScopeBoxes.Count == 0 && SharedParameters.Count == 0
-                               && Views.Count == 0 && ViewTemplates.Count == 0;
+        /// <summary>
+        /// No REQUIRED criterion (phases, scope boxes, shared parameters) is declared: the pack
+        /// applies to every document. Views / view templates are supporting evidence only.
+        /// </summary>
+        public bool IsEmpty => Phases.Count == 0 && ScopeBoxes.Count == 0 && SharedParameters.Count == 0;
 
         internal static PackFingerprint FromJson(Dictionary<string, object> d)
         {
@@ -305,7 +312,6 @@ namespace VibeModel.Services.Standards
         public string Created { get; set; }
         /// <summary>Null = "None" (never demolished).</summary>
         public string Demolished { get; set; }
-        public string Label { get; set; }
     }
 
     /// <summary>
@@ -315,8 +321,6 @@ namespace VibeModel.Services.Standards
     /// </summary>
     public sealed class PhaseTable
     {
-        public static readonly string[] CanonicalKeys = { "existing", "new", "temp", "demolish", "future" };
-
         public string DefaultKey { get; private set; } = "new";
         public List<PhaseMapping> Entries { get; } = new List<PhaseMapping>();
         public Dictionary<string, string> Aliases { get; } =
@@ -346,8 +350,7 @@ namespace VibeModel.Services.Standards
                     {
                         Key = kv.Key,
                         Created = created,
-                        Demolished = demolished,
-                        Label = PackJson.GetString(e, "label")
+                        Demolished = demolished
                     });
                 }
 
@@ -398,7 +401,6 @@ namespace VibeModel.Services.Standards
     {
         public string DefaultTitleblock { get; set; }
         public List<string> StampParameters { get; set; } = new List<string>();
-        public string FirstSheetNumber { get; set; }
 
         internal static SheetDefaults FromJson(Dictionary<string, object> d)
         {
@@ -406,7 +408,6 @@ namespace VibeModel.Services.Standards
             if (d == null) return s;
             s.DefaultTitleblock = PackJson.GetString(d, "defaultTitleblock");
             s.StampParameters = PackJson.GetStrings(d, "stampParameters");
-            s.FirstSheetNumber = PackJson.GetString(d, "firstSheetNumber");
             return s;
         }
     }

@@ -145,7 +145,8 @@ namespace VibeModel.Services.Standards
         {
             try
             {
-                var files = ListSourceFiles(pack, out var unreachable);
+                var files = ListSourceFiles(pack, out var unreachable, out var reachableFolder);
+                if (reachableFolder != null) SyncAdditions(pack, reachableFolder);
                 Directory.CreateDirectory(IndexDir(pack));
                 var manifest = LoadManifest(pack);
                 int added = 0, cached = 0, failed = 0;
@@ -174,6 +175,13 @@ namespace VibeModel.Services.Standards
                     catch (Exception ex) { failed++; errors.Add(Path.GetFileName(file) + ": " + ex.Message); }
                 }
 
+                // A document removed from a folder we could actually read is gone; one we could
+                // not reach keeps its cached index (offline use).
+                if (reachableFolder != null)
+                    foreach (var stale in manifest.Keys.Where(k =>
+                                 string.Equals(Path.GetDirectoryName(k)?.TrimEnd('\\', '/'), reachableFolder.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase) &&
+                                 !files.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
+                        manifest.Remove(stale);
                 SaveManifest(pack, manifest);
                 var status = "indexed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
                              ": " + added + " new, " + cached + " unchanged, " + failed + " failed" +
@@ -192,47 +200,84 @@ namespace VibeModel.Services.Standards
         }
 
         /// <summary>
-        /// The documents to index: *.pdf/*.txt at the TOP of the standards folder plus every
-        /// source path the pack declares. Each probe runs with a timeout (network shares hang).
+        /// The documents to index: *.pdf/*.txt/*.md at the TOP of the standards folder plus every
+        /// source path the pack declares. Every probe has a deadline, and a share that timed out
+        /// once is not probed again in this run (a dead VPN would otherwise cost one timeout per
+        /// file and park a thread-pool thread each time).
         /// </summary>
-        internal static List<string> ListSourceFiles(StandardsPack pack, out List<string> unreachable)
+        internal static List<string> ListSourceFiles(StandardsPack pack, out List<string> unreachable, out string reachableFolder)
         {
             unreachable = new List<string>();
+            reachableFolder = null;
             var files = new List<string>();
+            var deadRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             var folder = StandardsPackRegistry.ResolveStandardsFolder(pack);
             if (!string.IsNullOrWhiteSpace(folder))
             {
-                var listed = WithTimeout(() =>
-                    Directory.Exists(folder)
-                        ? Directory.GetFiles(folder).Where(IsIndexable).ToList()
-                        : null);
-                if (listed == null) unreachable.Add(folder);
-                else files.AddRange(listed);
+                var exists = PathProbe.DirectoryExists(folder, ReachabilityTimeout);
+                var listed = exists == true
+                    ? PathProbe.Run(() => Directory.GetFiles(folder).Where(IsIndexable).ToList(), ReachabilityTimeout, null)
+                    : null;
+                if (listed != null)
+                {
+                    files.AddRange(listed);
+                    reachableFolder = folder;
+                }
+                else
+                {
+                    unreachable.Add(folder);
+                    if (exists == null) AddRoot(deadRoots, folder);
+                }
             }
+
             foreach (var src in pack.Sources.Where(s => !string.IsNullOrWhiteSpace(s.Path) && IsIndexable(s.Path)))
             {
                 if (files.Contains(src.Path, StringComparer.OrdinalIgnoreCase)) continue;
-                var exists = WithTimeout(() => File.Exists(src.Path) ? "y" : null);
-                if (exists == null) unreachable.Add(src.Path);
-                else files.Add(src.Path);
+                var root = PathProbe.ShareRoot(src.Path);
+                if (root != null && deadRoots.Contains(root)) { unreachable.Add(src.Path); continue; }
+                var exists = PathProbe.FileExists(src.Path, ReachabilityTimeout);
+                if (exists == true) files.Add(src.Path);
+                else
+                {
+                    unreachable.Add(src.Path);
+                    if (exists == null) AddRoot(deadRoots, src.Path);
+                }
             }
             return files;
+        }
+
+        private static void AddRoot(HashSet<string> roots, string path)
+        {
+            var root = PathProbe.ShareRoot(path);
+            if (!string.IsNullOrEmpty(root)) roots.Add(root);
+        }
+
+        /// <summary>
+        /// Keep a LOCAL copy of the office additions file from the standards folder: the core is
+        /// rendered on Revit's main thread and must never read the share. Refreshes the registry
+        /// when the text changed so the next prompt carries it.
+        /// </summary>
+        private static void SyncAdditions(StandardsPack pack, string folder)
+        {
+            var src = Path.Combine(folder, pack.AdditionsFile);
+            var text = PathProbe.Run(() => File.Exists(src) ? File.ReadAllText(src, Encoding.UTF8) : "", ReachabilityTimeout, null);
+            if (text == null) return; // timed out: keep the cached copy
+            var dst = StandardsPackRegistry.CachedAdditionsPath(pack);
+            if (text == (StandardsPack.ReadIfExists(dst) ?? "")) return;
+            if (text.Length == 0) File.Delete(dst);
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(dst));
+                File.WriteAllText(dst, text, Encoding.UTF8);
+            }
+            StandardsPackRegistry.Refresh();
         }
 
         private static bool IsIndexable(string path)
         {
             var ext = Path.GetExtension(path ?? "").ToLowerInvariant();
             return ext == ".pdf" || ext == ".txt" || ext == ".md";
-        }
-
-        private static T WithTimeout<T>(Func<T> f) where T : class
-        {
-            try
-            {
-                var t = Task.Run(f);
-                return t.Wait(ReachabilityTimeout) ? t.Result : null;
-            }
-            catch { return null; }
         }
 
         /// <summary>size + mtime + SHA-1 of the first MB: cheap, and changes when the file does.</summary>

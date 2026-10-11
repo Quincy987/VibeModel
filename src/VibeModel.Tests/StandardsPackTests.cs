@@ -305,6 +305,94 @@ namespace VibeModel.Tests
             Assert.Equal("setting StandardsPackPath", d.Origin);
         }
 
+        // --- Network share mirror ------------------------------------------------------------
+
+        [Fact]
+        public void SyncShare_MirrorsPackFolders_AndRecordsTheSource()
+        {
+            var share = Path.Combine(_temp, "share");
+            WritePack(Path.Combine("share", "office"), "{\"id\":\"office\"}", new Dictionary<string, string>
+            {
+                { "core.md", "- rule" }, { Path.Combine("topics", "phasing.md"), "# phasing" }
+            });
+            Directory.CreateDirectory(Path.Combine(share, "not-a-pack"));
+            var mirror = Path.Combine(_temp, "local", "_mirror");
+
+            var status = StandardsPackRegistry.SyncShare(share, mirror);
+            Assert.StartsWith("synced 1 pack(s), 3 file(s)", status);
+            Assert.True(File.Exists(Path.Combine(mirror, "office", "topics", "phasing.md")));
+            Assert.False(Directory.Exists(Path.Combine(mirror, "not-a-pack")));
+            Assert.Equal(share, File.ReadAllText(Path.Combine(mirror, StandardsPackRegistry.MirrorSourceFile)));
+            Assert.False(Directory.Exists(mirror + ".staging"));
+
+            // The mirror is a normal search root afterwards.
+            var found = StandardsPackRegistry.Discover(StandardsPackRegistry.ResolveSearchRoots(mirror, null, null));
+            Assert.Equal("office", found.Single().Pack.Id);
+        }
+
+        [Fact]
+        public void SyncShare_UnreachableShare_KeepsThePreviousMirror()
+        {
+            var share = Path.Combine(_temp, "share");
+            WritePack(Path.Combine("share", "office"), "{\"id\":\"office\"}");
+            var mirror = Path.Combine(_temp, "_mirror");
+            StandardsPackRegistry.SyncShare(share, mirror);
+
+            var status = StandardsPackRegistry.SyncShare(Path.Combine(_temp, "gone"), mirror);
+            Assert.StartsWith("share unreachable", status);
+            Assert.True(File.Exists(Path.Combine(mirror, "office", "pack.json")));
+        }
+
+        [Theory]
+        [InlineData(@"\\server\revit\standards", true)]
+        [InlineData("//server/revit", true)]
+        [InlineData(@"C:\Users\x\standards", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void IsNetworkPath(string path, bool expected) => Assert.Equal(expected, PathProbe.IsNetworkPath(path));
+
+        [Fact]
+        public void ShareRoot_IsTheReachabilityUnit()
+        {
+            Assert.Equal(@"\\server\share", PathProbe.ShareRoot(@"\\server\share\revit\a.pdf"));
+            Assert.Equal(@"K:\", PathProbe.ShareRoot(@"K:\ALG\a.pdf"));
+        }
+
+        [Fact]
+        public void PathProbe_Run_ReturnsFallbackOnTimeoutAndOnError()
+        {
+            Assert.Equal("slow", PathProbe.Run(() => { System.Threading.Thread.Sleep(2000); return "done"; }, TimeSpan.FromMilliseconds(50), "slow"));
+            Assert.Equal("err", PathProbe.Run<string>(() => throw new IOException("x"), TimeSpan.FromSeconds(1), "err"));
+            Assert.Equal("ok", PathProbe.Run(() => "ok", TimeSpan.FromSeconds(1), "x"));
+        }
+
+        [Fact]
+        public void AdditionsFile_ConfigurableAndSafe()
+        {
+            Assert.Equal("additions.md", StandardsPack.TryLoad(WritePack("a1", "{}"), out _).AdditionsFile);
+            Assert.Equal("aanvullingen.md", StandardsPack.TryLoad(WritePack("a2", "{\"additionsFile\":\"aanvullingen.md\"}"), out _).AdditionsFile);
+            Assert.Equal("additions.md", StandardsPack.TryLoad(WritePack("a3", "{\"additionsFile\":\"..\\\\x|y.md\"}"), out _).AdditionsFile);
+        }
+
+        [Fact]
+        public void Fingerprint_ViewsOnly_IsSupportingEvidence_PackAppliesEverywhere()
+        {
+            var fp = new PackFingerprint { Views = new List<string> { "Some view" } };
+            Assert.True(fp.IsEmpty);
+            Assert.True(FingerprintMatcher.Match(fp, new TemplateFacts()).Matched);
+        }
+
+        [Fact]
+        public void SurveyPoint_JudgedOnSharedCoordinates_NotOnDistanceFromInternalOrigin()
+        {
+            // Georeferenced project: survey point far from the internal origin, but it IS shared 0,0,0.
+            var c = new CoordinateFacts { Available = true, SurveyOffsetFromOriginMm = 150000000 };
+            Assert.True(c.SurveyAtSharedOrigin);
+            Assert.Contains("at shared 0,0,0", StandardsRender.DescribeCoordinates(new TemplateFacts { Coordinates = c }));
+            c.SurveyNorthMm = 25;
+            Assert.False(c.SurveyAtSharedOrigin);
+        }
+
         // --- Rendering ----------------------------------------------------------------------
 
         [Fact]

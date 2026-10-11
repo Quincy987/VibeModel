@@ -203,18 +203,18 @@ namespace VibeModel.Services.Claude
         {
             // Record what a modifying command adds so the office rules can check exactly that.
             bool modifying = _registry.IsModification(request.Command);
-            if (modifying) CreatedElementsRecorder.Arm();
+            List<ElementId> created = null;
             CommandResult cr;
-            List<CheckFinding> findings = null;
+            if (modifying) CreatedElementsRecorder.Arm();
             try
             {
                 cr = _registry.ExecuteCore(request.Command, request.Args, app);
             }
             finally
             {
-                var created = modifying ? CreatedElementsRecorder.Disarm() : null;
-                if (created != null && created.Count > 0) findings = PostCommandCheck.Run(app, created);
+                if (modifying) created = CreatedElementsRecorder.Disarm();
             }
+            var findings = cr.Success && created != null ? PostCommandCheck.Run(app, created) : null;
             bool json = request.Format == ResponseFormat.Json;
 
             // Take the stamp only when it will actually be delivered — taking it resets the
@@ -223,7 +223,7 @@ namespace VibeModel.Services.Claude
             if (!StampExcluded.Contains(request.Command) && (json || cr.Success))
                 stamp = TryTakeStamp(app);
 
-            var checkLine = cr.Success && findings != null ? CheckReport.SummaryLine(findings) : null;
+            var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
 
             if (json)
             {
@@ -319,11 +319,11 @@ namespace VibeModel.Services.Claude
             var entries = new List<object>();      // json form (per-command results)
             bool anyModified = false, anyError = false, rolledBack = false;
 
-            CreatedElementsRecorder.Arm();
             List<ElementId> created;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
                 tg.Start();
+                CreatedElementsRecorder.Arm();
                 try
                 {
                     foreach (var item in req.Batch)

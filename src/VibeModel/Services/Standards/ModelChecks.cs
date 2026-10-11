@@ -172,8 +172,9 @@ namespace VibeModel.Services.Standards
             var targets = r.GetStrings("targets");
             if (targets.Count == 0) targets = new List<string> { "cadLinks", "pointClouds", "grids" };
             bool requireSetup = PackJson.GetBool(r.Params, "requireSetup") ?? true;
-            if (c.Scope == null && requireSetup && !c.CoordinatesSetUp)
-                return CheckFinding.Skip(r, "no underlay linked and no shared coordinates yet — pinning applies once the project is set up");
+            if (requireSetup && !c.CoordinatesSetUp)
+                return c.Scope != null ? null // after a single command: stay quiet, as in the full audit
+                    : CheckFinding.Skip(r, "no underlay linked and no shared coordinates yet — pinning applies once the project is set up");
 
             var unpinned = new List<int>();
             int total = 0;
@@ -372,10 +373,14 @@ namespace VibeModel.Services.Standards
         private static CheckFinding SurveyPointOrigin(Ctx c, CheckRule r)
         {
             if (!c.Coords.Available) return CheckFinding.Skip(r, "no survey point");
+            // Judged on the survey point's own shared coordinates, not on its distance from the
+            // internal origin: acquiring coordinates legitimately moves it far from there.
             var tol = r.GetDouble("toleranceMm", 1);
-            return c.Coords.SurveyOffsetFromOriginMm <= tol
-                ? CheckFinding.Ok(r, "survey point at the internal origin")
-                : CheckFinding.Problem(r, "survey point moved " + Math.Round(c.Coords.SurveyOffsetFromOriginMm) + " mm from the internal origin");
+            var s = c.Coords;
+            return Math.Abs(s.SurveyNorthMm) <= tol && Math.Abs(s.SurveyEastMm) <= tol && Math.Abs(s.SurveyElevationMm) <= tol
+                ? CheckFinding.Ok(r, "survey point at shared 0,0,0")
+                : CheckFinding.Problem(r, "survey point reads N/S " + Math.Round(s.SurveyNorthMm) + ", E/W " + Math.Round(s.SurveyEastMm) +
+                                          ", elev " + Math.Round(s.SurveyElevationMm) + " mm instead of 0,0,0");
         }
 
         private static CheckFinding BasePointRounded(Ctx c, CheckRule r)

@@ -51,15 +51,17 @@ Every turn's system prompt gets, in this order (each layer optional and bounded)
 | Project folder / memory | plans 10 / 08 | bounded |
 
 The blocks are rendered on Revit's main thread (Idling, only when something changed: document
-edit, view switch, open/close, settings change) and published to a lock-free holder that the
-chat backends read on their worker threads. The Claude Code backend puts them in the
-`--append-system-prompt` (the prompt *file* is only read on demand).
+edit, view switch, open/close, settings change; at most every 3 s after a burst of edits) and
+published to a lock-free holder that the chat backends read on their worker threads. The Claude
+Code backend puts them in the `--append-system-prompt` only — not in the commands *file*, which
+the model also reads (it would get the rules twice). `standards --prompt` shows the exact text.
 
 ## Activation: fingerprint
 
 A pack applies to a document when the document has **all** the pack's phases, **at least one**
 of its scope boxes and **at least one** of its shared parameters (each criterion only when
-declared; views and view templates are reported as supporting evidence but never block).
+declared; views and view templates are reported as supporting evidence but never block — a
+pack that declares none of the three required criteria applies to every document).
 Names are matched case-insensitively and through declared aliases — fingerprints use the
 *measured* template strings, with the manual's spellings as aliases. Among matching packs the
 most specific fingerprint wins. A document that matches no pack gets exactly the pre-plan-11
@@ -69,14 +71,18 @@ behaviour: no blocks, no defaults, no check lines, byte-identical command output
 
 Search order (first pack id wins; later copies are reported as *shadowed*):
 
-1. Setting **`StandardsPackPath`** — a pack folder or a folder of packs (the office share later);
+1. Setting **`StandardsPackPath`** — a pack folder or a folder of packs (the office share later).
+   A network path is never read on Revit's thread: a background sync (startup, `--refresh`,
+   Settings → Save) copies the packs to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` and
+   discovery reads that mirror; an unreachable share keeps the last mirror in force;
 2. `%LOCALAPPDATA%\VibeModel\standards\*\pack.json` (local working copy — today's home);
 3. `<add-in folder>\standards\*\pack.json`.
 
 Settings also has **`StandardsFolder`** (the office source documents, e.g. the folder with the
 manual PDFs) and **`StandardsEnabled`** (master switch). Derived data is cached per pack under
 `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack>\` (library index, document index, generated
-core, check log). The network share is never touched on Revit's main thread without a deadline.
+core, check log, additions copy). Revit's main thread only reads local files, plus the two
+explicit actions on a share path (`loadfamily`, `linkcad`) which probe with a 3 s deadline.
 
 ## Source documents instead of a hand-typed copy (§4.0 of the original design)
 
@@ -91,8 +97,10 @@ Revit. `standards docs` / `standards <doc> <chapter>` read chapters verbatim.
 (API key set) or the Claude Code CLI with a fixed prompt ("≤25 imperative one-liners with exact
 names, no procedures") and writes `core.generated.md` with source hashes; the pack uses it when
 `"core": "generated"`. The hand-written `core.md` remains the reference to compare against.
-An optional additions file (`aanvullingen.md`) next to the pack or in the standards folder is
-appended to the core verbatim — for werkgroep decisions not yet in the manual.
+An optional additions file (pack key `additionsFile`, default `additions.md`; the pilot uses
+`aanvullingen.md`) next to pack.json or in the standards folder is appended to the core verbatim —
+for werkgroep decisions not yet in the manual. The standards-folder copy is cached locally by the
+background index run.
 
 ## Commands
 
@@ -100,13 +108,15 @@ appended to the core verbatim — for werkgroep decisions not yet in the manual.
   view templates grouped by prefix, scope boxes, office views present, coordinates and pins,
   CAD links vs imports, family prefix histogram, materials, bound parameters (office ones ✓/✗),
   sheets, title blocks.
-- `standards [topic|core|docs|<doc> <chapter>|--refresh|--index|distill [--status]] [--pack id]`.
+- `standards [topic|core|docs|<doc> <chapter>|--refresh|--index|--prompt|distill [--status]] [--pack id]`.
 - `phase <ids|selected> <kind>` — office phase table applied to existing elements.
 - `check [all|selected|<ids>] [--stats]` — rule kinds: `pinned`, `phase-not-none`,
   `phase-filter-digit`, `view-phase-for-new-work`, `view-template-required`, `family-source`,
   `param-filled`, `survey-point-origin`, `base-point-rounded`, `base-point-pinned`, `file-name`,
   `schedule-phase`, `links-are-links`. Preconditions keep a fresh template quiet (pins only once
-  a link or shared coordinates exist).
+  a link or shared coordinates exist). `survey-point-origin` judges the survey point's own shared
+  coordinates (0,0,0), not its distance from the internal origin — acquiring coordinates moves it
+  far away on every correctly georeferenced project.
 - `coords`, `library <terms>` / `library --rebuild`, `loadfamily "<path>"`,
   `linkcad "<path>" [--first] [--origin] [--no-pin]`.
 - Changed: `wall`, `floor`, `place`, `placeid`, `room` (`--phase`, default phase, visibility
@@ -134,7 +144,7 @@ appended to the core verbatim — for werkgroep decisions not yet in the manual.
   `sources`; fingerprint mismatch disables it and `standards` says why.
 - **Wrong defaults are worse than none.** Defaults only fire for a matching fingerprint, and
   every automatic choice is printed in the command output.
-- **Network drive.** Library and documents are indexed in the background with timeouts and
-  cached; file probes on the main thread have a 3 s deadline.
+- **Network drive.** The pack is mirrored, library and documents are indexed in the background
+  with deadlines (one timed-out share is not probed again per run) and cached.
 - **Ownership.** When the pack moves to the office share, the application manager owns it;
   until then the local copy is maintained by the VibeModel maintainer.
