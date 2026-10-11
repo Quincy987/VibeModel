@@ -41,6 +41,41 @@
   reported as a failure rather than a false success. Each operation runs in its own transaction
   and rolls back on failure. Arg parsing, report rendering and the failure explanations are
   Revit-free and covered by 26 headless tests; live behaviour needs Revit.
+### Added — Plan 12: Sheet Assembly
+For the werkvoorbereiders' most time-consuming job — putting an A0 together — the plugin can now
+build and check a sheet from the conversation.
+- **`section`** — a section view along a line (mm) or straight across a wall (`section <wallId>`),
+  with depth, vertical range (auto from the model elements it cuts), name, scale and the office
+  pack's section template/phase. Reports which compass direction it looks and the in-view x range the
+  annotation commands use (position along the view, stable when the view is cropped later).
+- **`crop`** — crop a view to its model elements (`--fit`: the largest cluster, so scattered context
+  far away is dropped; DWG underlays / point clouds / links ignored; `--elements` to choose), to a
+  rectangle (`--box`), or `--off`; 3D views get a section box and are cropped to it. Without it an
+  uncropped plan over a BGT underlay is metres wide on paper and fits no cell.
+- **`viewport`** — put one view at a paper position (`--at x y`) or several in a grid (`--grid CxR`,
+  optionally inside `--area`), with `--scale`, `--margin`, `--reserve` (stamp strip) and `--title off`.
+  Every placement reports its paper outline; a view that does not fit its cell is still placed with a
+  `WARN` and the scale that would fit; a view already on another sheet is refused with that sheet's
+  number and its cell stays empty. Schedules too. `--move` / `--remove` for corrections.
+- **`dimension`** — linear dimensions in the active plan/section/elevation through element ids (outer
+  faces, grids, levels, reference planes, family centre planes), between two points (`--points`,
+  nearest face/grid within 100 mm), or a vertical level string (`--levels`). Reports every segment in
+  mm and the references used; Revit's refusal comes back with the likely cause. Coordinates go through
+  `--points` rather than four bare numbers so they can never be mistaken for element ids.
+- **`text`** — text notes (`\n` line breaks, `--size` in paper mm creating a type when none matches,
+  `--leader`). The building block for annotating from a specification, which stays chat work.
+- **`sheetinfo`** — the sensor: paper size, title block, stamp fields (office pack list or the title
+  block's own text parameters; patterns like `NL_META_*` and `X_1..5` expand, filled fields are listed
+  and empty ones counted), viewports with paper outlines, text and schedules on the sheet, and overlap /
+  off-paper checks (a ≤ 30 mm overlap strip is INFO, anything bigger WARN — the crop-margin overlaps on a
+  finished IB A0 were 10–27 mm strips).
+- **Extended:** `sheet --number --name --set "Param=Value"` (sheet or title-block field); `tag --leader
+  --at x y`; `screenshot --view <id|name|sheet number>` (sheets were refused before; now exported, and
+  without having to activate them); `list dimensions|text` with values; `list sheets` with view counts;
+  `activate <sheet number>`.
+- Arg parsing (including refused flag combinations), layout maths (cells, fit, suggested scale,
+  overlaps), the `crop --fit` clustering, stamp patterns, the section frame and dimension bookkeeping
+  are Revit-free and covered by headless tests.
 
 ### Added — Plan 11: Office Standards
 - **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`

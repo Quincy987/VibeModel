@@ -62,6 +62,14 @@ namespace VibeModel.Services.Chat
                 { "room", "Adding room…" },
                 { "sheet", "Creating sheet…" },
                 { "tag", "Tagging element…" },
+
+                // Plan 12 — sheet assembly
+                { "section", "Creating section…" },
+                { "viewport", "Placing views on sheet…" },
+                { "dimension", "Adding dimension…" },
+                { "text", "Adding text…" },
+                { "sheetinfo", "Checking the sheet…" },
+                { "crop", "Cropping view…" },
             };
 
         /// <summary>

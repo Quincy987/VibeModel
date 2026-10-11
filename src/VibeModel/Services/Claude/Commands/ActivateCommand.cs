@@ -14,8 +14,8 @@ namespace VibeModel.Services.Claude.Commands
     public class ActivateCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "activate";
-        public string Description => "Activate a view by id or name (e.g. the work view just created with 'view')";
-        public string Usage => "activate <viewId|view name>";
+        public string Description => "Activate a view by id or name, or a sheet by number (e.g. the work view just created with 'view')";
+        public string Usage => "activate <viewId|view name|sheet number>";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -33,6 +33,8 @@ namespace VibeModel.Services.Claude.Commands
             if (view == null)
                 view = new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>()
                     .FirstOrDefault(v => !v.IsTemplate && v.Name.Equals(q, StringComparison.OrdinalIgnoreCase));
+            if (view == null)
+                view = Helpers.SheetHelper.FindSheet(doc, q);
             if (view == null)
                 return CommandResult.Error("ELEMENT_NOT_FOUND", "No view '" + q + "'.", "Run 'views' to list view ids and names.");
             if (view.IsTemplate)

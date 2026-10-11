@@ -222,6 +222,56 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
+### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo)
+Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
+and read the result back without looking at the Revit UI.
+```bash
+curl -s "http://localhost:18884/section?args=-92722 14921 -73243 10385 --name Doorsnede 1-1 --scale 50"  # Along a line (mm)
+curl -s "http://localhost:18884/section?args=1543814 --offset 2000 --depth 1000"     # Straight across a wall, at its midpoint
+curl -s "http://localhost:18884/crop?args=Bovenaanzicht --fit --margin 2000"                       # Crop to the model elements (DWG/point clouds ignored)
+curl -s "http://localhost:18884/crop?args=Bovenaanzicht --box 100000 -10000 230000 10000"            # ...or to a rectangle; 3D views get a section box
+curl -s "http://localhost:18884/sheet?args=--number 0001 --name Situatie 0 --set \"Drawn By=J. Jansen\""
+curl -s "http://localhost:18884/viewport?args=0001 101,102,103,104 --grid 2x2 --scale 50"            # Grid over the free sheet area
+curl -s "http://localhost:18884/viewport?args=0001 Bovenaanzicht --at 500 650"                       # One view centred at paper mm
+curl -s "http://localhost:18884/viewport?args=0001 201,202,203 --grid 3x1 --area 20 20 980 300"      # Grid inside a band
+curl -s "http://localhost:18884/viewport?args=--move 4711 300 200"                                   # Nudge (paper mm); --remove <id>
+curl -s "http://localhost:18884/sheetinfo?args=0001"                                                 # Paper, stamp, viewports, overlap/off-paper checks
+curl -s "http://localhost:18884/screenshot?args=--view 0001"                                         # PNG of a sheet/view without activating it
+curl -s "http://localhost:18884/dimension?args=1543814 1543815"                                      # Through elements (active view)
+curl -s "http://localhost:18884/dimension?args=1543814 --dir y"                                      # x|y = the view's horizontal/vertical
+curl -s "http://localhost:18884/dimension?args=--points 0 0 5000 0"                                  # Nearest face/grid to each point (plan)
+curl -s "http://localhost:18884/dimension?args=--levels"                                             # Level string in the active section
+curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
+curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
+curl -s "http://localhost:18884/list?args=dimensions --view"                                         # Values in mm; also 'list text', 'list sheets' (view counts)
+```
+- **Coordinates.** Paper mm are measured from the sheet's lower-left (A0 = 1189×841). `text`, `tag --at`,
+  `dimension --levels <x>` and `crop --box` use the view's own frame: plan → project x,y mm;
+  section/elevation → x = position along the view (project x,y projected on its horizontal axis — the
+  `section` response prints the range; it does not move when the view is cropped), y = elevation mm;
+  sheet → paper mm.
+- **`section`** looks to the LEFT of the line direction x1,y1→x2,y2 (the response names the compass
+  direction). Default depth 3000 mm; the vertical range comes from the model elements it cuts ±1 m
+  (`--top/--bottom` override). An active office pack's `viewDefaults.section` template/phase applies.
+- **`crop`** first: an uncropped view spans everything visible — with a BGT underlay hundreds of
+  metres — so it never fits a cell. `--fit` crops to the largest cluster of model elements (DWG,
+  point clouds, links, topography ignored; far-off stragglers dropped and counted) or to `--elements`,
+  `--box` to a rectangle, `--off` undoes; the response gives the paper size at the view's scale. On an
+  already-cropped view `--fit` can only shrink (`--off` first).
+- **`viewport`** keeps the margin (default 10 mm) and, when the title block is a full-sheet border, a
+  200 mm strip on the right for the stamp (`--reserve 0` / `--area` to change). A view that does not fit
+  its cell is still placed and gets a `WARN` naming the scale that would fit. A view already on another
+  sheet is refused with that sheet's number. Schedules are placed too. `--title off` uses (or creates) a
+  viewport type without a title.
+- **`sheetinfo`** grades box overlaps: a thin strip (≤ 30 mm) is `INFO` (usually empty crop margin),
+  anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
+- **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
+  a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
+  dimension direction; grids, levels, reference planes and family centre planes are used directly.
+  Revit's refusal message is returned verbatim with the usual cause.
+- **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
+  `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
+
 ### Office Standards (template / standards / phase / check / coords / library / loadfamily / linkcad)
 An office **standards pack** (folder with `pack.json`, `core.md`, topic sheets, `checks.json` —
 see `standards/README.md`; sample: `standards/example-office/`) teaches VibeModel how an office

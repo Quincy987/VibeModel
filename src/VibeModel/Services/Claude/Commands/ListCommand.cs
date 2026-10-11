@@ -11,7 +11,7 @@ namespace VibeModel.Services.Claude.Commands
     public class ListCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "list";
-        public string Description => "List elements by category (supports any category + --view flag)";
+        public string Description => "List elements by category (supports any category + --view flag; 'dimensions' and 'text' show values, 'sheets' viewport counts)";
         public string Usage => "list <category> [--view]";
 
         public string Execute(string args, UIApplication uiApp)
@@ -74,6 +74,19 @@ namespace VibeModel.Services.Claude.Commands
                     elements = GetCollector(doc, activeView).OfClass(typeof(ViewSheet)).Cast<Element>();
                     label = "SHEETS";
                     break;
+                case "dimensions":
+                case "dimension":
+                case "dims":
+                    elements = GetCollector(doc, activeView).OfClass(typeof(Dimension)).Cast<Element>();
+                    label = "DIMENSIONS";
+                    break;
+                case "text":
+                case "texts":
+                case "textnotes":
+                case "text notes":
+                    elements = GetCollector(doc, activeView).OfClass(typeof(TextNote)).Cast<Element>();
+                    label = "TEXT NOTES";
+                    break;
                 default:
                     var (cat, error) = FormattingHelper.ResolveCategory(elementType, doc);
                     if (cat == null)
@@ -106,7 +119,34 @@ namespace VibeModel.Services.Claude.Commands
 
                 var elemData = new Dictionary<string, object> { { "id", elem.Id.IntegerValue } };
 
-                if (elem is FamilyInstance fi)
+                if (elem is ViewSheet vs)
+                {
+                    int n = vs.GetAllPlacedViews().Count;
+                    sb.Append(vs.SheetNumber + " - " + vs.Name + " | " + n + " view(s)");
+                    elemData["number"] = vs.SheetNumber;
+                    elemData["name"] = vs.Name;
+                    elemData["views"] = n;
+                }
+                else if (elem is Dimension dim)
+                {
+                    var vals = new List<double>();
+                    if (dim.NumberOfSegments > 1)
+                        foreach (DimensionSegment seg in dim.Segments) vals.Add(RevitUnitHelper.FeetToMm(seg.Value ?? 0));
+                    else if (dim.Value.HasValue) vals.Add(RevitUnitHelper.FeetToMm(dim.Value.Value));
+                    var owner = doc.GetElement(dim.OwnerViewId) as View;
+                    sb.Append((vals.Count > 0 ? DimensionMath.Segments(vals) : "(no value)") + " | View: " + (owner?.Name ?? "-"));
+                    elemData["segmentsMm"] = vals.Select(v => (object)Math.Round(v, 1)).ToList();
+                    elemData["view"] = owner?.Name;
+                }
+                else if (elem is TextNote tn)
+                {
+                    var owner = doc.GetElement(tn.OwnerViewId) as View;
+                    var txt = (tn.Text ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+                    sb.Append("\"" + (txt.Length > 60 ? txt.Substring(0, 57) + "..." : txt) + "\" | View: " + (owner?.Name ?? "-"));
+                    elemData["text"] = tn.Text;
+                    elemData["view"] = owner?.Name;
+                }
+                else if (elem is FamilyInstance fi)
                 {
                     sb.Append(fi.Symbol?.Family?.Name ?? "?");
                     sb.Append(" : ");

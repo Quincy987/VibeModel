@@ -11,8 +11,8 @@ namespace VibeModel.Services.Claude.Commands
     public class TagCommand : IClaudeCommand, IModificationCommand, IStructuredCommand
     {
         public string Name => "tag";
-        public string Description => "Tag an element by ID in the active view";
-        public string Usage => "tag <elementId>";
+        public string Description => "Tag an element by ID in the active view; --at x y places the tag (same coordinates as 'text'), --leader draws a leader";
+        public string Usage => "tag <elementId> [--leader] [--at <x> <y>]";
 
         // Explicit element-category -> tag-category map (correct, not a name heuristic).
         private static readonly Dictionary<BuiltInCategory, BuiltInCategory> TagMap =
@@ -42,8 +42,10 @@ namespace VibeModel.Services.Claude.Commands
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc.Document;
 
-            if (!int.TryParse((args ?? "").Trim(), out int eid))
-                return CommandResult.Error("BAD_ARGS", "Usage: tag <elementId>", Usage);
+            var ta = TagArgs.Parse(args);
+            if (ta.Error != null)
+                return CommandResult.Error("BAD_ARGS", ta.Error, Usage);
+            int eid = ta.Id;
 
             var element = doc.GetElement(new ElementId(eid));
             if (element == null)
@@ -76,6 +78,10 @@ namespace VibeModel.Services.Claude.Commands
 
             var bbox = element.get_BoundingBox(view) ?? element.get_BoundingBox(null);
             XYZ mid = bbox != null ? (bbox.Min + bbox.Max) * 0.5 : XYZ.Zero;
+            if (ta.At != null && view is View3D)
+                return CommandResult.Error("BAD_ARGS", "--at needs a plan, section or elevation (a 3D view has no 2D frame to place it in).",
+                    "Leave out --at to tag at the element.");
+            XYZ head = ta.At != null ? SheetHelper.ViewPoint(doc, view, ta.At[0], ta.At[1], out _) : mid;
 
             IndependentTag tag = null;
             var error = TransactionHelper.Execute(doc, "VibeModel: Create Tag", () =>
@@ -86,7 +92,13 @@ namespace VibeModel.Services.Claude.Commands
                     doc.Regenerate();
                 }
                 tag = IndependentTag.Create(doc, tagSymbol.Id, view.Id,
-                    new Reference(element), false, TagOrientation.Horizontal, mid);
+                    new Reference(element), ta.Leader, TagOrientation.Horizontal, head);
+                // With a leader Revit places the head next to the element; put it where asked.
+                if (ta.At != null)
+                {
+                    doc.Regenerate();
+                    tag.TagHeadPosition = head;
+                }
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error);
@@ -99,6 +111,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Tags element: " + eid);
             sb.AppendLine("Type: " + tagSymbol.Family.Name + " : " + tagSymbol.Name);
             sb.AppendLine("View: " + view.Name);
+            if (ta.At != null || ta.Leader)
+                sb.AppendLine("Head: " + (ta.At != null ? Mm.F(ta.At[0]) + ", " + Mm.F(ta.At[1]) : "at the element") + (ta.Leader ? ", with leader" : ""));
 
             var data = new Dictionary<string, object>
             {
