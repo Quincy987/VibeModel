@@ -60,11 +60,24 @@ namespace VibeModel.UI
         private TextBox _packPathBox;
         private TextBox _standardsFolderBox;
 
+        // Project folder (plan 10) — edits the entry of the current project only.
+        private readonly string _projectKey;
+        private readonly string _documentPath;
+        private string _projectFolderOverride;   // pending value; "" = cleared
+        private TextBox _projectFolderBox;
+        private TextBlock _projectFolderSource;
+
         /// <summary>True if the user changed the backend selection (caller should reset chat).</summary>
         public bool BackendChanged { get; private set; }
 
-        public SettingsDialog()
+        /// <param name="documentTitle">Active document title (the project key); null when unknown.</param>
+        /// <param name="documentPath">Its Document.PathName — the default project folder is its directory.</param>
+        public SettingsDialog(string documentTitle = null, string documentPath = null)
         {
+            _projectKey = string.IsNullOrWhiteSpace(documentTitle) ? null : Services.Chat.ProjectDocs.ProjectKey(documentTitle);
+            _documentPath = documentPath ?? "";
+            _projectFolderOverride = _projectKey != null ? SettingsManager.GetProjectContextFolderSetting(_projectKey) ?? "" : "";
+
             Title = "VibeModel Settings";
             Width = 500;
             // Tall enough for the office-standards section, never taller than the screen (the
@@ -102,6 +115,9 @@ namespace VibeModel.UI
             mainPanel.Children.Add(_cliPanel);
             mainPanel.Children.Add(_apiPanel);
             mainPanel.Children.Add(_localPanel);
+
+            // Project folder (plan 10) — this model's reference documents.
+            mainPanel.Children.Add(CreateProjectFolderPanel(documentTitle));
 
             // Office standards (plan 11) — independent of the backend tabs.
             mainPanel.Children.Add(CreateStandardsPanel());
@@ -250,6 +266,104 @@ namespace VibeModel.UI
             });
 
             return panel;
+        }
+
+        // --- Project folder panel (plan 10) ---
+
+        private StackPanel CreateProjectFolderPanel(string documentTitle)
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Project folder",
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            panel.Children.Add(CreateLabel(
+                "Reference documents the chat can list and read (bestek, memo's, DO-tekening, reports). " +
+                "Default: the folder the model is in. " +
+                (_projectKey != null ? "Applies to: " + documentTitle : "Open a model to set one.")));
+
+            _projectFolderBox = CreateTextBox("");
+            _projectFolderBox.IsReadOnly = true;
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(_projectFolderBox, 0);
+            grid.Children.Add(_projectFolderBox);
+
+            var browse = CreateButton("Browse…");
+            browse.MinWidth = 0;
+            browse.Margin = new Thickness(6, 0, 0, 4);
+            browse.IsEnabled = _projectKey != null;
+            browse.Click += (s, e) =>
+            {
+                // A file dialog that accepts a folder: navigate into it and press Open.
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    CheckFileExists = false,
+                    CheckPathExists = true,
+                    ValidateNames = false,
+                    FileName = "Select this folder",
+                    Title = "Open the project folder, then click Open"
+                };
+                var current = _projectFolderBox.Text;
+                if (!string.IsNullOrWhiteSpace(current) && System.IO.Directory.Exists(current))
+                    dlg.InitialDirectory = current;
+                if (dlg.ShowDialog(this) == true)
+                {
+                    var picked = System.IO.Directory.Exists(dlg.FileName)
+                        ? dlg.FileName
+                        : System.IO.Path.GetDirectoryName(dlg.FileName);
+                    _projectFolderOverride = picked ?? "";
+                    UpdateProjectFolderRow();
+                }
+            };
+            Grid.SetColumn(browse, 1);
+            grid.Children.Add(browse);
+
+            var clear = CreateButton("Clear");
+            clear.MinWidth = 0;
+            clear.Margin = new Thickness(6, 0, 0, 4);
+            clear.IsEnabled = _projectKey != null;
+            clear.Click += (s, e) =>
+            {
+                _projectFolderOverride = "";
+                UpdateProjectFolderRow();
+            };
+            Grid.SetColumn(clear, 2);
+            grid.Children.Add(clear);
+            panel.Children.Add(grid);
+
+            _projectFolderSource = new TextBlock
+            {
+                Foreground = FgSecondary,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            panel.Children.Add(_projectFolderSource);
+            UpdateProjectFolderRow();
+            return panel;
+        }
+
+        // Shows the folder that will be in force (pending choice + model default) and its source.
+        private void UpdateProjectFolderRow()
+        {
+            var live = SettingsManager.LiveFolderOrNull(_projectFolderOverride);
+            var folder = Services.Chat.ProjectDocs.Resolve(live, _documentPath);
+            _projectFolderBox.Text = folder.IsSet ? folder.Path : "";
+            var text = folder.IsSet
+                ? folder.SourceLabel
+                : "Not set — this model has no folder on disk (not saved yet, or a cloud model). Browse to pick one.";
+            if (!string.IsNullOrWhiteSpace(_projectFolderOverride) && live == null)
+                text = "Configured folder not found: " + _projectFolderOverride + " — " +
+                       (folder.IsSet ? "using " + folder.SourceLabel : "no folder") + ". Browse or Clear.";
+            _projectFolderSource.Text = text;
         }
 
         // --- Office standards panel ---
@@ -746,6 +860,9 @@ namespace VibeModel.UI
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
             SettingsManager.SetStandardsPackPath(_packPathBox.Text);
             SettingsManager.SetStandardsFolder(_standardsFolderBox.Text);
+
+            if (_projectKey != null)
+                SettingsManager.SetProjectContextFolder(_projectKey, _projectFolderOverride);
 
             SettingsManager.ClearCache();
             // Pick up a new pack location / switch immediately (no Revit API involved).

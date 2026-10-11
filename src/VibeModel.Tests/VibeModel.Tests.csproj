@@ -30,6 +30,7 @@
   <!-- JavaScriptSerializer lives here; the envelope tests assert on deserialized JSON. -->
   <ItemGroup>
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <ItemGroup>

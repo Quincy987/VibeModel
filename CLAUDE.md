@@ -248,6 +248,30 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
 - Real office packs contain internal paths — keep them out of this public repo (`standards/*` is
   gitignored except the README and the example pack).
 
+### Project Folder (docs / readdoc)
+Each model has a **project folder** with its reference documents (bestek, memo's, DO-tekening
+PDF, inspection reports). Default: the folder the open `.rvt` lives in. The chat pane's
+Settings → *Project folder* (Browse… / Clear) overrides it for the current project only
+(`ProjectContextFolders` in settings.json, keyed by the sanitized document title — the same key
+as the attachment store). Unsaved / cloud models have no default. Every output names the folder
+and its source: `(map van het model)` (default) or `(ingesteld)` (configured).
+```bash
+curl -s http://localhost:18884/docs                               # Manifest: names, kinds, sizes (one level deep, ≤200)
+curl -s "http://localhost:18884/docs?args=survey"                 # One subfolder
+curl -s "http://localhost:18884/readdoc?args=memo.txt"            # Text inline (400k-char cap)
+curl -s "http://localhost:18884/readdoc?args=PRG1002-+DO.pdf"     # PDF text via the PDF helper, else path + hint
+curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefix ok; ambiguous lists the matches
+```
+- Read-only, and only inside the folder: `..`, absolute paths, prefix siblings (`docs-x` vs
+  `docs`) and junctions/symlinks out are refused. Revit's own files (`.rvt`/`.rfa`, numbered
+  backups, `*_backup` and `… Support` folders) are not listed.
+- `readdoc`: text kinds inline; `.pdf` through `VibeModel.PdfText.exe` (cached under
+  `%LOCALAPPDATA%\VibeModel\projectdocs\_cache\`; if extraction takes >12 s it keeps running and
+  the next call returns it); `.docx` as paragraph text; images and other kinds as the absolute path + a hint.
+- Every chat turn carries a bounded `PROJECT FOLDER` block (the same manifest, ≤100 entries);
+  the Claude Code backend additionally runs with `--add-dir <folder>`.
+- Listing a folder on a network drive has a 3 s deadline; an offline folder is reported, never waited on.
+
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:
 ```bash

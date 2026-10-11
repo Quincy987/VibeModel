@@ -237,7 +237,7 @@ namespace VibeModel
         {
             try
             {
-                ActiveDocumentTracker.Update(e.Document != null ? e.Document.Title : "");
+                ActiveDocumentTracker.Update(e.Document?.Title, e.Document?.PathName);
                 // The TEMPLATE prompt block names the active view and its phase.
                 Services.Standards.StandardsContext.MarkPromptDirty();
             }
@@ -250,6 +250,17 @@ namespace VibeModel
         private void OnDocumentOpenedOrClosed(object sender, EventArgs e)
         {
             Services.Standards.StandardsContext.MarkPromptDirty();
+            try
+            {
+                // Last document closed: no project folder (and no stale title) for the next chat turn.
+                if (e is Autodesk.Revit.DB.Events.DocumentClosedEventArgs &&
+                    sender is Autodesk.Revit.ApplicationServices.Application app && app.Documents.Size == 0)
+                    ActiveDocumentTracker.Update("", "");
+            }
+            catch
+            {
+                // Tracking is best-effort.
+            }
         }
 
         private void OnStandardsIdling(object sender, IdlingEventArgs e)

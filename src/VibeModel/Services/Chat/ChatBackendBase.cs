@@ -212,6 +212,8 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
+            // Project folder (plan 10): the manifest of the model's reference documents.
+            AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
             return sb.ToString();
         }
 

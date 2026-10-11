@@ -89,6 +89,7 @@
     <Reference Include="System.Xaml" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <!-- Embedded resources for ribbon icons -->

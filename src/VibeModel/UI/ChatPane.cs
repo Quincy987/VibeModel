@@ -648,8 +648,9 @@ namespace VibeModel.UI
                 : Visibility.Collapsed;
         }
 
-        // Last successful document-title lookup — fallback when the server is busy.
+        // Last successful document lookup — fallback when the server is busy.
         private string _lastProjectKey;
+        private string _lastProjectPath;
 
         /// <summary>
         /// Resolves the current Revit document title (via /info on the local server) as
@@ -657,8 +658,15 @@ namespace VibeModel.UI
         /// carries a short timeout — a busy Revit (modal dialog) must never hang the
         /// pane. Falls back to the last known title, then "default".
         /// </summary>
-        private string GetProjectKey()
+        private string GetProjectKey() => GetProjectIdentity(out _);
+
+        /// <summary>
+        /// <see cref="GetProjectKey"/> plus the document's path from the same /info call (the
+        /// project folder defaults to the model's own folder). Path is "" when unknown.
+        /// </summary>
+        private string GetProjectIdentity(out string documentPath)
         {
+            documentPath = _lastProjectPath ?? "";
             try
             {
                 var port = (_backend as ChatBackendBase)?.HttpPort ?? 18884;
@@ -681,6 +689,8 @@ namespace VibeModel.UI
                         && titleObj is string title && !string.IsNullOrWhiteSpace(title))
                     {
                         _lastProjectKey = title;
+                        _lastProjectPath = data.TryGetValue("path", out var pathObj) ? pathObj as string ?? "" : "";
+                        documentPath = _lastProjectPath;
                         return title;
                     }
                 }
@@ -991,7 +1001,9 @@ namespace VibeModel.UI
 
         private void OnSettingsClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new SettingsDialog();
+            var title = GetProjectIdentity(out var documentPath);
+            // Null title = the document could not be identified: the project-folder row stays read-only.
+            var dialog = new SettingsDialog(_lastProjectKey != null ? title : null, documentPath);
             var result = dialog.ShowDialog();
 
             if (result == true && dialog.BackendChanged)

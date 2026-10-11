@@ -41,10 +41,7 @@ namespace VibeModel.Services.Chat
         {
             // Separator-suffixed comparison so a sibling folder like "attachments-x"
             // can't false-match the store root.
-            var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar.ToString())
-                ? root
-                : root + Path.DirectorySeparatorChar;
-            if (sourcePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            if (ProjectDocs.IsUnderRoot(root, sourcePath))
                 return sourcePath;
 
             var folder = GetProjectFolder(projectKey, root);
