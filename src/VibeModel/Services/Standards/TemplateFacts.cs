@@ -113,10 +113,11 @@ namespace VibeModel.Services.Standards
     {
         /// <summary>
         /// Activation rule (plan 11 §3): a pack applies when the document has ALL the pack's
-        /// phases, AT LEAST ONE of its scope boxes (any spelling/alias), and AT LEAST ONE of
-        /// its shared parameters. Each criterion only counts when the pack declares it, so a
-        /// pack that declares nothing is always active. Views and view templates are reported
-        /// as supporting evidence but never block activation — offices rename views freely.
+        /// phases and AT LEAST ONE of its shared parameters. Each criterion only counts when the
+        /// pack declares it, so a pack that declares nothing is always active. Scope boxes, views
+        /// and view templates are reported as supporting evidence but never block activation:
+        /// real projects delete the template's scope boxes and rename views freely (the pilot's
+        /// demo project had no scope box left), while phases and bound shared parameters survive.
         /// </summary>
         public static FingerprintResult Match(PackFingerprint fp, TemplateFacts facts)
         {
@@ -138,14 +139,6 @@ namespace VibeModel.Services.Standards
                 else { ok = false; r.Missing.Add("phase(s) " + string.Join(", ", missing.Select(Q))); }
             }
 
-            if (fp.ScopeBoxes.Count > 0)
-            {
-                r.Max++;
-                var hit = fp.ScopeBoxes.FirstOrDefault(s => ContainsAny(facts.ScopeBoxes, fp.Spellings(s)));
-                if (hit != null) { r.Score++; r.Reasons.Add("scope box"); }
-                else { ok = false; r.Missing.Add("scope box " + string.Join(" / ", fp.ScopeBoxes.Select(Q))); }
-            }
-
             if (fp.SharedParameters.Count > 0)
             {
                 r.Max++;
@@ -154,7 +147,9 @@ namespace VibeModel.Services.Standards
                 else { ok = false; r.Missing.Add("shared parameter " + string.Join(" / ", fp.SharedParameters.Select(Q))); }
             }
 
-            // Supporting evidence only (only available after a full collection).
+            // Supporting evidence only.
+            if (fp.ScopeBoxes.Count > 0 && fp.ScopeBoxes.Any(s => ContainsAny(facts.ScopeBoxes, fp.Spellings(s))))
+                r.Reasons.Add("scope box");
             if (facts.IsFull && fp.ViewTemplates.Count > 0)
             {
                 int n = fp.ViewTemplates.Count(v => ContainsAny(facts.ViewTemplates, fp.Spellings(v)));

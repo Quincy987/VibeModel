@@ -55,10 +55,9 @@ Derived data (library index, document index, generated core, check log, addition
   "sources": [{ "title": "...", "date": "...", "path": "..." }],   // indexed by `standards --index`
   "fingerprint": {                   // when does this pack apply to a document?
     "phases": ["1. Existing", "2. New construction", "3. Final"],  // ALL must exist
-    "scopeBoxes": ["Project_extent_WCS"],                          // at least ONE must exist
     "sharedParameters": ["EX_ObjectCode"],                         // at least ONE must be bound
-    "views": [...], "viewTemplates": [...],                        // supporting evidence only
-    // none of phases / scopeBoxes / sharedParameters declared → the pack applies to EVERY document
+    "scopeBoxes": [...], "views": [...], "viewTemplates": [...],   // supporting evidence only (projects delete/rename these)
+    // neither phases nor sharedParameters declared → the pack applies to EVERY document
     "aliases": { "Project_extent_WCS": ["Project_Extent_WCS"] }    // alternative spellings
   },
   "core": "core.md",                 // or "generated" to use core.generated.md from `standards distill`

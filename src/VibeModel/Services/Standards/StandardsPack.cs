@@ -294,10 +294,10 @@ namespace VibeModel.Services.Standards
             new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// No REQUIRED criterion (phases, scope boxes, shared parameters) is declared: the pack
-        /// applies to every document. Views / view templates are supporting evidence only.
+        /// No REQUIRED criterion (phases, shared parameters) is declared: the pack applies to
+        /// every document. Scope boxes, views and view templates are supporting evidence only.
         /// </summary>
-        public bool IsEmpty => Phases.Count == 0 && ScopeBoxes.Count == 0 && SharedParameters.Count == 0;
+        public bool IsEmpty => Phases.Count == 0 && SharedParameters.Count == 0;
 
         internal static PackFingerprint FromJson(Dictionary<string, object> d)
         {

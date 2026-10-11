@@ -195,8 +195,9 @@ namespace VibeModel.Tests
         {
             var r = FingerprintMatcher.Match(Example().Fingerprint, ExampleFacts());
             Assert.True(r.Matched);
-            Assert.Equal(3, r.Score);
-            Assert.Equal(3, r.Max);
+            Assert.Equal(2, r.Score);
+            Assert.Equal(2, r.Max);
+            Assert.Contains("scope box", r.Reasons);
         }
 
         [Fact]
@@ -210,17 +211,20 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void Fingerprint_AcceptsAliasSpelling()
+        public void Fingerprint_ScopeBoxes_AreEvidenceOnly_WithAliasSpelling()
         {
             var facts = ExampleFacts();
             facts.ScopeBoxes = new List<string> { "Project_Extent_WCS" }; // declared alias
-            Assert.True(FingerprintMatcher.Match(Example().Fingerprint, facts).Matched);
+            Assert.Contains("scope box", FingerprintMatcher.Match(Example().Fingerprint, facts).Reasons);
 
             facts.ScopeBoxes = new List<string> { "project_extent_wcs" }; // case-insensitive
-            Assert.True(FingerprintMatcher.Match(Example().Fingerprint, facts).Matched);
+            Assert.Contains("scope box", FingerprintMatcher.Match(Example().Fingerprint, facts).Reasons);
 
-            facts.ScopeBoxes = new List<string> { "Somewhere_else" };
-            Assert.False(FingerprintMatcher.Match(Example().Fingerprint, facts).Matched);
+            // A real project may have deleted the template's scope boxes: still the office's model.
+            facts.ScopeBoxes = new List<string>();
+            var r = FingerprintMatcher.Match(Example().Fingerprint, facts);
+            Assert.True(r.Matched);
+            Assert.DoesNotContain("scope box", r.Reasons);
         }
 
         [Fact]
@@ -230,7 +234,7 @@ namespace VibeModel.Tests
             facts.ProjectParameters = new List<string> { "Comments" };
             var r = FingerprintMatcher.Match(Example().Fingerprint, facts);
             Assert.False(r.Matched);
-            Assert.Equal(2, r.Score);
+            Assert.Equal(1, r.Score);
         }
 
         [Fact]
@@ -248,7 +252,7 @@ namespace VibeModel.Tests
             var office = Example();
             var picked = StandardsPackRegistry.PickActive(new[] { generic, office }, ExampleFacts(), out var match);
             Assert.Same(office, picked);
-            Assert.Equal(3, match.Max);
+            Assert.Equal(2, match.Max);
 
             var foreign = new TemplateFacts { Phases = { "Existing", "New Construction" } };
             var rejections = new List<string>();

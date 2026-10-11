@@ -11,7 +11,7 @@ office network share was **unreachable** during the whole run (weekend, no VPN),
 exercised every offline path. Later that evening the share came online, and rounds 8–12
 ran against the real share too. Fourteen rounds: round 1 found 4 defects (fixed), round 2 ran the
 full script, rounds 3–4 re-checked the fixes, rounds 5–7 verified the two code-review passes below on
-fresh Revit sessions, rounds 13–14 closed the remaining items. Unit tests: 313/313 pass.
+fresh Revit sessions, rounds 13–14 closed the remaining items. Unit tests: 313/313 on the branch, 365/365 on the merged development tree (incl. the join/whyhidden suite).
 
 ## Results
 
@@ -143,6 +143,18 @@ local stand-ins were run against the real share:
 - `linkcad` with a DGN hit Revit's "Empty DGN model view name" → `--dgnview <name>` (default
   `Default`); an unreadable file reported "CAD LINKED id -1" → now an error. Verified with a dummy
   DGN only (no real DGN available).
+
+## The real demo project (read-only, after the merge)
+
+Opened the office's real demo project (IB template, 796 model elements, 3 BGT/K&L links, 2
+point clouds, georeferenced). **It was not recognised**: the project had deleted the template's
+scope boxes, which the fingerprint required. Scope boxes are now supporting evidence only
+(phases + a bound shared parameter are the required criteria — those survive in real projects).
+Re-run: `template: ib-amsterdam (fingerprint match 2/2: phases, shared parameters, 3/3 view
+templates, 4/4 views)`, prompt blocks 996 B + 3730 B, and `check` gave a real audit: survey point
+501 km from the internal origin yet correctly OK (shared 0,0,0), base point unrounded and
+unpinned, 4 of 7 underlays/grids unpinned, 7 plot views without a view template, file name.
+Nothing was created or saved in that model.
 
 ## Not verified here
 

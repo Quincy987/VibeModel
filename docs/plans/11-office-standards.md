@@ -58,10 +58,11 @@ the model also reads (it would get the rules twice). `standards --prompt` shows 
 
 ## Activation: fingerprint
 
-A pack applies to a document when the document has **all** the pack's phases, **at least one**
-of its scope boxes and **at least one** of its shared parameters (each criterion only when
-declared; views and view templates are reported as supporting evidence but never block — a
-pack that declares none of the three required criteria applies to every document).
+A pack applies to a document when the document has **all** the pack's phases and **at least
+one** of its shared parameters (each criterion only when declared; scope boxes, views and view
+templates are reported as supporting evidence but never block — the pilot's real demo project
+had deleted the template's scope boxes; a pack that declares neither required criterion applies
+to every document).
 Names are matched case-insensitively and through declared aliases — fingerprints use the
 *measured* template strings, with the manual's spellings as aliases. Among matching packs the
 most specific fingerprint wins. A document that matches no pack gets exactly the pre-plan-11

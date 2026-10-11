@@ -196,7 +196,7 @@ A read-only batch (no modifications) creates no undo entry.
 An office **standards pack** (folder with `pack.json`, `core.md`, topic sheets, `checks.json` —
 see `standards/README.md`; sample: `standards/example-office/`) teaches VibeModel how an office
 models. A pack is active for a document only when its **fingerprint** matches what the document
-actually contains (its phases, a scope box, a bound shared parameter). Without a matching pack
+actually contains (its phases and a bound shared parameter; scope boxes/views only as evidence). Without a matching pack
 every command behaves exactly as before.
 ```bash
 curl -s http://localhost:18884/template                         # Live setup inventory + which pack matches (fingerprint)
