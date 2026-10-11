@@ -26,6 +26,7 @@ namespace VibeModel.Tests
         [InlineData("plan Level 1 --no-template --name Plan A", "plan Level 1", "Plan A", null, true)]
         [InlineData("--no-template 3d", "3d", null, null, true)]
         [InlineData("plan --name=Test", "plan", "Test", null, false)]
+        [InlineData("plan N.A.P. --activate --name Werkview", "plan N.A.P.", "Werkview", null, false)]
         public void Flags_AreExtracted(string args, string remaining, string name, string template, bool noTemplate)
         {
             var r = ViewArgs.Parse(args);
@@ -33,6 +34,14 @@ namespace VibeModel.Tests
             Assert.Equal(name, r.Name);
             Assert.Equal(template, r.Template);
             Assert.Equal(noTemplate, r.NoTemplate);
+        }
+
+        [Fact]
+        public void Activate_IsParsed()
+        {
+            Assert.True(ViewArgs.Parse("3d --activate").Activate);
+            Assert.Equal("3d", ViewArgs.Parse("3d --activate").Remaining);
+            Assert.False(ViewArgs.Parse("3d --name activate me").Activate);
         }
 
         [Fact]

@@ -218,6 +218,8 @@ curl -s http://localhost:18884/coords                           # Survey point /
 curl -s "http://localhost:18884/library?args=damwand"           # Search the office family library (cached index)
 curl -s "http://localhost:18884/loadfamily?args=\"X:\lib\Pile.rfa\""      # Load a library hit
 curl -s "http://localhost:18884/linkcad?args=\"X:\base\map.dwg\" --first" # Link (never import) with the office link settings, pinned
+curl -s "http://localhost:18884/view?args=plan Level 2 --name Werkview --activate"  # Office work view, named, made the active view
+curl -s "http://localhost:18884/activate?args=Werkview"               # Activate a view by name or id (also works after exec)
 ```
 - **Default phase.** With an active pack, `wall`, `floor`, `place`, `placeid` and `room` set
   Phase Created/Demolished from the pack's `phaseTable` (default kind, usually `new`) and add a
@@ -225,7 +227,8 @@ curl -s "http://localhost:18884/linkcad?args=\"X:\base\map.dwg\" --first" # Link
   `--phase existing|new|temp|demolish|future` (or a pack alias) overrides.
 - **Office views / sheets.** `view plan|3d` applies the pack's view template, phase, phase filter
   and browser-folder parameters (`--template <name>` / `--no-template` override, `--name <viewName>`;
-  flag values run to the next `--` flag, so put flags after the level name); `sheet` without
+  flag values run to the next `--` flag, so put flags after the level name; `--activate` opens the new
+  view — new work on the office phase is invisible in the template's existing-phase work views); `sheet` without
   a title block uses the pack default. Every automatic choice is printed.
 - **Post-command check.** After any modifying command or batch, the element-level rules run on
   exactly what it created; problems add one line: `-- check: 1 WARN (param-filled) → run 'check' for fixes`

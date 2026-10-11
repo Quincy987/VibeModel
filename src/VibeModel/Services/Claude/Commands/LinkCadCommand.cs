@@ -20,7 +20,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "linkcad";
         public string Description => "Link a DWG/DGN underlay with the office link settings (link not import, shared coordinates, pinned)";
-        public string Usage => "linkcad \"<path.dwg|.dgn>\" [--first] [--origin] [--no-pin] [--force]";
+        public string Usage => "linkcad \"<path.dwg|.dgn>\" [--first] [--origin] [--no-pin] [--force] [--dgnview <model view name>]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -34,6 +34,8 @@ namespace VibeModel.Services.Claude.Commands
             bool origin = TakeFlag(ref raw, "--origin");
             bool noPin = TakeFlag(ref raw, "--no-pin");
             bool force = TakeFlag(ref raw, "--force");
+            // Revit links a DGN through one of its model views; "Default" is the usual one.
+            var dgnView = TakeValue(ref raw, "--dgnview") ?? "Default";
             var path = raw.Trim().Trim('"');
             if (path.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Usage: " + Usage, null);
@@ -76,7 +78,7 @@ namespace VibeModel.Services.Claude.Commands
             else { placement = ImportPlacement.Centered; placementWhy = "centre-to-centre (first underlay — no shared coordinates yet)"; }
 
             ElementId linkId = ElementId.InvalidElementId;
-            bool pinned = false;
+            bool pinned = false, linked = false;
             var error = TransactionHelper.Execute(doc, "VibeModel: Link CAD", () =>
             {
                 if (ext == ".dwg")
@@ -88,19 +90,25 @@ namespace VibeModel.Services.Claude.Commands
                         Placement = placement,
                         ThisViewOnly = false
                     };
-                    doc.Link(path, o, view, out linkId);
+                    linked = doc.Link(path, o, view, out linkId);
                 }
                 else
                 {
                     var o = new DGNImportOptions
                     {
+                        DGNModelViewName = dgnView,
                         AutoCorrectAlmostVHLines = opts.CorrectOffAxisLines,
                         OrientToView = opts.OrientToView,
                         Placement = placement,
                         ThisViewOnly = false
                     };
-                    doc.Link(path, o, view, out linkId);
+                    linked = doc.Link(path, o, view, out linkId);
                 }
+
+                // Revit reports an unreadable file by returning false rather than throwing.
+                if (!linked || linkId == null || linkId == ElementId.InvalidElementId)
+                    throw new Exception("Revit could not read " + Path.GetFileName(path) + " as a " + ext.TrimStart('.').ToUpperInvariant() +
+                                        (ext == ".dgn" ? " (check the file and the model view name: --dgnview <name>)" : " (check the file)"));
 
                 var inst = doc.GetElement(linkId);
                 if (inst != null && opts.PinAfterLink && !noPin)
@@ -122,6 +130,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("  correct lines slightly off axis: " + (opts.CorrectOffAxisLines ? "on" : "off"));
             sb.AppendLine("  orient to view: " + (opts.OrientToView ? "on" : "off"));
             sb.AppendLine("  positioning: " + placementWhy);
+            if (ext == ".dgn") sb.AppendLine("  DGN model view: " + dgnView + " (--dgnview <name> to change)");
             sb.AppendLine("  pinned: " + (pinned ? "yes" : "no" + (noPin ? " (--no-pin)" : "")));
             if (placement == ImportPlacement.Centered)
                 sb.AppendLine("Next: move it into place (do not rotate), then acquire shared coordinates from it and pin the base point" +
@@ -133,6 +142,15 @@ namespace VibeModel.Services.Claude.Commands
                 { "placement", placement.ToString() }, { "pinned", pinned },
                 { "autoCorrectAlmostVHLines", opts.CorrectOffAxisLines }, { "orientToView", opts.OrientToView }
             });
+        }
+
+        private static string TakeValue(ref string s, string flag)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(s, @"(?:^|\s)" + System.Text.RegularExpressions.Regex.Escape(flag) + @"(?:=|\s+)(?<v>""[^""]+""|\S+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            s = s.Remove(m.Index, m.Length).Trim();
+            return m.Groups["v"].Value.Trim('"');
         }
 
         private static bool TakeFlag(ref string s, string flag)

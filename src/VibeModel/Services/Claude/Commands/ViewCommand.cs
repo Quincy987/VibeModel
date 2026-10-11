@@ -13,7 +13,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "view";
         public string Description => "Create a view (floor plan or 3D); with an office standard it gets the office view template, phase and browser folder";
-        public string Usage => "view plan|3d [levelName] [--name <viewName>] [--template <name>|--no-template]";
+        public string Usage => "view plan|3d [levelName] [--name <viewName>] [--template <name>|--no-template] [--activate]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -24,6 +24,7 @@ namespace VibeModel.Services.Claude.Commands
             // Office-default overrides; without these flags the args parse exactly as before.
             var va = ViewArgs.Parse(args);
             args = va.Remaining;
+            bool activate = va.Activate;
             string templateOverride = va.Template;
             bool noTemplate = va.NoTemplate;
             string viewName = va.Name;
@@ -41,12 +42,25 @@ namespace VibeModel.Services.Claude.Commands
             var defaults = OfficeViewSetup.Resolve(doc, kind == "3d" ? "threeD" : kind, templateOverride, noTemplate, out var setupError);
             if (setupError != null) return setupError;
 
+            CommandResult result;
             if (kind == "plan")
-                return CreatePlan(doc, levelName, uiApp.ActiveUIDocument, defaults, viewName);
-            if (kind == "3d")
-                return Create3D(doc, defaults, viewName);
+                result = CreatePlan(doc, levelName, uiApp.ActiveUIDocument, defaults, viewName);
+            else if (kind == "3d")
+                result = Create3D(doc, defaults, viewName);
+            else
+                return CommandResult.Error("BAD_ARGS", "Unknown view type '" + parts[0] + "'.", Usage);
 
-            return CommandResult.Error("BAD_ARGS", "Unknown view type '" + parts[0] + "'.", Usage);
+            // --activate: open the new view (outside the creating transaction).
+            if (activate && result.Success && result.Data is Dictionary<string, object> d &&
+                d.TryGetValue("created", out var created) && created is List<object> ids && ids.Count > 0 &&
+                doc.GetElement(new ElementId((int)ids[0])) is View newView)
+            {
+                var act = ActivateCommand.Activate(uiApp.ActiveUIDocument, newView);
+                d["activated"] = act.Success;
+                return CommandResult.Ok(result.Text.TrimEnd() + "\n" + (act.Success ? "Activated: now the active view." : "Not activated: " + act.Message) + "\n", d);
+            }
+            return result;
+
         }
 
         private CommandResult CreatePlan(Document doc, string levelName, UIDocument uiDoc, OfficeViewSetup setup, string viewName)

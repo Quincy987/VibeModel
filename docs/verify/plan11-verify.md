@@ -9,9 +9,9 @@ internal names and network paths, so they are kept outside this public repo
 Environment: Revit 2023.1, add-in built from this branch and deployed with `build.ps1`; the
 office network share was **unreachable** during the whole run (weekend, no VPN), which also
 exercised every offline path. Later that evening the share came online, and rounds 8–12
-ran against the real share too. Twelve rounds: round 1 found 4 defects (fixed), round 2 ran the
+ran against the real share too. Fourteen rounds: round 1 found 4 defects (fixed), round 2 ran the
 full script, rounds 3–4 re-checked the fixes, rounds 5–7 verified the two code-review passes below on
-fresh Revit sessions. Unit tests: 311/311 pass.
+fresh Revit sessions, rounds 13–14 closed the remaining items. Unit tests: 313/313 pass.
 
 ## Results
 
@@ -120,12 +120,35 @@ local stand-ins were run against the real share:
 - Smaller: the four copies of "count linked/imported CAD" are one helper; family-source findings
   say their ids are family ids.
 
+## Rounds 13–14: the last open items, plus a real chat-pane turn
+
+- **Shared-coordinate workflow with real RD underlays** (two situation/origin DWGs in RD):
+  `linkcad --first` → centre-to-centre, pinned; coordinates acquired from the link (the manual's
+  step, done here via `exec` `Document.AcquireCoordinates`) → `coords` reports shared coordinates
+  and an unrounded base point; `check` now runs the pin and rounding rules (WARN base point not
+  pinned / not rounded, grids unpinned) while **`survey-point-origin` stays OK** (the survey point
+  is 67 mm from the internal origin but reads shared 0,0,0 — the earlier false FAIL is gone);
+  after rounding to whole metres + pinning (as the manual asks) `check` is all green except the
+  active-view and file-name warnings; a second underlay links **Auto – By Shared Coordinates**.
+- **Settings dialog** opened from the chat pane's Settings button and captured: the *Office
+  standards* section renders (enable switch, two folder rows with Browse/Clear). One label ran
+  off the dialog → labels now wrap; the dialog scrolls on small screens.
+- **Real chat pane** (WPF, driven by UI automation; the typed text was read back before Enter),
+  Dutch request for a temporary sheet-pile wall + new floor + check: the model used the template's
+  office sheet-pile family, placed the wall as temporary (2/2), the floor as new (2/None), ran
+  `check` and proposed filling the object-code parameters. It could not open a view on the new
+  phase (view switches are refused inside `exec`), so the work stayed invisible → new
+  **`activate <view>`** command and **`view … --activate`**; round 14: the new office work view
+  becomes the active view, a wall created in it gets no visibility warning.
+- `linkcad` with a DGN hit Revit's "Empty DGN model view name" → `--dgnview <name>` (default
+  `Default`); an unreadable file reported "CAD LINKED id -1" → now an error. Verified with a dummy
+  DGN only (no real DGN available).
+
 ## Not verified here
 
-- The Settings dialog's new *Office standards* section (WPF; not driven by automation to avoid
-  clicking on the user's desktop) — compiled, not exercised visually.
-- The shared-coordinate workflow on a real project (acquiring coordinates from a BGT link); the
-  pack mirror was exercised through a UNC path to this machine, not the office share itself.
+- A real BGT file from the office's BGT folder (that share was offline); RD underlays from a
+  downloaded office example were used instead. The pack mirror was exercised through a UNC path
+  to this machine, not the office share itself. No real DGN was available.
 - `survey-point-origin` on a georeferenced project (no such model available); the template
   case and the rule's unit tests pass.
 - Revit 2024/2025 builds.

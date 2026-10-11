@@ -32,7 +32,9 @@
   the element's previous phases intact and is reported. New **`phase`** command re-phases
   existing elements from the office table.
 - **Office defaults** for `view` (view template, phase, phase filter, browser-folder parameters;
-  `--template`/`--no-template`, plus `--name`) and `sheet` (default title block, stamp-field hint).
+  `--template`/`--no-template`, plus `--name` and `--activate`) and `sheet` (default title block,
+  stamp-field hint). New **`activate <viewId|name>`** opens a view — the AI could not switch views
+  through `exec`, so new work on the office phase stayed invisible in the template's work views.
 - **`check`** — audit (OK/WARN/FAIL/SKIPPED per rule, Fix lines, Verdict) against the pack's
   rules (13 rule kinds: pins, phases, phase filter digits, plot-view templates, family prefixes, required parameters, survey/base
   point, file name, schedule phase, links vs imports), `check selected|<ids>`, `check --stats`.
@@ -43,7 +45,8 @@
   `place` suggests `loadfamily "<path>"` when a family is not loaded.
 - **`linkcad`** (link, never import; off-axis correction and orient-to-view off; shared
   coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN until a base map
-  is linked and shared coordinates exist, `--force` overrides) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
+  is linked and shared coordinates exist, `--force` overrides; `--dgnview <model view>`, default
+  `Default`; an unreadable file is an error, not a link with id -1) and **`coords`** (survey point, base point, rounding, shared coordinates, pins).
 - Optional office additions file (`additionsFile`) appended to the core, next to the pack or in
   the source-documents folder (cached locally by the background index run).
 - Settings dialog: *Office standards* section (enable switch, pack folder, source-documents folder).

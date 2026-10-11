@@ -4,7 +4,7 @@ namespace VibeModel.Services.Claude
 {
     /// <summary>
     /// The office-default flags of the `view` command: --template &lt;name&gt;, --no-template,
-    /// --name &lt;view name&gt;. A value runs until the next "--" flag (or may be quoted), so
+    /// --name &lt;view name&gt;, --activate. A value runs until the next "--" flag (or may be quoted), so
     /// multi-word names work unquoted. Without flags the args come back unchanged, so
     /// `view plan Level 2` parses exactly as before. Pure — unit-tested.
     /// </summary>
@@ -17,11 +17,14 @@ namespace VibeModel.Services.Claude
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         private static readonly Regex NoTemplateFlag = new Regex(@"(?:^|\s)--no-template(?=\s|$)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex ActivateFlag = new Regex(@"(?:^|\s)--activate(?=\s|$)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         public string Remaining { get; private set; }
         public string Template { get; private set; }
         public bool NoTemplate { get; private set; }
         public string Name { get; private set; }
+        public bool Activate { get; private set; }
 
         public static ViewArgs Parse(string args)
         {
@@ -31,6 +34,12 @@ namespace VibeModel.Services.Claude
             var rest = r.Remaining;
             r.Template = Take(ref rest, TemplateFlag);
             r.Name = Take(ref rest, NameFlag);
+            var am = ActivateFlag.Match(rest);
+            if (am.Success)
+            {
+                r.Activate = true;
+                rest = rest.Remove(am.Index, am.Length);
+            }
             var nm = NoTemplateFlag.Match(rest);
             if (nm.Success)
             {

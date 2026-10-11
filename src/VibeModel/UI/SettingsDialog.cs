@@ -276,11 +276,11 @@ namespace VibeModel.UI
             };
             panel.Children.Add(_standardsEnabledCheck);
 
-            panel.Children.Add(CreateLabel("Standards pack folder (pack.json, or a folder of packs) — empty = local copy in %LOCALAPPDATA%\\VibeModel\\standards"));
+            panel.Children.Add(CreateLabel("Standards pack folder (pack.json, or a folder of packs). Empty = the local copy in %LOCALAPPDATA%\\VibeModel\\standards. A network folder is mirrored locally in the background."));
             _packPathBox = CreateTextBox(SettingsManager.GetStandardsPackPath());
             panel.Children.Add(CreateFolderRow(_packPathBox, "pack.json|pack.json|All files|*.*"));
 
-            panel.Children.Add(CreateLabel("Office source documents folder (leidraad PDFs) — empty = the pack's default"));
+            panel.Children.Add(CreateLabel("Office source documents folder (the modelling manual PDFs). Empty = the pack's default."));
             _standardsFolderBox = CreateTextBox(SettingsManager.GetStandardsFolder());
             panel.Children.Add(CreateFolderRow(_standardsFolderBox, "Documents|*.pdf;*.txt;*.md|All files|*.*"));
             return panel;
@@ -496,6 +496,7 @@ namespace VibeModel.UI
                 Text = text,
                 Foreground = FgSecondary,
                 FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 4)
             };
         }

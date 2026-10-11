@@ -118,12 +118,13 @@ background index run.
   a link or shared coordinates exist). `survey-point-origin` judges the survey point's own shared
   coordinates (0,0,0), not its distance from the internal origin — acquiring coordinates moves it
   far away on every correctly georeferenced project.
+- `activate <viewId|name>` — make a view active (a view switch is refused inside `exec`'s transaction).
 - `coords`, `library <terms>` / `library --rebuild`, `loadfamily "<path>"`,
-  `linkcad "<path>" [--first] [--origin] [--no-pin] [--force]` (a DGN is refused until a base
-  map is linked and shared coordinates exist).
+  `linkcad "<path>" [--first] [--origin] [--no-pin] [--force] [--dgnview <name>]` (a DGN is refused
+  until a base map is linked and shared coordinates exist).
 - Changed: `wall`, `floor`, `place`, `placeid`, `room` (`--phase`, default phase, visibility
   warning), `view` (office template/phase/filter/browser parameters, `--template`,
-  `--no-template`, `--name`; falls back to a structural plan type when no floor-plan type exists),
+  `--no-template`, `--name`, `--activate`; falls back to a structural plan type when no floor-plan type exists),
   `sheet` (default title block, stamp-field hint).
 
 ## Decisions taken while building (deviations from the original design)
