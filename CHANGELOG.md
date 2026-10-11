@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.6 — Sheet Assembly, Project Folder, Visibility Diagnosis (2026-10-12)
+
 ### Added — `whyhidden` and `join`/`unjoin`
 - **`whyhidden` — visibility diagnosis** (`whyhidden <elementId> [viewId]`, view defaults to the
   active one). Answers the werkgroep's recurring "where did it go?" questions from the real view
