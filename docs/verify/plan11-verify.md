@@ -8,9 +8,10 @@ internal names and network paths, so they are kept outside this public repo
 
 Environment: Revit 2023.1, add-in built from this branch and deployed with `build.ps1`; the
 office network share was **unreachable** during the whole run (weekend, no VPN), which also
-exercised every offline path. Seven rounds: round 1 found 4 defects (fixed), round 2 ran the
+exercised every offline path. Later that evening the share came online, and rounds 8–12
+ran against the real share too. Twelve rounds: round 1 found 4 defects (fixed), round 2 ran the
 full script, rounds 3–4 re-checked the fixes, rounds 5–7 verified the two code-review passes below on
-fresh Revit sessions. Unit tests: 296/296 pass.
+fresh Revit sessions. Unit tests: 311/311 pass.
 
 ## Results
 
@@ -93,13 +94,38 @@ platform newline; `standards --prompt` added to show exactly what the chat recei
   Revit's thread; `GetActivePack` costs nothing when no pack is installed; the Settings dialog
   scrolls instead of overflowing small screens (not visually verified).
 
+## Third review pass + the real office share (rounds 8–12)
+
+The office share became reachable in the evening, so the parts that had only been tested with
+local stand-ins were run against the real share:
+
+- **Library**: the background index of the real office library built in ~15 s (288 families);
+  `library paal` / `library damwand` returned the office pile and sheet-pile families;
+  `loadfamily` loaded a quay-wall family straight from the share and `placeid` placed it on the
+  new-work phase (read back). A share that answers slowly no longer triggers a new scan per call
+  (5-minute retry backoff; `library --rebuild` forces).
+- **Manuals**: all 8 office PDFs indexed through the helper process. The main manual split into
+  48 chapters matching its real numbering (1 … 6.11, incl. 4.2 Phasing p39–42), the admin manual
+  into 24, the checklist into its 14 items, the work instructions correctly. Round 9 exposed body
+  lines taken as headings in a third-party standard and a date line ("2 maart 2022") taken as a
+  chapter; the splitter now rejects long titles, sentence breaks, trailing cross-references, dates,
+  `;`/`:` endings and long lower-case lines, and re-tries with a relaxed start when a manual's
+  numbering does not begin at 1 (round 12). The cache key includes the splitter version.
+- **Distillation**: the first real run spent its text budget on a third-party standard (sorted
+  first) and missed the phasing chapter — the chapter list applied to every document. Packs now
+  declare `distill.sources` (document + chapters, most important first). Round 11 distilled the
+  real manual + checklist into 25 rules incl. the complete phase table, survey-point, link and
+  view-template rules. The result sits in the pack cache (`core.generated.md`) for comparison
+  with the hand-written core; it is not in use.
+- Smaller: the four copies of "count linked/imported CAD" are one helper; family-source findings
+  say their ids are family ids.
+
 ## Not verified here
 
 - The Settings dialog's new *Office standards* section (WPF; not driven by automation to avoid
   clicking on the user's desktop) — compiled, not exercised visually.
-- The real office share (K:) paths: library scan, manual PDFs and shared-coordinate workflow on
-  a real project, because the share was unreachable. Every offline path was exercised instead,
-  and the share mirror was exercised through a UNC path to this machine.
+- The shared-coordinate workflow on a real project (acquiring coordinates from a BGT link); the
+  pack mirror was exercised through a UNC path to this machine, not the office share itself.
 - `survey-point-origin` on a georeferenced project (no such model available); the template
   case and the rule's unit tests pass.
 - Revit 2024/2025 builds.

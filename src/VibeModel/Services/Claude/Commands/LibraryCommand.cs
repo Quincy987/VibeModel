@@ -43,9 +43,8 @@ namespace VibeModel.Services.Claude.Commands
 
             if (idx == null)
                 return CommandResult.Error("INDEX_NOT_READY",
-                    "The office library index is not ready" + (building ? " (building in the background — the library is on a network share)" : "") +
-                    (err != null ? "; last attempt: " + err : "") + ".",
-                    "Try again in a minute. Library folders: " + string.Join("; ", pack.LibraryPaths));
+                    "The office library index is not ready: " + LibraryIndexService.NotReadyReason(pack) + ".",
+                    "Library folders: " + string.Join("; ", pack.LibraryPaths));
 
             if (q.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Give search terms.", "e.g. library paal, library damwand AZ");
@@ -56,8 +55,13 @@ namespace VibeModel.Services.Claude.Commands
                           " (index " + idx.BuiltUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
                           (building ? ", refreshing" : "") + (err != null ? "; last refresh failed: " + err : "") + ")");
             sb.AppendLine("=======");
+            if (idx.UnreachableRoots.Count > 0)
+                sb.AppendLine("(not reachable when indexed, so not searched: " + string.Join("; ", idx.UnreachableRoots) + ")");
             foreach (var h in hits)
-                sb.AppendLine(h.Name + "  [" + h.Prefix + "]  " + h.Folder + "\n    loadfamily \"" + h.Path + "\"");
+            {
+                sb.AppendLine(h.Name + "  [" + h.Prefix + "]  " + h.Folder);
+                sb.AppendLine("    loadfamily \"" + h.Path + "\"");
+            }
             if (hits.Count == 0)
                 sb.AppendLine("No match. Try fewer or shorter terms; prefixes: " + string.Join(", ", pack.FamilyPrefixes));
 

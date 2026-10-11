@@ -28,9 +28,8 @@ namespace VibeModel.Services.Claude.Commands
             double round = pack?.CoordinateRoundingMm ?? 1000;
             bool rounded = StandardsRender.IsRound(c.BaseNorthMm, round) && StandardsRender.IsRound(c.BaseEastMm, round);
 
-            int links = 0, linksPinned = 0;
-            foreach (ImportInstance ii in new FilteredElementCollector(doc).OfClass(typeof(ImportInstance)))
-                if (ii.IsLinked) { links++; if (ii.Pinned) linksPinned++; }
+            var cad = TemplateFactsCollector.CountCad(doc);
+            int links = cad.Links, linksPinned = cad.LinksPinned;
 
             var sb = new StringBuilder();
             sb.AppendLine("COORDINATES");

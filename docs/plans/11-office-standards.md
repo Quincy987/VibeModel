@@ -93,7 +93,8 @@ an unchanged file is never re-read, an unreachable share falls back to the cache
 from `VibeModel.PdfText.exe` (PdfPig) in a separate process so its dependencies never load into
 Revit. `standards docs` / `standards <doc> <chapter>` read chapters verbatim.
 
-`standards distill` (explicit only) sends the pack's `distill.chapters` through the Anthropic API
+`standards distill` (explicit only) sends the pack's `distill.sources` (document + chapters, most
+important first — the ~90k-character budget is spent in that order) through the Anthropic API
 (API key set) or the Claude Code CLI with a fixed prompt ("≤25 imperative one-liners with exact
 names, no procedures") and writes `core.generated.md` with source hashes; the pack uses it when
 `"core": "generated"`. The hand-written `core.md` remains the reference to compare against.
@@ -146,6 +147,7 @@ background index run.
 - **Wrong defaults are worse than none.** Defaults only fire for a matching fingerprint, and
   every automatic choice is printed in the command output.
 - **Network drive.** The pack is mirrored, library and documents are indexed in the background
-  with deadlines (one timed-out share is not probed again per run) and cached.
+  with deadlines (one timed-out share is not probed again per run; a failed library scan is
+  retried at most every 5 minutes) and cached.
 - **Ownership.** When the pack moves to the office share, the application manager owns it;
   until then the local copy is maintained by the VibeModel maintainer.

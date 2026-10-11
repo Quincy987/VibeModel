@@ -48,7 +48,8 @@ namespace VibeModel.Services.Standards
         public double CoordinateRoundingMm { get; private set; } = 1000;
         public LinkCadDefaults LinkCad { get; private set; } = new LinkCadDefaults();
         public string StandardsFolder { get; private set; }
-        public List<string> DistillChapters { get; private set; } = new List<string>();
+        /// <summary>What `standards distill` reads, in priority order (the text budget is spent first-come).</summary>
+        public List<DistillSource> DistillSources { get; private set; } = new List<DistillSource>();
 
         /// <summary>
         /// Name of the optional office additions file — rules not (yet) in the manual, appended to
@@ -165,7 +166,15 @@ namespace VibeModel.Services.Standards
 
             pack.LinkCad = LinkCadDefaults.FromJson(PackJson.GetDict(root, "linkCad"));
             pack.StandardsFolder = PackJson.GetString(root, "standardsFolder");
-            pack.DistillChapters = PackJson.GetStrings(PackJson.GetDict(root, "distill"), "chapters");
+            var distill = PackJson.GetDict(root, "distill");
+            foreach (var s in PackJson.GetDictList(distill, "sources"))
+                pack.DistillSources.Add(new DistillSource
+                {
+                    Document = PackJson.GetString(s, "document"),
+                    Chapters = PackJson.GetStrings(s, "chapters")
+                });
+            if (pack.DistillSources.Count == 0) // shorthand: one chapter list for every document
+                pack.DistillSources.Add(new DistillSource { Chapters = PackJson.GetStrings(distill, "chapters") });
             var additions = PackJson.GetString(root, "additionsFile");
             if (!string.IsNullOrWhiteSpace(additions) && additions.IndexOfAny(Path.GetInvalidFileNameChars()) < 0)
                 pack.AdditionsFile = additions.Trim();
@@ -247,6 +256,19 @@ namespace VibeModel.Services.Standards
             catch { /* unreadable → treated as missing */ }
             return null;
         }
+    }
+
+    /// <summary>
+    /// One input of the distiller: a document (file-name substring; null = every indexed
+    /// document) and the chapters to read from it, in priority order (empty = all chapters).
+    /// </summary>
+    public sealed class DistillSource
+    {
+        public string Document { get; set; }
+        public List<string> Chapters { get; set; } = new List<string>();
+
+        public string Describe() => (Document ?? "all documents") +
+            (Chapters.Count == 0 ? " (all chapters)" : " " + string.Join(", ", Chapters));
     }
 
     public sealed class PackSource

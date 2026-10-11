@@ -81,7 +81,10 @@ Derived data (library index, document index, generated core, check log, addition
   "coordinates": { "roundToMm": 1000 },
   "linkCad": { "pinAfterLink": true, "correctOffAxisLines": false, "orientToView": false, "refuseFirstDgnReason": "..." },
   "standardsFolder": "\\\\server\\revit\\standards\\",   // default for the Settings "source documents folder"
-  "distill": { "chapters": ["1", "2.1", "4.2"] }        // chapters `standards distill` reads
+  "distill": { "sources": [                            // what `standards distill` reads, MOST IMPORTANT FIRST
+    { "document": "modelling manual", "chapters": ["4.2", "2.1", "1"] },  // file-name part; a chapter includes its subchapters
+    { "document": "checklist" }                                          // no chapters = the whole document
+  ] }                                                  // shorthand: { "chapters": [...] } = those chapters of every document
 }
 ```
 

@@ -89,11 +89,10 @@ namespace VibeModel.Services.Standards
 
             Safe(() =>
             {
-                foreach (ImportInstance ii in new FilteredElementCollector(doc).OfClass(typeof(ImportInstance)))
-                {
-                    if (ii.IsLinked) { f.CadLinks++; if (ii.Pinned) f.CadLinksPinned++; }
-                    else f.CadImports++;
-                }
+                var cad = CountCad(doc);
+                f.CadLinks = cad.Links;
+                f.CadLinksPinned = cad.LinksPinned;
+                f.CadImports = cad.Imports;
             });
             Safe(() =>
             {
@@ -113,6 +112,18 @@ namespace VibeModel.Services.Standards
             });
 
             return f;
+        }
+
+        /// <summary>Linked vs imported CAD (ImportInstance), the one count every command shares.</summary>
+        public static CadCounts CountCad(Document doc)
+        {
+            var c = new CadCounts();
+            foreach (ImportInstance ii in new FilteredElementCollector(doc).OfClass(typeof(ImportInstance)))
+            {
+                if (ii.IsLinked) { c.Links++; if (ii.Pinned) c.LinksPinned++; }
+                else c.Imports++;
+            }
+            return c;
         }
 
         public static CoordinateFacts ReadCoordinates(Document doc)

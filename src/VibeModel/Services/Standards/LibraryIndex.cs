@@ -164,8 +164,15 @@ namespace VibeModel.Services.Standards
         private static readonly Dictionary<string, Task> Building = new Dictionary<string, Task>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, string> LastError = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        private static readonly Dictionary<string, DateTime> LastAttemptUtc = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
         public static readonly TimeSpan MaxAge = TimeSpan.FromHours(24);
         public static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(10);
+        /// <summary>
+        /// After a failed scan (share offline) automatic rebuilds wait this long, so every
+        /// `library`/`place` call does not start another scan; `library --rebuild` ignores it.
+        /// </summary>
+        public static readonly TimeSpan RetryBackoff = TimeSpan.FromMinutes(5);
 
         public static string IndexPath(StandardsPack pack) =>
             Path.Combine(StandardsPackRegistry.CacheDir(pack.Id), "library-index.json");
@@ -188,12 +195,18 @@ namespace VibeModel.Services.Standards
                 {
                     Loaded.Remove(pack.Id);
                     idx = null;
-                    forceRebuild = true;
                 }
             }
-            if (forceRebuild || idx == null || DateTime.UtcNow - idx.BuiltUtc > MaxAge)
+            bool stale = idx == null || DateTime.UtcNow - idx.BuiltUtc > MaxAge;
+            if (forceRebuild || (stale && !InBackoff(pack.Id)))
                 StartBuild(pack);
             return idx;
+        }
+
+        private static bool InBackoff(string id)
+        {
+            lock (Sync)
+                return LastError.ContainsKey(id) && LastAttemptUtc.TryGetValue(id, out var t) && DateTime.UtcNow - t < RetryBackoff;
         }
 
         internal static bool SameRoots(IEnumerable<string> a, IEnumerable<string> b)
@@ -202,6 +215,16 @@ namespace VibeModel.Services.Standards
             var x = (a ?? Enumerable.Empty<string>()).Select(Norm).Where(p => p.Length > 0).OrderBy(p => p).ToList();
             var y = (b ?? Enumerable.Empty<string>()).Select(Norm).Where(p => p.Length > 0).OrderBy(p => p).ToList();
             return x.SequenceEqual(y);
+        }
+
+        /// <summary>Why there is no index yet, as one phrase for command output (shared by library and place).</summary>
+        public static string NotReadyReason(StandardsPack pack)
+        {
+            if (IsBuilding(pack)) return "it is being built in the background (the library may be on a network share)";
+            var err = GetLastError(pack);
+            return err != null
+                ? "last attempt: " + err + " — retried automatically after " + RetryBackoff.TotalMinutes + " min, or now with 'library --rebuild'"
+                : "it will be built in the background";
         }
 
         public static bool IsBuilding(StandardsPack pack)
@@ -220,6 +243,7 @@ namespace VibeModel.Services.Standards
             lock (Sync)
             {
                 if (Building.TryGetValue(pack.Id, out var running) && !running.IsCompleted) return;
+                LastAttemptUtc[pack.Id] = DateTime.UtcNow;
                 var cts = new CancellationTokenSource(BuildTimeout);
                 var roots = pack.LibraryPaths.ToList();
                 var prefixes = pack.FamilyPrefixes.ToList();

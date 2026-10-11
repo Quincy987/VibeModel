@@ -52,6 +52,13 @@ namespace VibeModel.Services.Standards
         public bool IsModelCategory { get; set; }
     }
 
+    public sealed class CadCounts
+    {
+        public int Links { get; set; }
+        public int LinksPinned { get; set; }
+        public int Imports { get; set; }
+    }
+
     public sealed class CoordinateFacts
     {
         public bool Available { get; set; }

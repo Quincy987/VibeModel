@@ -37,7 +37,28 @@ namespace VibeModel.Services.Standards
 
         public const int TocPageHeadingThreshold = 6;
 
+        /// <summary>Bump when the splitting rules change: cached document indexes are re-split.</summary>
+        public const int Version = 4;
+
+        public const int MaxTitleLength = 90;
+
+        // Body text that happens to start with a number (seen in real manuals):
+        private static readonly Regex EndsWithSectionRef = new Regex(@"\d+(\.\d+)+\s*$", RegexOptions.CultureInvariant);        // "…, zie paragraaf 4.6.2"
+        private static readonly Regex SentenceBreak = new Regex(@"[.?!]\s+\p{Lu}", RegexOptions.CultureInvariant);               // "…5.1.3). Voor civiel…"
+        private static readonly Regex DateLine = new Regex(@"^\p{L}+\s+(19|20)\d{2}$", RegexOptions.CultureInvariant);          // "2 maart 2022"
+
         public static List<DocChapter> Split(IList<string> pages)
+        {
+            // Strict first: the first heading must be chapter 1 (or 1.1). A manual whose numbering
+            // starts later (an excerpt, or a chapter 1 we could not recognise) gets a second pass
+            // that lets any top-level number start the sequence.
+            var strict = Split(pages, relaxedStart: false);
+            if (strict.Count(c => c.Number != "0") > 1) return strict;
+            var relaxed = Split(pages, relaxedStart: true);
+            return relaxed.Count(c => c.Number != "0") > strict.Count(c => c.Number != "0") ? relaxed : strict;
+        }
+
+        private static List<DocChapter> Split(IList<string> pages, bool relaxedStart)
         {
             var chapters = new List<DocChapter>();
             var current = new DocChapter { Number = "0", Title = "(front matter)", PageFrom = 1, PageTo = 1 };
@@ -57,7 +78,8 @@ namespace VibeModel.Services.Standards
                 foreach (var raw in lines)
                 {
                     var line = raw.TrimEnd();
-                    if (!tocPage && IsCandidate(line, out var num, out var title) && IsSuccessor(prev, num))
+                    if (!tocPage && IsCandidate(line, out var num, out var title) &&
+                        (IsSuccessor(prev, num) || (relaxedStart && prev == null && num.Length == 1)))
                     {
                         Flush(chapters, current, text);
                         current = new DocChapter
@@ -97,8 +119,14 @@ namespace VibeModel.Services.Standards
             var t = m.Groups["title"].Value.Trim();
             if (t.Length < 2 || !char.IsLetter(t[0])) return false;
             if (TocTail.IsMatch(line)) return false;
-            // Sentences are not headings: a heading rarely ends with a period or comma.
-            if (t.EndsWith(".", StringComparison.Ordinal) || t.EndsWith(",", StringComparison.Ordinal)) return false;
+            // Sentences are not headings: a heading is short, does not end with a period or
+            // comma, contains no sentence break, no trailing cross-reference, and is not a date.
+            if (t.Length > MaxTitleLength) return false;
+            if (t.EndsWith(".", StringComparison.Ordinal) || t.EndsWith(",", StringComparison.Ordinal) ||
+                t.EndsWith(";", StringComparison.Ordinal) || t.EndsWith(":", StringComparison.Ordinal)) return false;
+            // A long title starting in lower case is a list item or a wrapped sentence ("eTransmit" stays).
+            if (char.IsLower(t[0]) && t.Length > 40) return false;
+            if (EndsWithSectionRef.IsMatch(t) || SentenceBreak.IsMatch(t) || DateLine.IsMatch(t)) return false;
             try
             {
                 number = m.Groups["num"].Value.Split('.').Select(int.Parse).ToArray();

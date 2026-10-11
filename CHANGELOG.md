@@ -17,7 +17,9 @@
   `--refresh`, `--prompt` (exactly what the chat receives), `--pack <id>`; plus the office's own source documents: `--index` (PDF/txt split into numbered
   chapters, cached by file hash, PDF text via an out-of-process helper), `docs`,
   `standards <doc> <chapter>`, and an explicit `distill` that turns the manual's rule chapters
-  into `core.generated.md` (used when the pack says `"core": "generated"`).
+  (pack `distill.sources`: documents + chapters, most important first) into `core.generated.md`
+  (used when the pack says `"core": "generated"`). Cached indexes are keyed on file content and
+  splitter version, so improved chapter detection re-splits them.
 - **Prompt injection.** Every chat turn (all three backends) gets a `TEMPLATE:` block (≤1 kB)
   and, with an active pack, a `STANDARDS:` block with the core rules (Claude Code: in the per-turn
   appended system prompt). Rendered on Idling on the Revit thread (at most every 3 s after
@@ -36,7 +38,8 @@
   point, file name, schedule phase, links vs imports), `check selected|<ids>`, `check --stats`.
   After every modifying command/batch the element-level rules run on what was just created and
   add one `-- check: …` line (JSON: additive `check` object). Hits are logged (rule id + count).
-- **`library` / `loadfamily`** — background-built, cached index of the office family library;
+- **`library` / `loadfamily`** — background-built, cached index of the office family library
+  (an offline share is retried at most every 5 min; `library --rebuild` forces it);
   `place` suggests `loadfamily "<path>"` when a family is not loaded.
 - **`linkcad`** (link, never import; off-axis correction and orient-to-view off; shared
   coordinates or centre-to-centre for the first underlay; pinned; refuses a DGN until a base map

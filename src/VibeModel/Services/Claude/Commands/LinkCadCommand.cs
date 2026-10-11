@@ -54,8 +54,7 @@ namespace VibeModel.Services.Claude.Commands
 
             var pack = StandardsContext.GetActivePack(doc);
             var opts = pack?.LinkCad ?? new LinkCadDefaults();
-            int existingLinks = new FilteredElementCollector(doc).OfClass(typeof(ImportInstance))
-                .Cast<ImportInstance>().Count(i => i.IsLinked);
+            int existingLinks = TemplateFactsCollector.CountCad(doc).Links;
             bool isFirst = first || existingLinks == 0;
 
             // A DGN is only placed correctly by shared coordinates, so it waits until a base map

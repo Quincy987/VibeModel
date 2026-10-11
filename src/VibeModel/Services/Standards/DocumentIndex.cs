@@ -156,7 +156,8 @@ namespace VibeModel.Services.Standards
                 {
                     try
                     {
-                        var hash = FileHash(file);
+                        // Keyed on content AND splitter version: a better splitter re-splits old caches.
+                        var hash = FileHash(file) + "-s" + ChapterSplitter.Version;
                         var target = Path.Combine(IndexDir(pack), hash + ".json");
                         if (File.Exists(target)) { manifest[file] = hash; cached++; continue; }
 

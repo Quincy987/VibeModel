@@ -39,25 +39,44 @@ namespace VibeModel.Services.Standards
         private static readonly Dictionary<string, string> LastStatus = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// The source text for the LLM: the pack's distill chapters (e.g. 1, 2.1–2.3, 3.1, 4.1,
-        /// 4.2) from every indexed document, each with a header naming document and chapter.
-        /// When the pack lists no chapters, whole documents are used. Capped at maxChars.
+        /// The source text for the LLM, built in the pack's priority order: each distill source
+        /// names a document (or all) and its chapters (a number includes its subchapters). Every
+        /// chapter appears once, with a header naming document and chapter. The text is capped
+        /// at maxChars: the chapter that crosses the cap is cut there and nothing after it is
+        /// added, so the pack lists the chapters that matter most first.
         /// </summary>
-        public static string BuildSource(IList<IndexedDocument> docs, IList<string> chapters, int maxChars, out List<string> used)
+        public static string BuildSource(IList<IndexedDocument> docs, IList<DistillSource> sources, int maxChars, out List<string> used)
         {
             used = new List<string>();
             var sb = new StringBuilder();
-            foreach (var d in docs)
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var src in sources ?? new List<DistillSource> { new DistillSource() })
             {
-                var selected = chapters == null || chapters.Count == 0
-                    ? d.Chapters.Where(c => c.Number != "0").ToList()
-                    : d.Chapters.Where(c => chapters.Any(n => c.Number == n || c.Number.StartsWith(n + ".", StringComparison.Ordinal))).ToList();
-                foreach (var c in selected)
+                var matching = docs.Where(d => src.Document == null ||
+                                               d.Name.IndexOf(src.Document, StringComparison.OrdinalIgnoreCase) >= 0);
+                foreach (var d in matching)
                 {
-                    var block = "### " + d.Name + " — " + c.Label + "\n" + c.Text + "\n\n";
-                    if (sb.Length + block.Length > maxChars) return sb.ToString();
-                    sb.Append(block);
-                    used.Add(d.Name + " " + c.Number);
+                    IEnumerable<DocChapter> selected = src.Chapters.Count == 0
+                        ? d.Chapters.Where(c => c.Number != "0")
+                        : src.Chapters.SelectMany(n => d.Chapters.Where(c =>
+                              c.Number == n || c.Number.StartsWith(n + ".", StringComparison.Ordinal)));
+                    foreach (var c in selected)
+                    {
+                        if (!seen.Add(d.Name + "|" + c.Number)) continue;
+                        var block = "### " + d.Name + " — " + c.Label + "\n" + c.Text + "\n\n";
+                        if (sb.Length + block.Length > maxChars)
+                        {
+                            var room = maxChars - sb.Length;
+                            if (room > 500)
+                            {
+                                sb.Append(block.Substring(0, room)).Append("\n[… cut: text budget reached]\n");
+                                used.Add(d.Name + " " + c.Number + " (cut)");
+                            }
+                            return sb.ToString();
+                        }
+                        sb.Append(block);
+                        used.Add(d.Name + " " + c.Number);
+                    }
                 }
             }
             return sb.ToString();
@@ -94,10 +113,11 @@ namespace VibeModel.Services.Standards
                 message = "No indexed source documents for pack " + pack.Id + ".";
                 return false;
             }
-            var source = BuildSource(docs, pack.DistillChapters, MaxSourceChars, out var used);
+            var source = BuildSource(docs, pack.DistillSources, MaxSourceChars, out var used);
             if (source.Length == 0)
             {
-                message = "None of the pack's distill chapters (" + string.Join(", ", pack.DistillChapters) + ") were found in the indexed documents.";
+                message = "Nothing to distil: none of the pack's distill sources (" +
+                          string.Join("; ", pack.DistillSources.Select(x => x.Describe())) + ") matched the indexed documents.";
                 return false;
             }
 

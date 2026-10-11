@@ -65,9 +65,8 @@ namespace VibeModel.Services.Claude.Commands
                 if (pack == null || pack.LibraryPaths.Count == 0) return "";
                 var idx = LibraryIndexService.Get(pack);
                 if (idx == null)
-                    return "\nThe office library index is not ready yet" +
-                           (LibraryIndexService.IsBuilding(pack) ? " (building in the background)" : "") +
-                           " — try 'library " + familyName + "' in a moment.";
+                    return "\nThe office library index is not ready (" + LibraryIndexService.NotReadyReason(pack) +
+                           ") — try 'library " + familyName + "' in a moment.";
                 var hits = idx.Search(familyName, 5);
                 if (hits.Count == 0) return "\nNo match in the office library either ('library <term>' searches it).";
                 var sb = new StringBuilder("\nFamily not loaded. Found in the office library:");

@@ -124,8 +124,7 @@ namespace VibeModel.Services.Standards
 
             public CoordinateFacts Coords => _coords ?? (_coords = TemplateFactsCollector.ReadCoordinates(Doc));
 
-            public int CadLinkCount => _links ?? (_links = new FilteredElementCollector(Doc).OfClass(typeof(ImportInstance))
-                .Cast<ImportInstance>().Count(i => i.IsLinked)).Value;
+            public int CadLinkCount => _links ?? (_links = TemplateFactsCollector.CountCad(Doc).Links).Value;
 
             /// <summary>Coordinates are "set up" once something georeferenced exists.</summary>
             public bool CoordinatesSetUp => Coords.SharedCoordinates || CadLinkCount > 0;
@@ -327,7 +326,7 @@ namespace VibeModel.Services.Standards
             if (total == 0) return c.Scope != null ? null : CheckFinding.Ok(r, "no " + what);
             return bad.Count == 0
                 ? (c.Scope != null ? null : CheckFinding.Ok(r, total + " " + what + ", all from the office sources"))
-                : CheckFinding.Problem(r, bad.Count + " of " + total + " " + what + " without an office prefix: " + string.Join(", ", names), bad);
+                : CheckFinding.Problem(r, bad.Count + " of " + total + " " + what + " without an office prefix (ids are family ids): " + string.Join(", ", names), bad);
         }
 
         private static CheckFinding ParamFilled(Ctx c, CheckRule r)
