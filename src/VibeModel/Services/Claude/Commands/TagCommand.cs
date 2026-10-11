@@ -90,6 +90,12 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 tag = IndependentTag.Create(doc, tagSymbol.Id, view.Id,
                     new Reference(element), ta.Leader, TagOrientation.Horizontal, head);
+                // With a leader Revit places the head next to the element; put it where asked.
+                if (ta.At != null)
+                {
+                    doc.Regenerate();
+                    tag.TagHeadPosition = head;
+                }
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error);
