@@ -159,6 +159,7 @@ namespace VibeModel.Services.Claude
 
                     try
                     {
+                        TrackActiveDocument(app);
                         if (request.IsBatch)
                         {
                             Logger.Info("Executing batch: " + request.Batch.Count + " commands" +
@@ -186,6 +187,21 @@ namespace VibeModel.Services.Claude
             finally
             {
                 IsProcessingCommand = false;
+            }
+        }
+
+        // Keeps the worker-thread view of the active document (project folder, chat labels)
+        // current even when the user switched documents or saved-as without a view change.
+        private static void TrackActiveDocument(UIApplication app)
+        {
+            try
+            {
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc != null) ActiveDocumentTracker.Update(doc.Title, doc.PathName);
+            }
+            catch
+            {
+                // Best-effort; never disturbs the command.
             }
         }
 

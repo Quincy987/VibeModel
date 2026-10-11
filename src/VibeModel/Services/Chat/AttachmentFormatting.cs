@@ -43,9 +43,14 @@ namespace VibeModel.Services.Chat
             sb.AppendLine(content);
             sb.AppendLine("```");
             if (truncated)
-                sb.AppendLine("[File truncated at " + MaxInlineTextChars + " characters — full copy at " +
-                              attachment.StoredPath + "]");
+                sb.AppendLine(TruncationNotice(attachment.StoredPath));
             return sb.ToString();
+        }
+
+        // Shared with readdoc (plan 10) so both caps read the same.
+        internal static string TruncationNotice(string fullCopyPath)
+        {
+            return "[File truncated at " + MaxInlineTextChars + " characters — full copy at " + fullCopyPath + "]";
         }
 
         internal static string BuildUnreadableNote(ChatAttachment attachment)

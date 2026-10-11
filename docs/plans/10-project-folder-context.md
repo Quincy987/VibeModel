@@ -6,10 +6,17 @@
 > time. Attachments (merged from t-177) answer "look at THIS file"; this plan answers "you
 > can always look in THERE".
 
-> **STATUS (proposed).** Nothing here is built. Builds directly on the attachment feature
-> (`AttachmentStore`, `AttachmentFormatting`, the `ChatAttachment` classifier) and the
-> existing command registry; independent of plans 08/09 (memory), which store distilled
-> facts, not documents.
+> **STATUS (built (phase 1)).** Setting + Settings row, `docs`, `readdoc`, the per-turn
+> manifest and `--add-dir` are in. Change to the design while building: **the default
+> project folder is the folder the open .rvt lives in** — no setup needed; Settings →
+> Project folder is an override per project (Clear falls back to the model folder). An
+> unsaved or cloud model has no default. Every output says which applies:
+> `(map van het model)` or `(ingesteld)`. Also beyond the original phase 1: `readdoc` returns
+> PDF text through the plan-11 PDF helper (cached; path + hint when the helper is missing) and
+> `.docx` paragraph text. Phase 2 (native pdf/image blocks for the API backend) is not built.
+> Builds directly on the attachment feature (`AttachmentStore`, `AttachmentFormatting`, the
+> `ChatAttachment` classifier) and the existing command registry; independent of plans 08/09
+> (memory), which store distilled facts, not documents.
 
 ## TL;DR
 

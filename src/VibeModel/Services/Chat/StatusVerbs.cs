@@ -33,6 +33,8 @@ namespace VibeModel.Services.Chat
                 { "measure", "Measuring…" },
                 { "whereused", "Finding usages…" },
                 { "filter", "Filtering elements…" },
+                { "docs", "Listing project documents…" },
+                { "readdoc", "Reading project document…" },
 
                 // Modify
                 { "wall", "Creating wall…" },

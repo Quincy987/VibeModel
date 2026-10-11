@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -648,47 +647,33 @@ namespace VibeModel.UI
                 : Visibility.Collapsed;
         }
 
-        // Last successful document-title lookup — fallback when the server is busy.
+        // Last known document title — fallback once the document is closed.
         private string _lastProjectKey;
 
         /// <summary>
-        /// Resolves the current Revit document title (via /info on the local server) as
-        /// the per-project attachment folder key. Runs on the UI thread, so the request
-        /// carries a short timeout — a busy Revit (modal dialog) must never hang the
-        /// pane. Falls back to the last known title, then "default".
+        /// The current Revit document title as the per-project key (attachment folder,
+        /// project folder setting). Falls back to the last known title, then "default".
         /// </summary>
-        private string GetProjectKey()
-        {
-            try
-            {
-                var port = (_backend as ChatBackendBase)?.HttpPort ?? 18884;
-                var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
-                    RevitHttpServer.BaseUrl(port) + "/info?format=json");
-                request.Timeout = 3000;
-                request.ReadWriteTimeout = 3000;
-                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
-                if (!string.IsNullOrWhiteSpace(token))
-                    request.Headers[RevitHttpServer.TokenHeader] = token.Trim();
+        private string GetProjectKey() => GetProjectIdentity(out _);
 
-                using (var response = request.GetResponse())
-                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                {
-                    var json = reader.ReadToEnd();
-                    var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
-                    if (obj != null && obj.TryGetValue("data", out var dataObj)
-                        && dataObj is Dictionary<string, object> data
-                        && data.TryGetValue("title", out var titleObj)
-                        && titleObj is string title && !string.IsNullOrWhiteSpace(title))
-                    {
-                        _lastProjectKey = title;
-                        return title;
-                    }
-                }
-            }
-            catch (Exception ex)
+        /// <summary>
+        /// <see cref="GetProjectKey"/> plus the document's path (the project folder defaults
+        /// to the model's own folder; "" when unsaved or unknown). Read from the tracker, not
+        /// over HTTP: the pane runs on Revit's UI thread, and a request to our own server from
+        /// here can never be served (its ExternalEvent needs this very thread) — it only ever
+        /// ran into its timeout. The tracker is updated on that thread (view activation,
+        /// every command).
+        /// </summary>
+        private string GetProjectIdentity(out string documentPath)
+        {
+            var title = ActiveDocumentTracker.Title;
+            if (!string.IsNullOrWhiteSpace(title))
             {
-                Logger.Info("Project key lookup failed — " + ex.Message);
+                _lastProjectKey = title;
+                documentPath = ActiveDocumentTracker.PathName;
+                return title;
             }
+            documentPath = "";
             return _lastProjectKey ?? "default";
         }
 
@@ -991,7 +976,10 @@ namespace VibeModel.UI
 
         private void OnSettingsClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new SettingsDialog();
+            var title = GetProjectIdentity(out var documentPath);
+            // No open document: the project-folder row stays read-only.
+            var hasDocument = !string.IsNullOrWhiteSpace(ActiveDocumentTracker.Title);
+            var dialog = new SettingsDialog(hasDocument ? title : null, documentPath);
             var result = dialog.ShowDialog();
 
             if (result == true && dialog.BackendChanged)

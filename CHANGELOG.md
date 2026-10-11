@@ -76,6 +76,24 @@ build and check a sheet from the conversation.
 - Arg parsing (including refused flag combinations), layout maths (cells, fit, suggested scale,
   overlaps), the `crop --fit` clustering, stamp patterns, the section frame and dimension bookkeeping
   are Revit-free and covered by headless tests.
+### Added — Plan 10: Project Folder Context
+- **Project folder per model.** The chat now knows the folder with this model's reference
+  documents (bestek, memo's, DO-tekening, inspection reports). Default: the folder the `.rvt`
+  is in; Settings → *Project folder* (Browse… / Clear) overrides it for the current project only
+  (`ProjectContextFolders` in settings.json, keyed like the attachment store). A configured
+  folder that no longer exists falls back to the model folder; an unsaved or cloud model has no
+  default. Every output names the folder with its source: `(map van het model)` / `(ingesteld)`.
+- **`docs [subfolder]`** — manifest of the folder, one level deep: relative names, kind tags,
+  sizes, capped at 200 entries. Revit's own files (`.rvt`/`.rfa`, numbered backups, `_backup`
+  and point-cloud `… Support` folders) are not listed.
+- **`readdoc <name>`** — one document, name case-insensitive (a unique prefix is enough,
+  ambiguous names list the matches): text inline (400k-char attachment cap), PDFs as text via
+  the plan-11 PDF helper (cached by content hash; a slow extraction continues in the background),
+  Word `.docx` as paragraph text, images/other as the absolute path plus a hint. Only names
+  inside the folder resolve: `..`, absolute paths, prefix siblings and links out are refused.
+- **Per-turn context.** All backends get a bounded `PROJECT FOLDER` block (the same manifest,
+  ≤100 entries) with "use readdoc <name> when relevant; don't guess at their contents"; the
+  Claude Code backend also gets `--add-dir <folder>` so it can read the files natively.
 
 ### Added — Plan 11: Office Standards
 - **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`

@@ -378,6 +378,15 @@ namespace VibeModel.Services.Chat
             // as well (it would carry them twice) and which must not go stale between turns.
             AppendOfficeContext(appendPrompt, Standards.StandardsPrompt.Combined);
 
+            // Project folder (plan 10): the manifest goes into the prompt, and the folder itself
+            // is made readable to the CLI's own tools.
+            AppendOfficeContext(appendPrompt, ProjectDocs.BuildPromptBlockForActiveDocument(true, out var projectFolder));
+            if (projectFolder.IsSet)
+            {
+                args.Append(" --add-dir ");
+                args.Append(EscapeArg(projectFolder.Path));
+            }
+
             args.Append(" --append-system-prompt ");
             args.Append(EscapeArg(appendPrompt.ToString()));
 

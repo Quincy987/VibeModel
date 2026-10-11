@@ -161,6 +161,61 @@ namespace VibeModel.Infrastructure
 
         public static void SetStandardsEnabled(bool enabled) => SetValue("StandardsEnabled", enabled);
 
+        // --- Project folder context (plan 10) ----------------------------------------------
+
+        private const string ProjectFoldersKey = "ProjectContextFolders";
+
+        /// <summary>
+        /// The folder the user chose for this project (key = <c>ProjectDocs.ProjectKey</c>), or
+        /// null when none is set or the stored folder no longer exists — callers then fall back
+        /// to the model's own folder instead of erroring every turn. A folder that does not
+        /// answer in time (network drive offline) is returned as-is; listing it reports that.
+        /// </summary>
+        public static string GetProjectContextFolder(string projectKey)
+            => LiveFolderOrNull(GetProjectContextFolderSetting(projectKey));
+
+        internal static string LiveFolderOrNull(string stored)
+        {
+            if (string.IsNullOrWhiteSpace(stored)) return null;
+            return Services.Standards.PathProbe.DirectoryExists(stored) == false ? null : stored;
+        }
+
+        /// <summary>The stored entry without the existence check (the Settings dialog shows a stale one).</summary>
+        public static string GetProjectContextFolderSetting(string projectKey)
+        {
+            if (string.IsNullOrWhiteSpace(projectKey)) return null;
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue(ProjectFoldersKey, out val) && val is Dictionary<string, object> map)
+            {
+                foreach (var kv in map)
+                    if (string.Equals(kv.Key, projectKey, StringComparison.OrdinalIgnoreCase) &&
+                        kv.Value is string path && !string.IsNullOrWhiteSpace(path))
+                        return path.Trim();
+            }
+            return null;
+        }
+
+        /// <summary>Sets (or, with an empty path, clears) the folder for one project only.</summary>
+        public static void SetProjectContextFolder(string projectKey, string path)
+        {
+            if (string.IsNullOrWhiteSpace(projectKey)) return;
+            var settings = Load();
+            var map = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            object val;
+            if (settings.TryGetValue(ProjectFoldersKey, out val) && val is Dictionary<string, object> existing)
+                foreach (var kv in existing) map[kv.Key] = kv.Value;
+
+            if (string.IsNullOrWhiteSpace(path)) map.Remove(projectKey);
+            else map[projectKey] = path.Trim();
+
+            if (map.Count == 0) settings.Remove(ProjectFoldersKey);
+            else settings[ProjectFoldersKey] = map;
+            Save(settings);
+        }
+
+        public static void ClearProjectContextFolder(string projectKey) => SetProjectContextFolder(projectKey, null);
+
         private static string GetString(string key, string fallback)
         {
             var settings = Load();

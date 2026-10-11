@@ -48,6 +48,8 @@ namespace VibeModel.Tests
         [InlineData("text")]
         [InlineData("sheetinfo")]
         [InlineData("crop")]
+        [InlineData("docs")]
+        [InlineData("readdoc")]
         public void Discovery_RegistersExpectedCommandNames(string name)
         {
             Assert.True(Registry.GetCommands().ContainsKey(name),
@@ -84,6 +86,8 @@ namespace VibeModel.Tests
         [InlineData("list")]
         [InlineData("levels")]
         [InlineData("sheetinfo")]
+        [InlineData("docs")]
+        [InlineData("readdoc")]
         public void IsModification_FalseForReadOnlyCommands(string name)
         {
             Assert.False(Registry.IsModification(name), name + " should be read-only.");
