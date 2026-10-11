@@ -167,7 +167,15 @@ namespace VibeModel.Services.Claude.Commands
             {
                 var p = view.get_Parameter(BuiltInParameter.VIEW_SCALE_PULLDOWN_METRIC) ?? view.get_Parameter(BuiltInParameter.VIEW_SCALE);
                 if (p != null && p.IsReadOnly && view.ViewTemplateId != ElementId.InvalidElementId)
-                    return "scale is set by view template '" + view.Document.GetElement(view.ViewTemplateId)?.Name + "', kept 1:" + view.Scale;
+                {
+                    // Name templates of the same view type that leave the scale free, so the fix is one step.
+                    var scaleId = new ElementId(BuiltInParameter.VIEW_SCALE_PULLDOWN_METRIC);
+                    var free = new FilteredElementCollector(view.Document).OfClass(typeof(View)).Cast<View>()
+                        .Where(t => t.IsTemplate && t.ViewType == view.ViewType && t.GetNonControlledTemplateParameterIds().Contains(scaleId))
+                        .Select(t => t.Name).OrderBy(n => n).Take(3).ToList();
+                    return "scale is set by view template '" + view.Document.GetElement(view.ViewTemplateId)?.Name + "', kept 1:" + view.Scale +
+                           (free.Count > 0 ? "; templates that leave the scale free: " + string.Join(", ", free) : "; create the view with --no-template to choose the scale");
+                }
                 view.Scale = scale;
                 return null;
             }
@@ -190,16 +198,23 @@ namespace VibeModel.Services.Claude.Commands
                 .WherePasses(new BoundingBoxIntersectsFilter(outline))
                 .Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model &&
                             !(e is ImportInstance) && !(e is PointCloudInstance) && !(e is RevitLinkInstance) &&
-                            e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Topography)
+                            e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Topography &&
+                            e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras)   // 3D views are "model" elements too
                 .Take(2000);
+            var spans = new List<MmRect>();   // (z-low, 0) - (z-high, 1): FitKeep trims on the z centres
             foreach (var e in elems)
             {
                 var bb = e.get_BoundingBox(null);
                 if (bb == null) continue;
                 double lo = RevitUnitHelper.FeetToMm(bb.Min.Z), hi = RevitUnitHelper.FeetToMm(bb.Max.Z);
                 if (hi - lo > 200000) continue;   // skip absurd extents (site-wide objects)
-                bottom = bottom.HasValue ? Math.Min(bottom.Value, lo) : lo;
-                top = top.HasValue ? Math.Max(top.Value, hi) : hi;
+                spans.Add(new MmRect(lo, 0, hi, 1));
+            }
+            // A stray tall or deep object (a tree family, a far pile) must not stretch the section.
+            foreach (var i in SheetLayout.FitKeep(spans))
+            {
+                bottom = bottom.HasValue ? Math.Min(bottom.Value, spans[i].X0) : spans[i].X0;
+                top = top.HasValue ? Math.Max(top.Value, spans[i].X1) : spans[i].X1;
             }
         }
     }

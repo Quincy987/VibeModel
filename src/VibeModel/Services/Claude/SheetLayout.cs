@@ -143,6 +143,24 @@ namespace VibeModel.Services.Claude
             return lines;
         }
 
+        /// <summary>
+        /// The region a `crop --fit` should show: the union of the boxes whose centres lie in the
+        /// dense middle of the model (2nd–98th percentile of centres, ±10% of that span). One far-off
+        /// object (a stray family 150 m away) then cannot blow a quay-wall plan up to 400 m.
+        /// Fewer than 10 boxes: no trimming. Returns the indices kept.
+        /// </summary>
+        public static List<int> FitKeep(IList<MmRect> boxes)
+        {
+            var all = Enumerable.Range(0, boxes.Count).ToList();
+            if (boxes.Count < 10) return all;
+            var xs = boxes.Select(b => b.Cx).OrderBy(v => v).ToList();
+            var ys = boxes.Select(b => b.Cy).OrderBy(v => v).ToList();
+            Func<List<double>, double, double> pct = (l, p) => l[(int)Math.Round(p * (l.Count - 1))];
+            double x0 = pct(xs, 0.02), x1 = pct(xs, 0.98), y0 = pct(ys, 0.02), y1 = pct(ys, 0.98);
+            double px = Math.Max(1000, (x1 - x0) * 0.1), py = Math.Max(1000, (y1 - y0) * 0.1);
+            return all.Where(i => boxes[i].Cx >= x0 - px && boxes[i].Cx <= x1 + px && boxes[i].Cy >= y0 - py && boxes[i].Cy <= y1 + py).ToList();
+        }
+
         /// <summary>Common paper names for a width × height in mm (either orientation), or null.</summary>
         public static string PaperName(double w, double h)
         {

@@ -56,7 +56,7 @@ namespace VibeModel.Services.Claude.Commands
 
             // ---- the world-space region to show ----
             XYZ min, max;
-            int used = 0;
+            int used = 0, outliers = 0;
             string source;
             double margin = RevitUnitHelper.MmToFeet(a.Margin);
             if (a.Fit)
@@ -69,12 +69,23 @@ namespace VibeModel.Services.Claude.Commands
                                     e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Topography &&
                                     e.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Cameras);
                 min = max = null;
+                var boxes = new List<BoundingBoxXYZ>();
                 foreach (var e in elems)
                 {
                     var bb = e.get_BoundingBox(null);
                     if (bb == null) continue;
                     var ext = bb.Max - bb.Min;
                     if (RevitUnitHelper.FeetToMm(Math.Max(ext.X, ext.Y)) > MaxElementExtentMm) continue;
+                    boxes.Add(bb);
+                }
+                // Explicit --elements are taken as given; a whole view drops far-off stragglers.
+                var keep = a.Elements.Count > 0 ? Enumerable.Range(0, boxes.Count).ToList()
+                    : SheetLayout.FitKeep(boxes.Select(b => new MmRect(RevitUnitHelper.FeetToMm(b.Min.X), RevitUnitHelper.FeetToMm(b.Min.Y),
+                                                                       RevitUnitHelper.FeetToMm(b.Max.X), RevitUnitHelper.FeetToMm(b.Max.Y))).ToList());
+                outliers = boxes.Count - keep.Count;
+                foreach (var i in keep)
+                {
+                    var bb = boxes[i];
                     min = min == null ? bb.Min : new XYZ(Math.Min(min.X, bb.Min.X), Math.Min(min.Y, bb.Min.Y), Math.Min(min.Z, bb.Min.Z));
                     max = max == null ? bb.Max : new XYZ(Math.Max(max.X, bb.Max.X), Math.Max(max.Y, bb.Max.Y), Math.Max(max.Z, bb.Max.Z));
                     used++;
@@ -85,7 +96,8 @@ namespace VibeModel.Services.Claude.Commands
                         "Give the elements with --elements, or a rectangle with --box.");
                 min = min - new XYZ(margin, margin, margin);
                 max = max + new XYZ(margin, margin, margin);
-                source = used + " model element(s)" + (a.Elements.Count > 0 ? " (--elements)" : " visible in the view") + " + " + Mm.F(a.Margin) + " mm margin";
+                source = used + " model element(s)" + (a.Elements.Count > 0 ? " (--elements)" : " visible in the view") + " + " + Mm.F(a.Margin) + " mm margin" +
+                         (outliers > 0 ? "; " + outliers + " far-off element(s) ignored — use --elements or --box to include them" : "");
             }
             else
             {
@@ -105,7 +117,7 @@ namespace VibeModel.Services.Claude.Commands
             }
 
             // ---- apply ----
-            double wMm = 0, hMm = 0;
+            double wMm = 0, hMm = 0, viewW = 0, viewH = 0;
             var error = TransactionHelper.Execute(doc, "VibeModel: Crop View", () =>
             {
                 if (v3 != null)
@@ -113,6 +125,21 @@ namespace VibeModel.Services.Claude.Commands
                     v3.SetSectionBox(new BoundingBoxXYZ { Min = min, Max = max });
                     v3.IsSectionBoxActive = true;
                     wMm = RevitUnitHelper.FeetToMm(max.X - min.X); hMm = RevitUnitHelper.FeetToMm(max.Y - min.Y);
+                    // A section box alone does not shrink the view's extent on a sheet: also crop the
+                    // view to the box as seen from the view's orientation.
+                    var vcb = v3.CropBox;
+                    var vinv = vcb.Transform.Inverse;
+                    double vx0 = double.MaxValue, vy0 = double.MaxValue, vx1 = double.MinValue, vy1 = double.MinValue;
+                    foreach (var c in Corners(min, max))
+                    {
+                        var l = vinv.OfPoint(c);
+                        vx0 = Math.Min(vx0, l.X); vy0 = Math.Min(vy0, l.Y); vx1 = Math.Max(vx1, l.X); vy1 = Math.Max(vy1, l.Y);
+                    }
+                    vcb.Min = new XYZ(vx0, vy0, vcb.Min.Z);
+                    vcb.Max = new XYZ(vx1, vy1, vcb.Max.Z);
+                    v3.CropBox = vcb;
+                    v3.CropBoxActive = true;
+                    viewW = RevitUnitHelper.FeetToMm(vx1 - vx0); viewH = RevitUnitHelper.FeetToMm(vy1 - vy0);
                     return;
                 }
                 var cb = view.CropBox;
@@ -147,13 +174,14 @@ namespace VibeModel.Services.Claude.Commands
             if (v3 == null)
                 sb.AppendLine("On paper at 1:" + scale + ": " + Mm.F(wMm / scale) + " × " + Mm.F(hMm / scale) + " mm");
             else
-                sb.AppendLine("On paper the size depends on the 3D orientation; place it and check with 'sheetinfo'.");
+                sb.AppendLine("View cropped to the box as seen in this view: " + Mm.F(viewW) + " × " + Mm.F(viewH) + " mm → on paper at 1:" + scale + ": " +
+                              Mm.F(viewW / scale) + " × " + Mm.F(viewH / scale) + " mm");
 
             var data = new Dictionary<string, object>
             {
                 { "view", view.Id.IntegerValue }, { "cropped", true }, { "modelMm", new List<object> { Math.Round(wMm), Math.Round(hMm) } },
-                { "paperMm", v3 == null ? (object)new List<object> { Math.Round(wMm / scale), Math.Round(hMm / scale) } : null },
-                { "elementsUsed", used }
+                { "paperMm", v3 == null ? new List<object> { Math.Round(wMm / scale), Math.Round(hMm / scale) } : new List<object> { Math.Round(viewW / scale), Math.Round(viewH / scale) } },
+                { "elementsUsed", used }, { "outliersIgnored", outliers }
             };
             return CommandResult.Ok(sb.ToString(), data);
         }

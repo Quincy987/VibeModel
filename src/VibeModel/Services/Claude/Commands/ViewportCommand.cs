@@ -118,11 +118,15 @@ namespace VibeModel.Services.Claude.Commands
                         vp.SetBoxCenter(SheetHelper.ToSheet(origin, cx, cy));
                         doc.Regenerate();
                         var box = SheetHelper.ToPaper(origin, vp.GetBoxOutline());
-                        bool fits = v.Scale <= 0 || SheetLayout.Fits(box.W, box.H, cell);   // perspective: no scale to suggest
+                        // --at: the view only has to stay on the paper; in a grid/area it has to fit its cell.
+                        bool fits = a.At != null ? box.Inside(paper) : (v.Scale <= 0 || SheetLayout.Fits(box.W, box.H, cell));
                         string tag = fits ? "OK  " : "WARN";
                         lines.Add(tag + " '" + v.Name + "' " + (v.Scale > 0 ? "1:" + v.Scale : "perspective") + " → " + box + "  (viewport " + vp.Id.IntegerValue + ")" +
                                   (scaleNote != null ? "  [" + scaleNote + "]" : ""));
-                        if (!fits)
+                        if (!fits && a.At != null)
+                            lines.Add("     WARN: '" + v.Name + "' runs " + Mm.F(box.Overhang(paper)) + " mm off the paper at --at " + Mm.F(cx) + " " + Mm.F(cy) +
+                                      " — move it ('viewport --move'), crop the view, or use a larger --scale n");
+                        else if (!fits)
                         {
                             int sug = SheetLayout.SuggestScale(box.W * v.Scale, box.H * v.Scale, cell);
                             lines.Add("     " + SheetLayout.FitWarning("'" + v.Name + "'", v.Scale, box.W, box.H, cell, sug) +

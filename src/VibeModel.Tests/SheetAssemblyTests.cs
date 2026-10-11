@@ -469,3 +469,29 @@ namespace VibeModel.Tests
         public void Errors(string args, string fragment) => Assert.Contains(fragment, CropArgs.Parse(args).Error);
     }
 }
+
+namespace VibeModel.Tests
+{
+    public class CropFitTests
+    {
+        [Fact]
+        public void FitKeep_DropsFarOffStragglers()
+        {
+            var boxes = new List<MmRect>();
+            for (int i = 0; i < 100; i++) boxes.Add(new MmRect(i * 2000, 0, i * 2000 + 500, 600));   // a 200 m quay
+            boxes.Add(new MmRect(-185000, -62000, -184000, -61000));                                  // stray family
+            boxes.Add(new MmRect(203000, 150000, 204000, 151000));                                    // another
+            var keep = SheetLayout.FitKeep(boxes);
+            Assert.Equal(100, keep.Count);
+            Assert.DoesNotContain(100, keep);
+            Assert.DoesNotContain(101, keep);
+        }
+
+        [Fact]
+        public void FitKeep_FewBoxesAreNeverTrimmed()
+        {
+            var boxes = new List<MmRect> { new MmRect(0, 0, 1, 1), new MmRect(1e6, 1e6, 1e6 + 1, 1e6 + 1) };
+            Assert.Equal(2, SheetLayout.FitKeep(boxes).Count);
+        }
+    }
+}
