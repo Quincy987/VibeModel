@@ -40,6 +40,8 @@ namespace VibeModel.Tests
         [InlineData("help")]
         [InlineData("color")]
         [InlineData("delete")]
+        [InlineData("join")]
+        [InlineData("unjoin")]
         public void Discovery_RegistersExpectedCommandNames(string name)
         {
             Assert.True(Registry.GetCommands().ContainsKey(name),
@@ -58,6 +60,8 @@ namespace VibeModel.Tests
         [InlineData("color")]
         [InlineData("delete")]
         [InlineData("set")]
+        [InlineData("join")]
+        [InlineData("unjoin")]
         public void IsModification_TrueForDocumentMutatingCommands(string name)
         {
             Assert.True(Registry.IsModification(name), name + " should be a modification command.");

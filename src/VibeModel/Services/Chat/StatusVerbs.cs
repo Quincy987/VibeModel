@@ -46,6 +46,8 @@ namespace VibeModel.Services.Chat
                 { "select", "Selecting elements…" },
                 { "isolate", "Isolating elements…" },
                 { "unisolate", "Restoring view…" },
+                { "join", "Joining geometry…" },
+                { "unjoin", "Removing join…" },
                 { "hide", "Hiding elements…" },
                 { "show", "Showing elements…" },
                 { "zoomto", "Zooming to elements…" },

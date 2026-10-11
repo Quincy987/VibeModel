@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+### Added — `whyhidden` and `join`/`unjoin`
+- **`whyhidden` — visibility diagnosis** (`whyhidden <elementId> [viewId]`, view defaults to the
+  active one). Answers the werkgroep's recurring "where did it go?" questions from the real view
+  state instead of generic advice that throws away work. It walks every Revit visibility gate in
+  order and prints one `OK` / `BLOCKED:` / `INFO` / `SKIPPED:` line per check, each blocking line
+  carrying a `Fix:` naming the exact setting: category + subcategory visibility and the VG master
+  switches, view-specific ownership, per-element Hide in View and Temporary Hide/Isolate, matching
+  view filters (visibility checkbox *and* invisible-making overrides), detail level — reporting
+  which detail levels the family actually draws at, so "the anchor lines vanish at Coarse" resolves
+  to a family visibility setting — view range / far clip against the element's bounding box,
+  associated level, view discipline (including Structural views hiding non-structural walls) and
+  datum 2D extents for grids/levels, workset visibility, phase filter, design option, crop region
+  and 3D section box, and graphic overrides that render something invisible (100% transparency,
+  invisible line pattern). Results are cross-checked against Revit's own view element set, so the
+  report never claims "all clear" for an element Revit genuinely excludes. A separate `EDITABILITY`
+  section covers visible-but-unmodifiable causes (group membership, pinned, linked model, workset
+  owned by another user, checkout status). Output ends with a one-line `Verdict:`. Every probe is
+  individually guarded, so a view type that refuses a query reports `SKIPPED:` rather than failing
+  the command. Report formatting and argument parsing are Revit-free and covered by 21 new headless
+  tests.
+
+- **`join` / `unjoin` commands — geometry joins and solid cuts with real diagnostics.**
+  `join <idA> <idB>` joins two elements (`JoinGeometryUtils.JoinGeometry`), `--switch` flips which
+  element wins an existing join, `--cut` makes A punch a void through B
+  (`SolidSolidCutUtils.AddCutBetweenSolids`), and `unjoin <idA> <idB>` removes whichever relation
+  exists — join, cut, or both. Every response names both categories, states whether the bounding
+  boxes actually intersect (with the overlap size, or the gap and axes when they don't), and says
+  which API was called.
+
+  The point is the failure path: Revit refuses these operations with a bare exception or a silent
+  no-op. `join` pre-checks `IsAllowedForSolidCut` / `CutExistsBetweenElements` /
+  `CanElementCutElement`, translates the `CutFailureReason` into plain language, and prints the
+  workaround that actually applies — extend the solids so they really overlap (the sloped wing
+  wall against a capstone case), use a void family or Parts when a solid-solid cut is refused
+  between system families (the screw pile through a quay wall, the H-beam inside a concrete pile),
+  or `--switch` when the wrong element wins. A join that Revit accepts but does not apply is
+  reported as a failure rather than a false success. Each operation runs in its own transaction
+  and rolls back on failure. Arg parsing, report rendering and the failure explanations are
+  Revit-free and covered by 26 headless tests; live behaviour needs Revit.
+
 ### Added — Plan 11: Office Standards
 - **Standards packs.** An office's Revit standard as data: `pack.json` + an always-on `core.md`
   + on-demand topic sheets + `checks.json`. Packs are found via the new `StandardsPackPath`
@@ -68,7 +108,6 @@
   send — while the same server answered an IPv4 request in ~4 ms. Every in-process caller now
   builds its URL from one helper (`RevitHttpServer.BaseUrl(port)`, over the documented
   `LoopbackHost` constant) so the host can't drift back at a single call site.
-
 ## v1.2.3 — Plan 09: Seed Pack Design (2026-07-21)
 
 ### Docs

@@ -41,3 +41,7 @@ docs/reference/ib-revit-leidraad-map.md
 ## Local (office-specific) variants of design docs — never committed
 docs/plans/*.local.md
 docs/verify/*.local.md
+
+## Local demo/verification output (model copies, screenshots, IB-internal material)
+demo_out/
+.verify/

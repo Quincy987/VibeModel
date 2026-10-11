@@ -118,7 +118,24 @@ curl -s http://localhost:18884/bbox                          # Bounding box of s
 curl -s http://localhost:18884/geometry                      # Geometry of selected
 curl -s http://localhost:18884/familytypes                   # List available family types
 curl -s "http://localhost:18884/familytypes?args=door"       # Filter by category/name
+curl -s "http://localhost:18884/whyhidden?args=348122"       # Why is this element not visible in the active view?
+curl -s "http://localhost:18884/whyhidden?args=348122 51203" # ...against a specific view
 ```
+
+**`whyhidden` — visibility diagnosis.** Instead of guessing why an element does not draw
+("just make a new view"), this reads the actual view state and names the setting responsible.
+Every gate is probed in order and reported on its own line, prefixed `OK` / `BLOCKED:` /
+`INFO` / `SKIPPED:`, with a `Fix:` line naming the exact Revit setting where one applies:
+category + subcategory visibility and the VG master switches (1), per-element Hide in View and
+Temporary Hide/Isolate (2), matching view filters and their visibility/overrides (3), detail
+level — including which detail levels the family *does* draw at (4), view range / far clip vs
+the element's bounding box (5), associated level, view discipline and datum (grid/level) 2D
+extents (6), workset visibility, phase filter and design option (7), crop region and 3D section
+box (8), and graphic overrides that render it invisible — 100% transparency, invisible line
+pattern (9). It also cross-checks against Revit's own view element set ("Ground truth"), so it
+never reports "all clear" for an element Revit genuinely excludes, and adds an `EDITABILITY`
+section for visible-but-unmodifiable causes (group membership, pinned, linked model, workset
+owned by another user). The report ends with a one-line `Verdict:` naming the probable cause.
 
 ### Source Data Commands (imported DWG + point clouds)
 Read actual vector/point data from imported sources instead of guessing from screenshots.
@@ -166,9 +183,22 @@ curl -s "http://localhost:18884/color?args=12345 reset"
 curl -s "http://localhost:18884/place?args=Door Single-Flush 5000 2500"
 curl -s "http://localhost:18884/placeid?args=67890 5000 2500"
 
+# Join / cut geometry between two elements (with diagnostics on refusal)
+curl -s "http://localhost:18884/join?args=12345 67890"            # JoinGeometryUtils.JoinGeometry
+curl -s "http://localhost:18884/join?args=12345 67890 --switch"   # Flip which element wins the join
+curl -s "http://localhost:18884/join?args=12345 67890 --cut"      # Solid-solid cut: A cuts B
+curl -s "http://localhost:18884/unjoin?args=12345 67890"          # Remove join and/or cut
+
 # Execute arbitrary C# code
 curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
 ```
+
+`join` always reports both categories, whether the bounding boxes actually intersect, which API
+it called, and — on refusal — Revit's own reason in plain language plus the workaround that does
+work (extend the solids so they really overlap; use a void family or Parts when a solid-solid cut
+is refused; `--switch` when the wrong element wins). Use `--cut` for penetrations (a pile through
+a quay wall, an H-beam inside a concrete pile); plain `join` for shared faces (a wing wall against
+a capstone). `unjoin` removes whichever relation exists — join, cut, or both.
 
 ### Batch Commands (POST)
 A batch runs as **one undo unit** — the whole batch collapses to a single Ctrl+Z in Revit.
