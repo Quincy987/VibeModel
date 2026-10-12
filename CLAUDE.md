@@ -222,7 +222,7 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
-### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo)
+### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
 and read the result back without looking at the Revit UI.
 ```bash
@@ -244,6 +244,18 @@ curl -s "http://localhost:18884/dimension?args=--levels"                        
 curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
 curl -s "http://localhost:18884/list?args=dimensions --view"                                         # Values in mm; also 'list text', 'list sheets' (view counts)
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
+curl -s "http://localhost:18884/schedule?args=Palenstaat --rows"                                     # Read any schedule back (+ the sheets it is on)
+curl -s "http://localhost:18884/callout?args=Bovenaanzicht --box 100000 -5000 110000 5000 --name Detail A --scale 20"  # Plan callout ( --section: detail view)
+curl -s "http://localhost:18884/callout?args=101 --box 0 0 4000 3000 --reference Detail A"            # Reference callout to an existing view
+curl -s "http://localhost:18884/region?args=Bovenaanzicht --points 0,0 4000,0 4000,3000 0,3000 --type Beton"  # Filled region (view frame)
+curl -G -s "http://localhost:18884/region" --data-urlencode "args=Doorsnede 1-1 --detail \"Grondslag : 600\" --at -1200 850 --rotate 90"  # Detail component
+curl -s "http://localhost:18884/list?args=regions --view"                                            # Filled regions + detail items (type, m², view)
+curl -s "http://localhost:18884/viewport?args=--move 4711 --to 0002 --at 400 300"                    # View to another sheet (keeps scale/title)
+curl -s "http://localhost:18884/export?args=pdf 0001,0002"                                           # → <project folder>\export\0001 - <name>.pdf
+curl -s "http://localhost:18884/export?args=dwg --all-sheets --to C:\out"                            # Office DWG setup when the pack names one
+curl -s "http://localhost:18884/export?args=ifc"                                                     # Whole model, default IFC setup (or one view id)
 ```
 - **Coordinates.** Paper mm are measured from the sheet's lower-left (A0 = 1189×841). `text`, `tag --at`,
   `dimension --levels <x>` and `crop --box` use the view's own frame: plan → project x,y mm;
@@ -269,6 +281,21 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
   Revit's refusal message is returned verbatim with the usual cause.
+- **`schedule`** matches fields by the names Revit lists (exact, else a unique substring; unknown →
+  the schedulable fields of that category). `--filter` numbers are in the project's display unit;
+  a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per
+  value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
+  sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
+- **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
+  callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
+- **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
+  paper mm). Line-based detail items are refused (place them with `exec`).
+- **`viewport --move <id> --to <sheet>`** keeps the paper position when it lies in the target's free
+  area, else centres the view there; `--at x y` overrides. The old viewport id is gone afterwards.
+- **`export`** never runs inside a transaction (an atomic batch is refused); names collide →
+  " (2)". PDF uses the sheet's own paper size, crop/scope boxes/reference planes hidden. DWG
+  without a setup merges views into the sheet (no xref files). IFC runs in a rolled-back
+  transaction, so it never changes the model. Default folder: `<project folder>\export\`.
 - **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
   `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
 

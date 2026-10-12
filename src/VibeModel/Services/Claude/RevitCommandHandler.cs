@@ -20,6 +20,12 @@ namespace VibeModel.Services.Claude
         private const int MaxQueueSize = 50;
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
+        // Writing files takes longer than a model edit: `export --all-sheets` gets the batch ceiling.
+        private static readonly TimeSpan ExportTimeout = TimeSpan.FromSeconds(300);
+
+        internal static TimeSpan TimeoutFor(string command)
+            => string.Equals(command, "export", StringComparison.OrdinalIgnoreCase) ? ExportTimeout : CommandTimeout;
+
         /// <summary>
         /// True while the Execute method is processing commands on the main thread.
         /// Used by DialogBoxShowing handler to only dismiss dialogs during command execution.
@@ -72,11 +78,12 @@ namespace VibeModel.Services.Claude
 
             try
             {
-                if (!request.ResponseReady.Wait(CommandTimeout))
+                var timeout = TimeoutFor(command);
+                if (!request.ResponseReady.Wait(timeout))
                 {
                     request.Cancel();
                     Logger.Warn("Command timed out: " + command);
-                    return "ERROR: Revit did not respond within 30 seconds. Is Revit in a modal dialog?";
+                    return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds + " seconds. Is Revit in a modal dialog?";
                 }
 
                 return request.Result;

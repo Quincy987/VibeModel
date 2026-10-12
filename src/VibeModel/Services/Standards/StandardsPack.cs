@@ -47,6 +47,7 @@ namespace VibeModel.Services.Standards
         public SheetDefaults Sheets { get; private set; } = new SheetDefaults();
         public double CoordinateRoundingMm { get; private set; } = 1000;
         public LinkCadDefaults LinkCad { get; private set; } = new LinkCadDefaults();
+        public ExportDefaults Export { get; private set; } = new ExportDefaults();
         public string StandardsFolder { get; private set; }
         /// <summary>What `standards distill` reads, in priority order (the text budget is spent first-come).</summary>
         public List<DistillSource> DistillSources { get; private set; } = new List<DistillSource>();
@@ -165,6 +166,7 @@ namespace VibeModel.Services.Standards
             if (round.HasValue && round.Value > 0) pack.CoordinateRoundingMm = round.Value;
 
             pack.LinkCad = LinkCadDefaults.FromJson(PackJson.GetDict(root, "linkCad"));
+            pack.Export = ExportDefaults.FromJson(PackJson.GetDict(root, "export"));
             pack.StandardsFolder = PackJson.GetString(root, "standardsFolder");
             var distill = PackJson.GetDict(root, "distill");
             foreach (var s in PackJson.GetDictList(distill, "sources"))
@@ -431,6 +433,21 @@ namespace VibeModel.Services.Standards
             s.DefaultTitleblock = PackJson.GetString(d, "defaultTitleblock");
             s.StampParameters = PackJson.GetStrings(d, "stampParameters");
             return s;
+        }
+    }
+
+    /// <summary>How `export` writes files in this office: the named DWG export setup (as saved in the template).</summary>
+    public sealed class ExportDefaults
+    {
+        public string DwgSetup { get; set; }
+
+        internal static ExportDefaults FromJson(Dictionary<string, object> d)
+        {
+            var e = new ExportDefaults();
+            if (d == null) return e;
+            var s = PackJson.GetString(d, "dwgSetup");
+            e.DwgSetup = string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+            return e;
         }
     }
 

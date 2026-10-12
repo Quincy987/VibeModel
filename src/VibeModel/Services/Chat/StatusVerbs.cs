@@ -73,6 +73,10 @@ namespace VibeModel.Services.Chat
                 { "text", "Adding text…" },
                 { "sheetinfo", "Checking the sheet…" },
                 { "crop", "Cropping view…" },
+                { "schedule", "Building schedule…" },
+                { "callout", "Creating callout…" },
+                { "region", "Drawing filled region…" },
+                { "export", "Exporting…" },
 
                 // Diagnosis, source data, office standards (plans 07/08/11)
                 { "health", "Checking the connection…" },
@@ -160,6 +164,10 @@ namespace VibeModel.Services.Chat
                 { "text", "Tekst plaatsen…" },
                 { "sheetinfo", "Sheet controleren…" },
                 { "crop", "View bijsnijden…" },
+                { "schedule", "Staat maken…" },
+                { "callout", "Detail-uitsnede maken…" },
+                { "region", "Vlak tekenen…" },
+                { "export", "Exporteren…" },
 
                 // Diagnose, brondata, kantoorstandaard
                 { "health", "Verbinding controleren…" },

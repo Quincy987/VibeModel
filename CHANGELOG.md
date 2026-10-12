@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Added — sheets 2: schedules, callouts, filled regions, views to another sheet, export
+The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as commands:
+- **`schedule <category> --fields "Family and Type,Count,Length"`** creates a real Revit schedule
+  (hoeveelhedenstaat). Fields are matched by the names Revit lists (built-in, project and shared
+  parameters; an unknown name lists every schedulable field of that category). `--filter
+  "<field> <op> <value>"` (`= != > >= < <= contains !contains beginswith endswith`, or the
+  URL-friendly `eq ne gt ge lt le`; numbers are in the project's display unit), `--group <field>`
+  gives one row per value with the quantities summed, `--total` a grand total, `--name`. The
+  response prints the first 20 rows as a text table with the units in the headers;
+  `schedule <name|id> --rows [n]` reads any schedule back (and says which sheets it is on).
+- **`callout <parent view> --box x1 y1 x2 y2`** — a plan callout (or `--section`: a detail view)
+  over a rectangle in the parent's frame, the convention of `crop --box`. The pack's `callout`
+  view defaults apply (else those of `plan`/`section`); `--name`, `--scale`, `--template`/
+  `--no-template`. The response gives the scale and the paper size at that scale.
+  `--reference <view>` makes a reference callout to an existing view instead.
+- **`region <view> --points x,y x,y x,y …`** — a filled region from a closed polygon in the view's
+  own frame (`--type` picks the filled region type; crossing or zero-area outlines are refused
+  before Revit sees them); **`region <view> --detail "Family : Type" --at x y [--rotate deg]`** places
+  a detail component. **`list regions [--view]`** reads both back (type, area, view).
+- **`viewport --move <id> --to <sheet> [--at x y]`** moves a placed view (or schedule) to another
+  sheet in one transaction, keeping scale, viewport type (title on/off), rotation and detail
+  number. On a sheet of a different size a view that cannot fit is refused with the scale that
+  would fit; nothing is moved. The viewport gets a new id, which the response gives.
+- **`export pdf|dwg|ifc <sheets|views> | --all-sheets`** in one go: PDF through Revit's own PDF
+  exporter (one file per sheet, sheet size; `--combine` for one file), DWG with the office pack's
+  saved setup (`export.dwgSetup` in pack.json; `--setup` overrides; otherwise views merged into the
+  sheet, no xrefs), IFC with the default setup (the whole model, or one view's elements). Files
+  go to `<project folder>\export\` (`--to` changes it), named `{number} - {name}` (`--name` with
+  `{number} {name} {project} {date} {format}`). The response lists every file written with its
+  size; a target file that is locked (an open PDF) is named and skipped. `export` gets a 300 s
+  request timeout instead of 30 s.
+
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its
