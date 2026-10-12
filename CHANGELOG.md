@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Added — modelling flags instead of self-written code (workshop 2026-10-12)
+The capability overview marked these as "works only via code the chat writes itself"; they are
+now first-class flags. Every existing positional form parses as before.
+- **`wall … --type <name|id>`, `floor … --type <name|id>`**: exact name, else a unique
+  case-insensitive substring, else the id; an ambiguous name lists the matches (with the wall
+  kind, so two types both called `Beton_300` — basic and stacked — can be told apart), an unknown
+  one lists every type. The response names the type used. Also `--level <name>` on both, and on
+  `wall` `--base-offset <mm>`, `--top-level <name>` and `--top-offset <mm>`.
+- **`place` / `placeid`**: `--rotate <deg>` (about the insertion point, counter-clockwise from
+  +X), `--set "Param=value"` (repeatable, instance parameters, mm/° for plain numbers; a missing
+  name is refused with the available names and nothing is placed; a type parameter is pointed at
+  `set <typeId>`), `--level <name>`. **`z` now works for level-hosted families**: it was ignored;
+  the instance is moved through the offset parameter that actually moves it (the one visible in
+  Properties first, each candidate checked against the result) and the response names it.
+- **`--along <line id | x1 y1 x2 y2> --spacing <mm> [--count <n>] [--offset <mm>] [--rotate auto|auto+90]`**:
+  n instances along a detail line, model line, a wall/beam's location curve or two points, as
+  one transaction (one Ctrl+Z), with the ids and the actual spacing in the response. Spacing alone
+  fills the line end to end and is reduced to divide it evenly (never more than asked, 1 % slack);
+  count alone spreads evenly; both together are exact. Arcs are followed by parameter, and
+  `--rotate auto` turns each instance to the tangent there.
+- **`look [<3D view>] <n|no|o|zo|z|zw|w|nw|top|iso|x y z> [--at ids|x y z|selected] [--distance] [--pitch] [--margin] [--box]`**
+  and **`view 3d --look …`**: the camera stands at that compass direction from the target
+  ("camera from the water onto the corner" = `zw`), 30° down, shaded with edges; the crop region
+  is refitted to the target as seen from the new camera (a crop fits only one camera), `--box`
+  adds a section box. Default target: the model elements in the view.
+- **`set <id> "<param with spaces>" <value>`** works, as do `set <id> Base Offset=500` and the
+  unquoted `set <id> Base Offset 500` (the longest leading words that name a parameter win); the
+  3-token form is unchanged. Plain numbers on length parameters are mm and on angles degrees,
+  whatever the project's display units (it used to go through the display units first).
+
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its

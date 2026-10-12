@@ -260,7 +260,8 @@ namespace VibeModel.Services.Claude.Commands
             }
             if (!c.IsBound) { error = "--along: element " + a.AlongId + " is a closed or unbounded curve; draw a line or an arc."; return null; }
             var kind = c is Line ? "line" : c is Arc ? "arc" : c.GetType().Name.ToLowerInvariant();
-            note = (e.Category?.Name ?? e.GetType().Name) + " " + a.AlongId + " (" + kind + ", " + Mm.F(RevitUnitHelper.FeetToMm(c.Length)) + " mm, from " +
+            var what = e is DetailCurve ? "detail line" : e is ModelCurve ? "model line" : (e.Category?.Name ?? e.GetType().Name);
+            note = what + " " + a.AlongId + " (" + kind + ", " + Mm.F(RevitUnitHelper.FeetToMm(c.Length)) + " mm, from " +
                    Pt(c.GetEndPoint(0)) + " to " + Pt(c.GetEndPoint(1)) + ")";
             return c;
         }
@@ -290,6 +291,7 @@ namespace VibeModel.Services.Claude.Commands
             if (Math.Abs(actual - want) < ZTolFeet) return null;
 
             var tried = new HashSet<int>();
+            var visible = new HashSet<int>(inst.Parameters.Cast<Parameter>().Select(p => p.Id.IntegerValue));
             var candidates = new List<Parameter>();
             foreach (var bip in new[] { BuiltInParameter.FAMILY_BASE_LEVEL_OFFSET_PARAM, BuiltInParameter.INSTANCE_ELEVATION_PARAM,
                                         BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM, BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM })
@@ -303,7 +305,9 @@ namespace VibeModel.Services.Claude.Commands
                  p.Definition.Name.IndexOf("elevation", StringComparison.OrdinalIgnoreCase) >= 0) &&
                 p.Definition.Name.IndexOf("top", StringComparison.OrdinalIgnoreCase) < 0));
 
-            foreach (var p in candidates)
+            // The one the modeller sees in Properties first: some families also carry a hidden
+            // built-in elevation that moves the instance just as well but cannot be found by name.
+            foreach (var p in candidates.OrderBy(p => visible.Contains(p.Id.IntegerValue) ? 0 : 1))
             {
                 if (p.IsReadOnly || p.StorageType != StorageType.Double || !tried.Add(p.Id.IntegerValue)) continue;
                 double old = p.AsDouble();
@@ -347,8 +351,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Family: " + symbol.Family.Name);
             sb.AppendLine("Type: " + symbol.Name);
             sb.AppendLine("Location: (" + Mm.F1(a.X) + ", " + Mm.F1(a.Y) + ", " + Mm.F1(RevitUnitHelper.FeetToMm(at.Z)) + ") mm");
-            AppendCommon(sb, doc, uiDoc, a, level, useLevel, zNote, setNotes, structuralType, phase);
             if (Math.Abs(spot.RotationDeg) > 1e-9) sb.AppendLine("Rotation: " + Mm.F1(spot.RotationDeg) + "° (counter-clockwise from +X)");
+            AppendCommon(sb, doc, uiDoc, a, level, useLevel, zNote, setNotes, structuralType, phase);
             return sb.ToString();
         }
 

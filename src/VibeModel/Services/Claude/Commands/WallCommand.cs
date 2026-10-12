@@ -34,7 +34,7 @@ namespace VibeModel.Services.Claude.Commands
             WallType wallType;
             if (a.Type != null)
             {
-                var hit = NameMatch.Find(wallTypes.Select(t => new NameMatch.Item(t.Id.IntegerValue, t.Name)), a.Type, "wall type", out var typeErr);
+                var hit = NameMatch.Find(wallTypes.Select(t => new NameMatch.Item(t.Id.IntegerValue, t.Name, t.Kind.ToString())), a.Type, "wall type", out var typeErr);
                 if (hit == null) return "ERROR: " + typeErr;
                 wallType = wallTypes.First(t => t.Id.IntegerValue == hit.Id);
             }
@@ -102,7 +102,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Length: " + FormattingHelper.FormatLength(newWall.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH)?.AsDouble() ?? 0));
             if (topLevel != null)
             {
-                sb.AppendLine("Top: " + topLevel.Name + (a.TopOffset.HasValue ? " + " + a.TopOffset + " mm" : "") +
+                sb.AppendLine("Top: " + topLevel.Name + (a.TopOffset.HasValue ? (a.TopOffset < 0 ? " - " : " + ") + Math.Abs(a.TopOffset.Value) + " mm" : "") +
                               " (height " + FormattingHelper.FormatLength(newWall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM)?.AsDouble() ?? 0) + ")");
             }
             else sb.AppendLine("Height: " + heightMm + " mm");

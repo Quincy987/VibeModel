@@ -17,7 +17,8 @@ namespace VibeModel.Services.Claude
         {
             public int Id;
             public string Name;
-            public Item(int id, string name) { Id = id; Name = name ?? ""; }
+            public string Detail;     // e.g. "Stacked" — tells same-named items apart in a list
+            public Item(int id, string name, string detail = null) { Id = id; Name = name ?? ""; Detail = detail; }
         }
 
         public const int MaxListed = 25;
@@ -54,7 +55,7 @@ namespace VibeModel.Services.Claude
         private static string List(IEnumerable<Item> items)
         {
             var l = items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase).ToList();
-            var shown = l.Take(MaxListed).Select(i => "'" + i.Name + "' (" + i.Id + ")");
+            var shown = l.Take(MaxListed).Select(i => "'" + i.Name + "' (" + i.Id + (string.IsNullOrEmpty(i.Detail) ? "" : ", " + i.Detail) + ")");
             return string.Join(", ", shown) + (l.Count > MaxListed ? " … and " + (l.Count - MaxListed) + " more" : "");
         }
     }
