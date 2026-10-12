@@ -67,14 +67,7 @@ Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short 
 
 ## How it works
 
-```
- You, in the chat panel                 Revit
- ──────────────────────                 ─────────────────────────────────
- "cut a section through this wall"  →   Claude reads the model state
-                                         calls VibeModel's local HTTP API
-                                         section · crop · viewport · screenshot
-                                    ←   one answer, one undo step, one journal line
-```
+<img src="docs/images/how-it-works.png" width="960" alt="The chat panel on the left; on the right the flow: you type a request, Claude reads the model state and picks commands, VibeModel's HTTP API inside Revit runs each one on the main thread in a transaction, and the model returns one answer, one undo step and one journal line.">
 
 VibeModel runs a small HTTP server inside Revit on `127.0.0.1:18884`. The chat backend (Claude Code, the Anthropic API or a local model) calls it with plain commands; each command runs on Revit's main thread inside a transaction and returns text or JSON. The same API works from any terminal:
 
