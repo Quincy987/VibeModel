@@ -12,11 +12,14 @@ namespace VibeModel.Markdown.Renderers
     {
         protected override void Write(WpfRenderer renderer, ListBlock listBlock)
         {
+            // Nested lists sit directly under their item; top-level lists keep the paragraph gap.
+            var nested = listBlock.Parent is ListItemBlock;
             var list = new List
             {
                 Foreground = MarkdownStyles.FgPrimary,
-                Margin = new Thickness(0, 2, 0, 2),
-                Padding = new Thickness(16, 0, 0, 0)
+                Margin = new Thickness(nested ? 0 : 2, nested ? 0 : 0, 0, nested ? 2 : MarkdownStyles.ParagraphSpacing),
+                Padding = new Thickness(20, 0, 0, 0),
+                MarkerOffset = 6
             };
 
             if (listBlock.IsOrdered)
@@ -38,7 +41,7 @@ namespace VibeModel.Markdown.Renderers
             foreach (var item in listBlock)
             {
                 var listItemBlock = (ListItemBlock)item;
-                var listItem = new ListItem { Margin = new Thickness(0, 1, 0, 1) };
+                var listItem = new ListItem { Margin = new Thickness(0, 0, 0, 2) };
                 renderer.Push(listItem);
                 renderer.WriteChildren(listItemBlock);
                 renderer.Pop();

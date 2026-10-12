@@ -331,10 +331,16 @@ namespace VibeModel.Services.Chat
                     // Show tool activity BEFORE running it, so the user sees what's happening
                     // during the (blocking) call rather than after. UI-only — not added to history.
                     var toolLabel = "\n\n" + StatusVerbs.Describe(toolName) + "\n\n";
+                    // The pane draws a step row instead of the label (it hides this echo).
+                    // Some local servers send no tool-call id; the step list still needs one.
+                    var stepId = string.IsNullOrEmpty(toolId) ? Guid.NewGuid().ToString("N") : toolId;
+                    ReportActivity(ChatActivityEvent.Started(stepId,
+                        ToolCallDescriber.ForRevitTool(toolName, argsValue), toolLabel));
                     onToken(toolLabel);
                     fullResponse.Append(toolLabel);
 
                     var result = ExecuteTool(toolName, argsValue);
+                    ReportActivity(ChatActivityEvent.Finished(stepId, ToolCallDescriber.ErrorLine(result)));
 
                     // Add tool result to history (OpenAI format)
                     _conversationHistory.Add(new Dictionary<string, object>
