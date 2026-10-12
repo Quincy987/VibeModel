@@ -551,6 +551,7 @@ namespace VibeModel.UI
         {
             var chip = CreateChip(text, tooltip);
             chip.Click += (s, e) => UseExample(text);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(chip, "StarterChip");
             return chip;
         }
 
@@ -1672,6 +1673,7 @@ namespace VibeModel.UI
                 var chip = CreateChip((reply.Commits ? "✎ " : "") + reply.Label,
                     Strings.For(language, reply.Commits ? Strings.QuickReplyFillsTip : Strings.QuickReplySendsTip, reply.Prompt));
                 chip.Click += (s, e) => OnQuickReplyChosen(captured);
+                System.Windows.Automation.AutomationProperties.SetAutomationId(chip, reply.Commits ? "QuickReplyChipCommit" : "QuickReplyChip");
                 _suggestionPanel.Children.Add(chip);
             }
             ShowSuggestionBar();
