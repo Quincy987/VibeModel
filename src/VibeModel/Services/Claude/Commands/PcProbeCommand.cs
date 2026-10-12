@@ -41,7 +41,7 @@ namespace VibeModel.Services.Claude.Commands
             var bbox = cloud.get_BoundingBox(null);
             if (bbox != null && !InsideXy(parsed.XMm, parsed.YMm, bbox))
                 return CommandResult.Error("OUT_OF_BOUNDS",
-                    "(" + Fmt(parsed.XMm) + ", " + Fmt(parsed.YMm) + ") is outside the cloud's XY extent " +
+                    "(" + Fmt(parsed.XMm) + ", " + Fmt(parsed.YMm) + ") mm is outside the cloud's XY extent " +
                     BboxXyText(bbox) + ".",
                     "Pick coordinates inside the bounding box (see 'pointclouds').");
 
@@ -51,7 +51,7 @@ namespace VibeModel.Services.Claude.Commands
             if (zs.Count == 0)
                 return CommandResult.Error("NO_POINTS",
                     "No points found within " + Fmt(parsed.RadiusMm) + " mm of (" +
-                    Fmt(parsed.XMm) + ", " + Fmt(parsed.YMm) + ")." +
+                    Fmt(parsed.XMm) + ", " + Fmt(parsed.YMm) + ") mm." +
                     (diag != null ? " [" + diag + "]" : ""),
                     "Try a larger radius, or check the cloud bbox with 'pointclouds'.");
 
@@ -70,7 +70,7 @@ namespace VibeModel.Services.Claude.Commands
                   " pts in the lowest dense band; points above it are clutter/objects)"
                 : "GROUND: indeterminate (no dense low band — too few points here)");
             sb.AppendLine();
-            sb.AppendLine("Height histogram (50 mm bins, occupied only):");
+            sb.AppendLine("Height histogram (z from .. to mm : points; 50 mm bins, occupied only):");
 
             int shown = 0;
             foreach (var bin in est.Bins)

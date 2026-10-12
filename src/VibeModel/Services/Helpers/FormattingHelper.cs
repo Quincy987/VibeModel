@@ -65,10 +65,7 @@ namespace VibeModel.Services.Helpers
             switch (param.StorageType)
             {
                 case StorageType.Double:
-                    var doubleVal = param.AsDouble();
-                    if (IsDimensionRelated(param.Definition.Name))
-                        return FormatLength(doubleVal);
-                    return doubleVal.ToString("F4", CultureInfo.InvariantCulture);
+                    return FormatDoubleParameter(param);
 
                 case StorageType.Integer:
                     return param.AsInteger().ToString();
@@ -81,6 +78,95 @@ namespace VibeModel.Services.Helpers
 
                 default:
                     return "(unknown)";
+            }
+        }
+
+        /// <summary>
+        /// A double parameter with its unit: lengths in mm, areas in m², volumes in m³, angles in °
+        /// (converted from Revit's internal ft / ft² / ft³ / rad); pure numbers bare; any other
+        /// measurable spec as Revit's project-unit string, with the unit symbol added when the
+        /// project format hides it.
+        /// </summary>
+        private static string FormatDoubleParameter(Parameter param)
+        {
+            var value = param.AsDouble();
+            var kind = GetQuantityKind(param);
+            switch (kind)
+            {
+                case QuantityKind.Length:
+                case QuantityKind.Area:
+                case QuantityKind.Volume:
+                case QuantityKind.Angle:
+                case QuantityKind.Number:
+                    return RevitUnitHelper.Format(kind, value);
+                case QuantityKind.Other:
+                    string text = null;
+                    try { text = param.AsValueString(); } catch { }
+                    if (string.IsNullOrWhiteSpace(text))
+                        return value.ToString("F4", CultureInfo.InvariantCulture) + " (internal units)";
+                    if (RevitUnitHelper.IsBareNumber(text))
+                    {
+                        var symbol = ProjectUnitSymbol(param);
+                        if (symbol != null) text += " " + symbol;
+                    }
+                    return text;
+                default:
+                    return value.ToString("F4", CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>
+        /// What a double parameter measures, from its spec (Definition.GetDataType). Falls back to
+        /// the parameter-name heuristic (<see cref="IsDimensionRelated"/>) only when the spec cannot
+        /// be read. Used by params/set/filter so display and input agree on the unit.
+        /// </summary>
+        public static QuantityKind GetQuantityKind(Parameter param)
+        {
+            string key = "";
+            try { key = RevitUnitHelper.SpecKey(param.Definition?.GetDataType()?.TypeId); } catch { }
+            if (key.Length == 0)
+                return param.Definition != null && IsDimensionRelated(param.Definition.Name) ? QuantityKind.Length : QuantityKind.Unknown;
+            if (key == SpecKeyOf(SpecTypeId.Length)) return QuantityKind.Length;
+            if (key == SpecKeyOf(SpecTypeId.Area)) return QuantityKind.Area;
+            if (key == SpecKeyOf(SpecTypeId.Volume)) return QuantityKind.Volume;
+            if (key == SpecKeyOf(SpecTypeId.Angle)) return QuantityKind.Angle;
+            if (key == SpecKeyOf(SpecTypeId.Number)) return QuantityKind.Number;
+            return QuantityKind.Other;
+        }
+
+        /// <summary>
+        /// The unit a typed value is in for 'set' / 'filter': the kind 'params' prints, except that
+        /// another measurable spec with a dimension-like name keeps the old mm convention.
+        /// </summary>
+        public static QuantityKind GetInputKind(Parameter param)
+        {
+            var kind = GetQuantityKind(param);
+            if (kind == QuantityKind.Other && param.Definition != null && IsDimensionRelated(param.Definition.Name))
+                return QuantityKind.Length;
+            return kind;
+        }
+
+        private static string SpecKeyOf(ForgeTypeId spec) => RevitUnitHelper.SpecKey(spec?.TypeId);
+
+        /// <summary>The project's unit symbol for a parameter's spec ("mm", "kN", "%"), or null.</summary>
+        private static string ProjectUnitSymbol(Parameter param)
+        {
+            try
+            {
+                var spec = param.Definition.GetDataType();
+                var doc = param.Element?.Document;
+                if (doc == null || spec == null || !UnitUtils.IsMeasurableSpec(spec)) return null;
+                var fo = doc.GetUnits().GetFormatOptions(spec);
+                var symbolId = fo.GetSymbolTypeId();
+                if (symbolId == null || symbolId.Empty())
+                    symbolId = FormatOptions.GetValidSymbols(fo.GetUnitTypeId()).FirstOrDefault(s => s != null && !s.Empty());
+                if (symbolId == null || symbolId.Empty()) return null;
+                var label = LabelUtils.GetLabelForSymbol(symbolId);
+                return string.IsNullOrWhiteSpace(label) ? null : label.Trim();
+            }
+            catch
+            {
+                return null;
             }
         }
 
