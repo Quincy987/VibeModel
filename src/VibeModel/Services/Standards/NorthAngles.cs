@@ -8,6 +8,12 @@ namespace VibeModel.Services.Standards
     /// </summary>
     public static class NorthAngles
     {
+        /// <summary>Default tolerance for "not rotated": far below anything a modeller could set by hand.</summary>
+        public const double DefaultToleranceDeg = 0.01;
+
+        /// <summary>Default tolerance for "same position" between a link and its shared-coordinates position.</summary>
+        public const double DefaultToleranceMm = 1;
+
         /// <summary>The angle folded into (-180, 180], so 359.99° and -0.01° read as the same small turn.</summary>
         public static double Normalize(double deg)
         {

@@ -40,11 +40,8 @@ namespace VibeModel.Services.Claude.Commands
                 return CommandResult.Error("BAD_ARGS", "Only .rvt and .ifc are supported: " + path,
                     ext == ".dwg" || ext == ".dgn" ? "CAD underlays go through 'linkcad'." : null);
 
-            var exists = PathProbe.FileExists(path);
-            if (exists == null)
-                return CommandResult.Error("SHARE_UNREACHABLE", "The location did not answer within 3 s: " + path, "Is the network drive reachable?");
-            if (exists == false)
-                return CommandResult.Error("FILE_NOT_FOUND", "File not found: " + path, null);
+            var missing = LinkArgs.ProbeFile(path);
+            if (missing != null) return missing;
             if (!string.IsNullOrEmpty(doc.PathName) && SamePath(doc.PathName, path))
                 return CommandResult.Error("BAD_ARGS", "That is the open model itself; a model cannot link itself.", null);
 
@@ -63,6 +60,7 @@ namespace VibeModel.Services.Claude.Commands
                     "Not linking " + Path.GetFileName(path) + ": this model has no shared coordinates yet, so there is nothing to place it by.",
                     "Link the base map (DWG) first with 'linkcad' and acquire shared coordinates from it, then link this file by shared coordinates. --origin / --force links origin-to-origin instead.");
 
+            // The pack's link settings are shared with linkcad; only pin-after-link applies here.
             var pack = StandardsContext.GetActivePack(doc);
             var opts = pack?.LinkCad ?? new LinkCadDefaults();
 
@@ -73,9 +71,12 @@ namespace VibeModel.Services.Claude.Commands
             if (ext == ".ifc")
             {
                 ifcRvt = path + ".RVT";
-                if (PathProbe.FileExists(ifcRvt) != true)
+                bool haveCopy = PathProbe.FileExists(ifcRvt) == true;
+                // A copy older than the IFC is a previous version of the model: convert again.
+                bool stale = haveCopy && File.GetLastWriteTimeUtc(ifcRvt) < File.GetLastWriteTimeUtc(path);
+                if (!haveCopy || stale)
                 {
-                    var convError = ConvertIfc(uiApp, path, ifcRvt);
+                    var convError = ConvertIfc(uiApp, path, ifcRvt, overwrite: stale);
                     if (convError != null)
                         return CommandResult.Error("LINK_FAILED", "Revit could not convert " + Path.GetFileName(path) + " for linking: " + convError,
                             "Link it once through Insert → Link IFC in Revit (that writes " + Path.GetFileName(ifcRvt) + "), then run linkrvt again.");
@@ -120,14 +121,14 @@ namespace VibeModel.Services.Claude.Commands
             if (error != null)
                 return CommandResult.FromTransactionError(error, "LINK_FAILED",
                     placement == ImportPlacement.Shared
-                        ? "If the linked file has no shared coordinates of its own, publish them from the host first (Manage → Coordinates → Publish), or link with --origin."
+                        ? "Revit only places by shared coordinates when both models took them from the same source. Otherwise: link with --origin, move it into place, then Manage → Coordinates → Publish Coordinates on the link (or have its author acquire coordinates from the same base map)."
                         : null);
 
             // Read back where it landed, so the report states it rather than assuming it.
             string landed = null;
             if (placement == ImportPlacement.Shared && doc.GetElement(instId) is RevitLinkInstance placed)
             {
-                var check = SharedPlacement.Check(doc, placed, 1, 0.01);
+                var check = SharedPlacement.Check(doc, placed, NorthAngles.DefaultToleranceMm, NorthAngles.DefaultToleranceDeg);
                 landed = check.Verdict == SharedPlacement.Verdict.Matches ? "at its shared-coordinates position (verified)"
                     : check.Verdict == SharedPlacement.Verdict.Differs ? "NOT at its shared-coordinates position: " + check.Why
                     : "position not verifiable (" + check.Why + ")";
@@ -139,7 +140,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("ID: " + instId.IntegerValue + " (link type " + typeId.IntegerValue + (reusedType ? ", already loaded — new instance" : "") + ")");
             sb.AppendLine("File: " + path);
             if (ifcRvt != null)
-                sb.AppendLine("  IFC via " + Path.GetFileName(ifcRvt) + (converted ? " (converted now, cached next to the IFC)" : " (existing converted copy)"));
+                sb.AppendLine("  IFC via " + Path.GetFileName(ifcRvt) + (converted ? " (converted now — the IFC was new or newer than its copy — cached next to the IFC)" : " (existing converted copy, up to date)"));
             sb.AppendLine("  positioning: " + placementWhy);
             if (landed != null) sb.AppendLine("  landed: " + landed);
             sb.AppendLine("  pinned: " + (pinned ? "yes" : "no" + (noPin ? " (--no-pin)" : "")));
@@ -153,17 +154,19 @@ namespace VibeModel.Services.Claude.Commands
         }
 
         /// <summary>Convert an IFC into the .ifc.RVT copy Revit links through; null on success, else why not.</summary>
-        private static string ConvertIfc(UIApplication uiApp, string ifcPath, string rvtPath)
+        private static string ConvertIfc(UIApplication uiApp, string ifcPath, string rvtPath, bool overwrite)
         {
             Document ifcDoc = null;
+            var started = DateTime.UtcNow.AddSeconds(-2);
             try
             {
                 var o = new IFCImportOptions { Intent = IFCImportIntent.Reference, Action = IFCImportAction.Link };
                 ifcDoc = uiApp.Application.OpenIFCDocument(ifcPath, o);
                 if (ifcDoc == null) return "the IFC importer returned nothing";
                 // The importer may already have written the copy itself; otherwise save it there.
-                if (!File.Exists(rvtPath))
-                    ifcDoc.SaveAs(rvtPath, new SaveAsOptions { OverwriteExistingFile = false });
+                bool written = File.Exists(rvtPath) && File.GetLastWriteTimeUtc(rvtPath) >= started;
+                if (!written)
+                    ifcDoc.SaveAs(rvtPath, new SaveAsOptions { OverwriteExistingFile = overwrite });
                 return File.Exists(rvtPath) ? null : "the converted copy was not written to " + rvtPath;
             }
             catch (Exception ex) { return ex.Message; }

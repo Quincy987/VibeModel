@@ -1,5 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
+using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -12,6 +13,17 @@ namespace VibeModel.Services.Claude.Commands
             if (!m.Success) return null;
             s = s.Remove(m.Index, m.Length).Trim();
             return m.Groups["v"].Value.Trim('"');
+        }
+
+        /// <summary>The error for a file that cannot be linked (share silent, file missing), or null when it exists.</summary>
+        public static CommandResult ProbeFile(string path)
+        {
+            var exists = PathProbe.FileExists(path);
+            if (exists == null)
+                return CommandResult.Error("SHARE_UNREACHABLE", "The location did not answer within 3 s: " + path, "Is the network drive reachable?");
+            if (exists == false)
+                return CommandResult.Error("FILE_NOT_FOUND", "File not found: " + path, null);
+            return null;
         }
 
         public static bool TakeFlag(ref string s, string flag)

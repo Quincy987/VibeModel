@@ -469,7 +469,7 @@ namespace VibeModel.Services.Standards
         private static CheckFinding ProjectNorthTrue(Ctx c, CheckRule r)
         {
             if (!c.Coords.Available) return CheckFinding.Skip(r, "no project base point");
-            var tol = r.GetDouble("toleranceDeg", 0.01);
+            var tol = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
             var angle = c.Coords.BaseAngleDeg;
             return NorthAngles.IsZero(angle, tol)
                 ? CheckFinding.Ok(r, "angle to true north 0°")
@@ -479,8 +479,10 @@ namespace VibeModel.Services.Standards
 
         private static CheckFinding ReferencePointTrueNorth(Ctx c, CheckRule r)
         {
-            var pattern = r.GetString("familyPattern", "Referentiepunt");
-            var tol = r.GetDouble("toleranceDeg", 0.01);
+            // The family name is office-specific, so the pack must name it (no default).
+            var pattern = r.GetString("familyPattern");
+            if (string.IsNullOrWhiteSpace(pattern)) return c.Scope != null ? null : CheckFinding.Skip(r, "rule has no familyPattern");
+            var tol = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
             IEnumerable<Element> pool = c.Scope != null
                 ? c.Scope.Select(id => c.Doc.GetElement(id)).Where(e => e != null)
                 : new FilteredElementCollector(c.Doc).OfClass(typeof(FamilyInstance)).ToElements();
@@ -506,7 +508,7 @@ namespace VibeModel.Services.Standards
                 if (!turned && fi.Pinned) continue;
                 bad.Add(fi.Id.IntegerValue);
                 if (notes.Count < 5)
-                    notes.Add(fi.Id.IntegerValue + " (" + (turned ? "rotated " + NorthAngles.Format(angle) + "°" : "on True North") +
+                    notes.Add(fi.Id.IntegerValue + " (" + (turned ? "rotated " + NorthAngles.Format(angle) + "°" + (fi.Mirrored ? ", mirrored" : "") : "on True North") +
                               ", " + (fi.Pinned ? "pinned" : "not pinned") + ")");
             }
             return bad.Count == 0
@@ -516,16 +518,17 @@ namespace VibeModel.Services.Standards
 
         private static CheckFinding LinksBySharedCoordinates(Ctx c, CheckRule r)
         {
-            if (!c.Coords.SharedCoordinates)
-                return c.Scope != null ? null
-                    : CheckFinding.Skip(r, "no shared coordinates yet — the first underlay goes centre-to-centre, everything after it by shared coordinates");
-            var tolMm = r.GetDouble("toleranceMm", 1);
-            var tolDeg = r.GetDouble("toleranceDeg", 0.01);
-
             IEnumerable<Element> pool = c.Scope != null
                 ? c.Scope.Select(id => c.Doc.GetElement(id)).Where(e => e != null)
                 : new FilteredElementCollector(c.Doc).OfClass(typeof(RevitLinkInstance)).ToElements();
             var links = pool.OfType<RevitLinkInstance>().ToList();
+            if (c.Scope != null && links.Count == 0) return null; // the command made no link: nothing to say
+
+            if (!c.Coords.SharedCoordinates)
+                return c.Scope != null ? null
+                    : CheckFinding.Skip(r, "no shared coordinates yet — the first underlay goes centre-to-centre, everything after it by shared coordinates");
+            var tolMm = r.GetDouble("toleranceMm", NorthAngles.DefaultToleranceMm);
+            var tolDeg = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
 
             var bad = new List<int>();
             var notes = new List<string>();

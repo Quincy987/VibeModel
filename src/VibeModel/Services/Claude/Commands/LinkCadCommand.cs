@@ -44,11 +44,8 @@ namespace VibeModel.Services.Claude.Commands
             if (ext != ".dwg" && ext != ".dgn")
                 return CommandResult.Error("BAD_ARGS", "Only .dwg and .dgn are supported: " + path, null);
 
-            var exists = PathProbe.FileExists(path);
-            if (exists == null)
-                return CommandResult.Error("SHARE_UNREACHABLE", "The location did not answer within 3 s: " + path, "Is the network drive reachable?");
-            if (exists == false)
-                return CommandResult.Error("FILE_NOT_FOUND", "File not found: " + path, null);
+            var missing = LinkArgs.ProbeFile(path);
+            if (missing != null) return missing;
 
             var view = uidoc.ActiveView;
             if (view == null || view is ViewSheet || view.IsTemplate)

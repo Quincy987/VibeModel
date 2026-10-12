@@ -17,8 +17,10 @@
   shared — Revit moves the link's own shared position along with it.
 - **`linkrvt "<path.rvt|.ifc>"`** — link another Revit model or an IFC by shared coordinates and
   pin it; refused (with the reason) while the model has no shared coordinates, `--origin`/`--force`
-  link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused when
-  present). The response states where the link landed, read back from the model.
+  link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused while
+  it is newer than the IFC, converted again otherwise). When placed by shared coordinates, the
+  response states where the link landed, read back from the model. IFC linking is not yet verified
+  in Revit (no IFC file was at hand).
 - `linkcad` names the criterion it placed by ("coordinates set up: base point N/S … E/W … ≠ 0")
   and its first-link hint says "do not rotate — Project North stays True North". The `pinned`
   rule in the example pack also covers Revit links.
