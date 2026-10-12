@@ -19,7 +19,7 @@ paths and are **not** committed to this public repository; keep them on the offi
 | Default-correct creation | `wall`, `floor`, `place`, `placeid`, `room` (+ `--phase`), `phase` | New elements get the pack's default phase (`phaseTable.default`); `--phase existing\|new\|temp\|demolish\|future` overrides. |
 | Office views and sheets | `view`, `sheet` | New views get the pack's view template, phase, phase filter and browser-folder parameters; new sheets get the default title block. Every choice is reported. |
 | Library | `library <terms>`, `loadfamily "<path>"` | Searches a cached index of `libraryPaths`; `place` suggests a library family when the requested one is not loaded. |
-| Underlays | `linkcad`, `coords` | Links (never imports) with the pack's link settings, pins; reports the coordinate setup. |
+| Underlays | `linkcad`, `linkrvt`, `coords` | Links (never imports) with the pack's link settings, pins; RVT/IFC only by shared coordinates; reports the coordinate setup. |
 | Audit | `check`, `check --stats` | Runs `checks.json`; after every modifying command the element-level rules run on what was just created and a one-line summary is appended. |
 | Source documents | `standards --index`, `standards docs`, `standards <doc> <chapter>`, `standards distill` | Indexes the office manuals (PDF/txt) by chapter; optional LLM distillation into `core.generated.md`. |
 
@@ -118,8 +118,12 @@ their parameters:
 - `file-name` — `pattern` (regex on the file name); always flags Revit backups `*.0001.rvt`.
 - `schedule-phase` — `namePattern`, `phaseKey`, `phaseFilter`.
 - `links-are-links` — imported (instead of linked) CAD.
+- `project-north-true` — the project base point's *Angle to True North* must be 0 (`toleranceDeg`, default 0.01): Project North never rotates; a straight view comes from a scope box or crop region.
+- `reference-point-true-north` — instances of the family whose name contains `familyPattern` (default `Referentiepunt`) must be unrotated and pinned (`toleranceDeg`). While Project North itself is rotated it reports INFO instead of judging.
+- `links-by-shared-coordinates` — once the model has shared coordinates, every Revit link must sit where *Auto – By Shared Coordinates* puts it (`toleranceMm` default 1, `toleranceDeg`). Unloaded links and CAD links (the API keeps no record of their placement) are counted as not verifiable, never flagged.
 
-Element-level kinds (`phase-not-none`, `param-filled`, `family-source`, `pinned`) also run after
+Element-level kinds (`phase-not-none`, `param-filled`, `family-source`, `pinned`,
+`reference-point-true-north`, `links-by-shared-coordinates`) also run after
 each modifying command on exactly the elements it created.
 
 ## Updating a pack (application manager)

@@ -30,12 +30,12 @@ namespace VibeModel.Services.Claude.Commands
             var doc = uidoc.Document;
             var raw = (args ?? "").Trim();
 
-            bool first = TakeFlag(ref raw, "--first");
-            bool origin = TakeFlag(ref raw, "--origin");
-            bool noPin = TakeFlag(ref raw, "--no-pin");
-            bool force = TakeFlag(ref raw, "--force");
+            bool first = LinkArgs.TakeFlag(ref raw, "--first");
+            bool origin = LinkArgs.TakeFlag(ref raw, "--origin");
+            bool noPin = LinkArgs.TakeFlag(ref raw, "--no-pin");
+            bool force = LinkArgs.TakeFlag(ref raw, "--force");
             // Revit links a DGN through one of its model views; "Default" is the usual one.
-            var dgnView = TakeValue(ref raw, "--dgnview") ?? "Default";
+            var dgnView = LinkArgs.TakeValue(ref raw, "--dgnview") ?? "Default";
             var path = raw.Trim().Trim('"');
             if (path.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Usage: " + Usage, null);
@@ -74,7 +74,8 @@ namespace VibeModel.Services.Claude.Commands
             ImportPlacement placement;
             string placementWhy;
             if (origin) { placement = ImportPlacement.Origin; placementWhy = "origin-to-origin (--origin)"; }
-            else if (!isFirst || coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates"; }
+            else if (coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates (coordinates set up: " + CoordinatesSetUpText(coords) + ")"; }
+            else if (!isFirst) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates (" + existingLinks + " underlay(s) already linked)"; }
             else { placement = ImportPlacement.Centered; placementWhy = "centre-to-centre (first underlay — no shared coordinates yet)"; }
 
             ElementId linkId = ElementId.InvalidElementId;
@@ -133,7 +134,7 @@ namespace VibeModel.Services.Claude.Commands
             if (ext == ".dgn") sb.AppendLine("  DGN model view: " + dgnView + " (--dgnview <name> to change)");
             sb.AppendLine("  pinned: " + (pinned ? "yes" : "no" + (noPin ? " (--no-pin)" : "")));
             if (placement == ImportPlacement.Centered)
-                sb.AppendLine("Next: move it into place (do not rotate), then acquire shared coordinates from it and pin the base point" +
+                sb.AppendLine("Next: move it into place (do not rotate — Project North stays True North), then acquire shared coordinates from it and pin the base point" +
                               (pack != null ? " — see 'standards coordinates'." : "."));
 
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
@@ -144,21 +145,13 @@ namespace VibeModel.Services.Claude.Commands
             });
         }
 
-        private static string TakeValue(ref string s, string flag)
+        /// <summary>The "coordinates are set up" criterion in words: what the base point reads.</summary>
+        internal static string CoordinatesSetUpText(CoordinateFacts c)
         {
-            var m = System.Text.RegularExpressions.Regex.Match(s, @"(?:^|\s)" + System.Text.RegularExpressions.Regex.Escape(flag) + @"(?:=|\s+)(?<v>""[^""]+""|\S+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (!m.Success) return null;
-            s = s.Remove(m.Index, m.Length).Trim();
-            return m.Groups["v"].Value.Trim('"');
-        }
-
-        private static bool TakeFlag(ref string s, string flag)
-        {
-            var i = s.IndexOf(flag, StringComparison.OrdinalIgnoreCase);
-            if (i < 0) return false;
-            s = (s.Substring(0, i) + s.Substring(i + flag.Length)).Trim();
-            return true;
+            if (Math.Abs(c.BaseNorthMm) < 0.5 && Math.Abs(c.BaseEastMm) < 0.5)
+                return "shared coordinates acquired (site '" + c.SiteName + "')";
+            return "base point N/S " + Math.Round(c.BaseNorthMm).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                   ", E/W " + Math.Round(c.BaseEastMm).ToString(System.Globalization.CultureInfo.InvariantCulture) + " mm ≠ 0";
         }
     }
 }

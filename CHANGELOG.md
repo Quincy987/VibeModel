@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added — Maikel review: orientation rules and links by shared coordinates
+- **`project-north-true` check** — the project base point's *Angle to True North* must be 0:
+  Project North never rotates; a straight view comes from the scope box or crop region. `coords`
+  prints a WARN next to the angle when it is not 0 (JSON: `baseAngleZero`).
+- **`reference-point-true-north` check** — the reference point family (name contains
+  `familyPattern`) stays unrotated and pinned. While Project North itself is rotated it reports
+  INFO rather than judging an angle that would be measured against the wrong north.
+- **`links-by-shared-coordinates` check** — once the model has shared coordinates, every Revit
+  link must sit where *Auto – By Shared Coordinates* puts it (compared through both models'
+  coordinate transforms; any of the link's named locations counts). Unloaded links and CAD links
+  (the API keeps no record of how they were placed) are counted as not verifiable, never flagged.
+  Also runs on the link a command just made.
+- **`linkrvt "<path.rvt|.ifc>"`** — link another Revit model or an IFC by shared coordinates and
+  pin it; refused (with the reason) while the model has no shared coordinates, `--origin`/`--force`
+  link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused when
+  present). The response states where the link landed, read back from the model.
+- `linkcad` names the criterion it placed by ("coordinates set up: base point N/S … E/W … ≠ 0")
+  and its first-link hint says "do not rotate — Project North stays True North". The `pinned`
+  rule in the example pack also covers Revit links.
+
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its

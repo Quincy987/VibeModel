@@ -16,7 +16,7 @@ namespace VibeModel.Tests
             var path = Path.Combine(StandardsPackTests.ExamplePackFolder(), "checks.json");
             var rules = CheckRule.ParseAll(File.ReadAllText(path), out var error);
             Assert.Null(error);
-            Assert.Equal(13, rules.Count);
+            Assert.Equal(16, rules.Count);
             Assert.All(rules, r => Assert.Contains(r.Kind, ModelChecks.KnownKinds));
 
             var pf = rules.Single(r => r.Id == "param-filled");
