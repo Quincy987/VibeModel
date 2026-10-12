@@ -20,14 +20,16 @@ namespace VibeModel.Services.Standards
         /// <summary>Kinds that judge individual elements and therefore run in scoped mode.</summary>
         public static readonly HashSet<string> ElementKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "phase-not-none", "param-filled", "family-source", "pinned"
+            "phase-not-none", "param-filled", "family-source", "pinned",
+            "reference-point-true-north", "links-by-shared-coordinates"
         };
 
         public static readonly string[] KnownKinds =
         {
             "pinned", "phase-not-none", "phase-filter-digit", "view-phase-for-new-work", "view-template-required",
             "family-source", "param-filled", "survey-point-origin", "base-point-rounded", "base-point-pinned",
-            "file-name", "schedule-phase", "links-are-links"
+            "file-name", "schedule-phase", "links-are-links",
+            "project-north-true", "reference-point-true-north", "links-by-shared-coordinates"
         };
 
         private static readonly object Sync = new object();
@@ -160,6 +162,9 @@ namespace VibeModel.Services.Standards
                 case "file-name": return FileName(c, r);
                 case "schedule-phase": return SchedulePhase(c, r);
                 case "links-are-links": return LinksAreLinks(c, r);
+                case "project-north-true": return ProjectNorthTrue(c, r);
+                case "reference-point-true-north": return ReferencePointTrueNorth(c, r);
+                case "links-by-shared-coordinates": return LinksBySharedCoordinates(c, r);
                 default: return CheckFinding.Skip(r, "unknown rule kind '" + r.Kind + "' (known: " + string.Join(", ", KnownKinds) + ")");
             }
         }
@@ -459,6 +464,95 @@ namespace VibeModel.Services.Standards
             return imports.Count == 0
                 ? CheckFinding.Ok(r, "no imported CAD (" + c.CadLinkCount + " link(s))")
                 : CheckFinding.Problem(r, imports.Count + " CAD file(s) imported instead of linked", imports);
+        }
+
+        private static CheckFinding ProjectNorthTrue(Ctx c, CheckRule r)
+        {
+            if (!c.Coords.Available) return CheckFinding.Skip(r, "no project base point");
+            var tol = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
+            var angle = c.Coords.BaseAngleDeg;
+            return NorthAngles.IsZero(angle, tol)
+                ? CheckFinding.Ok(r, "angle to true north 0°")
+                : CheckFinding.Problem(r, "angle to true north is " + NorthAngles.Format(angle) + "° instead of 0°",
+                    new[] { BasePoint.GetProjectBasePoint(c.Doc).Id.IntegerValue });
+        }
+
+        private static CheckFinding ReferencePointTrueNorth(Ctx c, CheckRule r)
+        {
+            // The family name is office-specific, so the pack must name it (no default).
+            var pattern = r.GetString("familyPattern");
+            if (string.IsNullOrWhiteSpace(pattern)) return c.Scope != null ? null : CheckFinding.Skip(r, "rule has no familyPattern");
+            var tol = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
+            IEnumerable<Element> pool = c.Scope != null
+                ? c.Scope.Select(id => c.Doc.GetElement(id)).Where(e => e != null)
+                : new FilteredElementCollector(c.Doc).OfClass(typeof(FamilyInstance)).ToElements();
+            var points = pool.OfType<FamilyInstance>()
+                .Where(fi => (fi.Symbol?.Family?.Name ?? "").IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+            if (points.Count == 0) return c.Scope != null ? null : CheckFinding.Skip(r, "no reference point placed (family name contains '" + pattern + "')");
+
+            // An instance's rotation is measured in project coordinates; it only equals the
+            // rotation from True North while Project North is not rotated itself.
+            if (c.Coords.Available && !NorthAngles.IsZero(c.Coords.BaseAngleDeg, tol))
+                return c.Scope != null ? null : CheckFinding.Info(r, "Project North is rotated " + NorthAngles.Format(c.Coords.BaseAngleDeg) +
+                    "° — fix that first (project-north-true); the reference point is judged after");
+
+            var bad = new List<int>();
+            var notes = new List<string>();
+            foreach (var fi in points)
+            {
+                Transform t = null;
+                try { t = fi.GetTransform(); } catch { }
+                double angle = t != null ? NorthAngles.PlanAngle(t.BasisX.X, t.BasisX.Y) : 0;
+                bool turned = t != null && !NorthAngles.IsZero(angle, tol);
+                if (!turned && fi.Pinned) continue;
+                bad.Add(fi.Id.IntegerValue);
+                if (notes.Count < 5)
+                    notes.Add(fi.Id.IntegerValue + " (" + (turned ? "rotated " + NorthAngles.Format(angle) + "°" + (fi.Mirrored ? ", mirrored" : "") : "on True North") +
+                              ", " + (fi.Pinned ? "pinned" : "not pinned") + ")");
+            }
+            return bad.Count == 0
+                ? (c.Scope != null ? null : CheckFinding.Ok(r, points.Count + " reference point(s), on True North and pinned"))
+                : CheckFinding.Problem(r, string.Join(", ", notes), bad);
+        }
+
+        private static CheckFinding LinksBySharedCoordinates(Ctx c, CheckRule r)
+        {
+            IEnumerable<Element> pool = c.Scope != null
+                ? c.Scope.Select(id => c.Doc.GetElement(id)).Where(e => e != null)
+                : new FilteredElementCollector(c.Doc).OfClass(typeof(RevitLinkInstance)).ToElements();
+            var links = pool.OfType<RevitLinkInstance>().ToList();
+            if (c.Scope != null && links.Count == 0) return null; // the command made no link: nothing to say
+
+            if (!c.Coords.SharedCoordinates)
+                return c.Scope != null ? null
+                    : CheckFinding.Skip(r, "no shared coordinates yet — the first underlay goes centre-to-centre, everything after it by shared coordinates");
+            var tolMm = r.GetDouble("toleranceMm", NorthAngles.DefaultToleranceMm);
+            var tolDeg = r.GetDouble("toleranceDeg", NorthAngles.DefaultToleranceDeg);
+
+            var bad = new List<int>();
+            var notes = new List<string>();
+            int ok = 0, unknown = 0;
+            foreach (var li in links)
+            {
+                var res = SharedPlacement.Check(c.Doc, li, tolMm, tolDeg);
+                if (res.Verdict == SharedPlacement.Verdict.Matches) { ok++; continue; }
+                if (res.Verdict == SharedPlacement.Verdict.Unknown) { unknown++; continue; }
+                bad.Add(li.Id.IntegerValue);
+                if (notes.Count < 5) notes.Add("'" + li.Name + "' " + res.Why);
+            }
+
+            // CAD links keep no record of how they were placed, so they are counted, not judged.
+            var cadNote = c.Scope == null && c.CadLinkCount > 0 ? "; " + c.CadLinkCount + " CAD link(s) not verifiable by the API" : "";
+            var unknownNote = unknown > 0 ? "; " + unknown + " Revit link(s) could not be verified (unloaded or unreadable)" : "";
+            if (bad.Count > 0)
+                return CheckFinding.Problem(r, bad.Count + " of " + links.Count + " Revit link(s) not at their shared-coordinates position: " +
+                                               string.Join(", ", notes) + unknownNote, bad);
+            if (c.Scope != null) return null;
+            if (links.Count == 0) return CheckFinding.Ok(r, "no Revit links" + cadNote);
+            return ok > 0
+                ? CheckFinding.Ok(r, ok + " Revit link(s) at their shared-coordinates position" + unknownNote + cadNote)
+                : CheckFinding.Info(r, "nothing verifiable" + unknownNote + cadNote);
         }
     }
 }

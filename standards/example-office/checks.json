@@ -7,7 +7,7 @@
     { "id": "pinned", "kind": "pinned", "severity": "warn",
       "message": "Checklist B6: underlays and grids pinned",
       "fix": "Select the underlay(s)/grids and pin them (PN).",
-      "params": { "targets": ["cadLinks", "pointClouds", "grids"], "requireSetup": true } },
+      "params": { "targets": ["cadLinks", "pointClouds", "grids", "revitLinks"], "requireSetup": true } },
     { "id": "base-point-pinned", "kind": "base-point-pinned", "severity": "warn",
       "message": "Checklist B5: project base point pinned",
       "fix": "Pin the project base point after acquiring coordinates." },
@@ -46,6 +46,17 @@
       "params": { "namePattern": "^Pile schedule$", "phaseKey": "new", "phaseFilter": "2.7 New only" } },
     { "id": "links-are-links", "kind": "links-are-links", "severity": "warn",
       "message": "Checklist D2: underlays linked, not imported",
-      "fix": "Delete the import and link the file with 'linkcad'." }
+      "fix": "Delete the import and link the file with 'linkcad'." },
+    { "id": "project-north-true", "kind": "project-north-true", "severity": "fail",
+      "message": "Project North is rotated from True North",
+      "fix": "Project North never rotates: set the project base point's Angle to True North back to 0 and turn the scope box or crop region for a straight view instead.",
+      "params": { "toleranceDeg": 0.01 } },
+    { "id": "reference-point-true-north", "kind": "reference-point-true-north", "severity": "warn",
+      "message": "Reference point not on True North or not pinned",
+      "fix": "Rotate the reference point back to 0 degrees and pin it.",
+      "params": { "familyPattern": "ReferencePoint", "toleranceDeg": 0.01 } },
+    { "id": "links-by-shared-coordinates", "kind": "links-by-shared-coordinates", "severity": "warn",
+      "message": "Link not placed by shared coordinates although the model has them",
+      "fix": "Remove the link (Manage Links) and link it again with 'linkrvt' (Auto - By Shared Coordinates), then pin it." }
   ]
 }

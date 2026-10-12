@@ -91,6 +91,7 @@ namespace VibeModel.Services.Chat
                 { "library", "Searching the library…" },
                 { "loadfamily", "Loading family…" },
                 { "linkcad", "Linking CAD…" },
+                { "linkrvt", "Linking model…" },
                 { "phase", "Setting phase…" },
                 { "activate", "Opening view…" },
 
@@ -178,6 +179,7 @@ namespace VibeModel.Services.Chat
                 { "library", "Bibliotheek doorzoeken…" },
                 { "loadfamily", "Familie laden…" },
                 { "linkcad", "CAD koppelen…" },
+                { "linkrvt", "Model koppelen…" },
                 { "phase", "Fase instellen…" },
                 { "activate", "View openen…" },
 

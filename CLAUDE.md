@@ -272,7 +272,7 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
 - **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
   `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
 
-### Office Standards (template / standards / phase / check / coords / library / loadfamily / linkcad)
+### Office Standards (template / standards / phase / check / coords / library / loadfamily / linkcad / linkrvt)
 An office **standards pack** (folder with `pack.json`, `core.md`, topic sheets, `checks.json` —
 see `standards/README.md`; sample: `standards/example-office/`) teaches VibeModel how an office
 models. A pack is active for a document only when its **fingerprint** matches what the document
@@ -298,6 +298,7 @@ curl -s http://localhost:18884/coords                           # Survey point /
 curl -s "http://localhost:18884/library?args=damwand"           # Search the office family library (cached index)
 curl -s "http://localhost:18884/loadfamily?args=\"X:\lib\Pile.rfa\""      # Load a library hit
 curl -s "http://localhost:18884/linkcad?args=\"X:\base\map.dwg\" --first" # Link (never import) with the office link settings, pinned
+curl -s "http://localhost:18884/linkrvt?args=\"X:\proj\K-model.rvt\""     # Revit model / IFC by shared coordinates, pinned (refused without coordinates)
 curl -s "http://localhost:18884/view?args=plan Level 2 --name Werkview --activate"  # Office work view, named, made the active view
 curl -s "http://localhost:18884/activate?args=Werkview"               # Activate a view by name or id (also works after exec)
 ```
@@ -310,6 +311,11 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
   flag values run to the next `--` flag, so put flags after the level name; `--activate` opens the new
   view — new work on the office phase is invisible in the template's existing-phase work views); `sheet` without
   a title block uses the pack default. Every automatic choice is printed.
+- **Orientation and links.** `check` also judges `project-north-true` (Project North never rotated
+  from True North — `coords` warns too), `reference-point-true-north` (the reference point family
+  unrotated and pinned) and `links-by-shared-coordinates` (every Revit link where *By Shared
+  Coordinates* puts it; unloaded and CAD links are reported as not verifiable, never flagged).
+  `linkcad`/`linkrvt` name the criterion they placed by ("coordinates set up: base point N/S …").
 - **Post-command check.** After any modifying command or batch, the element-level rules run on
   exactly what it created; problems add one line: `-- check: 1 WARN (param-filled) → run 'check' for fixes`
   (JSON: an additive `check` object).

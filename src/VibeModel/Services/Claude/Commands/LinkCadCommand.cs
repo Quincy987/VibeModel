@@ -30,12 +30,12 @@ namespace VibeModel.Services.Claude.Commands
             var doc = uidoc.Document;
             var raw = (args ?? "").Trim();
 
-            bool first = TakeFlag(ref raw, "--first");
-            bool origin = TakeFlag(ref raw, "--origin");
-            bool noPin = TakeFlag(ref raw, "--no-pin");
-            bool force = TakeFlag(ref raw, "--force");
+            bool first = LinkArgs.TakeFlag(ref raw, "--first");
+            bool origin = LinkArgs.TakeFlag(ref raw, "--origin");
+            bool noPin = LinkArgs.TakeFlag(ref raw, "--no-pin");
+            bool force = LinkArgs.TakeFlag(ref raw, "--force");
             // Revit links a DGN through one of its model views; "Default" is the usual one.
-            var dgnView = TakeValue(ref raw, "--dgnview") ?? "Default";
+            var dgnView = LinkArgs.TakeValue(ref raw, "--dgnview") ?? "Default";
             var path = raw.Trim().Trim('"');
             if (path.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Usage: " + Usage, null);
@@ -44,11 +44,8 @@ namespace VibeModel.Services.Claude.Commands
             if (ext != ".dwg" && ext != ".dgn")
                 return CommandResult.Error("BAD_ARGS", "Only .dwg and .dgn are supported: " + path, null);
 
-            var exists = PathProbe.FileExists(path);
-            if (exists == null)
-                return CommandResult.Error("SHARE_UNREACHABLE", "The location did not answer within 3 s: " + path, "Is the network drive reachable?");
-            if (exists == false)
-                return CommandResult.Error("FILE_NOT_FOUND", "File not found: " + path, null);
+            var missing = LinkArgs.ProbeFile(path);
+            if (missing != null) return missing;
 
             var view = uidoc.ActiveView;
             if (view == null || view is ViewSheet || view.IsTemplate)
@@ -74,7 +71,8 @@ namespace VibeModel.Services.Claude.Commands
             ImportPlacement placement;
             string placementWhy;
             if (origin) { placement = ImportPlacement.Origin; placementWhy = "origin-to-origin (--origin)"; }
-            else if (!isFirst || coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates"; }
+            else if (coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = LinkArgs.SharedPlacementWhy(coords); }
+            else if (!isFirst) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates (" + existingLinks + " underlay(s) already linked)"; }
             else { placement = ImportPlacement.Centered; placementWhy = "centre-to-centre (first underlay — no shared coordinates yet)"; }
 
             ElementId linkId = ElementId.InvalidElementId;
@@ -119,7 +117,10 @@ namespace VibeModel.Services.Claude.Commands
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error, "LINK_FAILED",
-                    placement == ImportPlacement.Shared ? "If the file has no usable coordinates, retry with --first (centre-to-centre)." : null);
+                    placement != ImportPlacement.Shared ? null
+                    : coords.SharedCoordinates
+                        ? "If the file has no usable coordinates, retry with --origin (origin-to-origin) and move it into place — never rotate it."
+                        : "If the file has no usable coordinates, retry with --first (centre-to-centre).");
 
             var sb = new StringBuilder();
             sb.AppendLine("CAD LINKED");
@@ -133,7 +134,7 @@ namespace VibeModel.Services.Claude.Commands
             if (ext == ".dgn") sb.AppendLine("  DGN model view: " + dgnView + " (--dgnview <name> to change)");
             sb.AppendLine("  pinned: " + (pinned ? "yes" : "no" + (noPin ? " (--no-pin)" : "")));
             if (placement == ImportPlacement.Centered)
-                sb.AppendLine("Next: move it into place (do not rotate), then acquire shared coordinates from it and pin the base point" +
+                sb.AppendLine("Next: move it into place (do not rotate — Project North stays True North), then acquire shared coordinates from it and pin the base point" +
                               (pack != null ? " — see 'standards coordinates'." : "."));
 
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
@@ -144,21 +145,5 @@ namespace VibeModel.Services.Claude.Commands
             });
         }
 
-        private static string TakeValue(ref string s, string flag)
-        {
-            var m = System.Text.RegularExpressions.Regex.Match(s, @"(?:^|\s)" + System.Text.RegularExpressions.Regex.Escape(flag) + @"(?:=|\s+)(?<v>""[^""]+""|\S+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (!m.Success) return null;
-            s = s.Remove(m.Index, m.Length).Trim();
-            return m.Groups["v"].Value.Trim('"');
-        }
-
-        private static bool TakeFlag(ref string s, string flag)
-        {
-            var i = s.IndexOf(flag, StringComparison.OrdinalIgnoreCase);
-            if (i < 0) return false;
-            s = (s.Substring(0, i) + s.Substring(i + flag.Length)).Trim();
-            return true;
-        }
     }
 }

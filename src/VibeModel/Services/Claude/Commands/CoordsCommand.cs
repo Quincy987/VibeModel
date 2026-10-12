@@ -37,9 +37,11 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Survey point: " + (c.SurveyAtSharedOrigin ? "at shared 0,0,0" : "N/S " + F(c.SurveyNorthMm) + ", E/W " + F(c.SurveyEastMm) + ", elev " + F(c.SurveyElevationMm) + " mm (not 0,0,0)") +
                           "; " + F(c.SurveyOffsetFromOriginMm) + " mm from the internal origin" +
                           ", " + (c.SurveyPinned ? "pinned" : "NOT pinned"));
+            bool angleZero = NorthAngles.IsZero(c.BaseAngleDeg, NorthAngles.DefaultToleranceDeg);
             sb.AppendLine("Project base point: N/S " + F(c.BaseNorthMm) + " mm, E/W " + F(c.BaseEastMm) + " mm, elev " +
-                          F(c.BaseElevationMm) + " mm, angle to true north " + c.BaseAngleDeg.ToString("0.####", CultureInfo.InvariantCulture) + "°, " +
-                          (c.BasePinned ? "pinned" : "NOT pinned"));
+                          F(c.BaseElevationMm) + " mm, angle to true north " + NorthAngles.Format(c.BaseAngleDeg) + "°" +
+                          (angleZero ? "" : " — WARN: Project North must not be rotated from True North; set the angle back to 0 and get a straight view from a scope box or crop region instead") +
+                          ", " + (c.BasePinned ? "pinned" : "NOT pinned"));
             sb.AppendLine("  rounded to " + F(round) + " mm: " + (rounded ? "yes" : "no"));
             sb.AppendLine("Shared coordinates: " + (c.SharedCoordinates ? "acquired/published (site '" + c.SiteName + "')" : "not set up (site '" + c.SiteName + "')"));
             sb.AppendLine("CAD links: " + links + " (" + linksPinned + " pinned)");
@@ -50,7 +52,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 { "surveyAtSharedOrigin", c.SurveyAtSharedOrigin }, { "surveyOffsetMm", c.SurveyOffsetFromOriginMm }, { "surveyPinned", c.SurveyPinned },
                 { "baseNorthMm", c.BaseNorthMm }, { "baseEastMm", c.BaseEastMm }, { "baseElevationMm", c.BaseElevationMm },
-                { "baseAngleDeg", c.BaseAngleDeg }, { "basePinned", c.BasePinned }, { "baseRounded", rounded },
+                { "baseAngleDeg", c.BaseAngleDeg }, { "baseAngleZero", angleZero }, { "basePinned", c.BasePinned }, { "baseRounded", rounded },
                 { "roundToMm", round }, { "sharedCoordinates", c.SharedCoordinates }, { "site", c.SiteName },
                 { "cadLinks", links }, { "cadLinksPinned", linksPinned }
             });
