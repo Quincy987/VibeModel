@@ -11,9 +11,9 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](#license)
 [![Tests](https://img.shields.io/badge/tests-1004%20passing-success)](#building-from-source)
 
-<img src="docs/images/chat-table-sources.png" width="420" alt="The VibeModel chat panel: a question about the longest walls answered as a table with units, element ids on one line, and numbered source markers.">
+<img src="docs/images/diagnosis.gif" width="420" alt="Animated recording of the VibeModel chat panel in Revit: the question 'Why can't I see element 1561029 in this view?' is typed and sent, one diagnosis step runs, and the answer names the cause (the wall was hidden with Hide in View) and how to unhide it, followed by one-tap follow-up suggestions.">
 
-<sub>A table with units, the ids on one line, and small source numbers you can click.</sub>
+<sub>Recorded live in Revit: VibeModel checks every visibility setting and names the one that hides the wall. The waiting part is sped up.</sub>
 
 </div>
 
@@ -51,7 +51,7 @@ Remember that new sections get phase 2
 
 ## What it can do
 
-Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short demo video; the scripts and links live in [docs/demos](docs/demos/README.md).
+Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live recording: Diagnosis at the top of this page, the others below the table. Scripts and links live in [docs/demos](docs/demos/README.md).
 
 | | Topic | Status |
 |---|---|---|
@@ -64,6 +64,30 @@ Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short 
 | 7 | **Checking against a document** — *"Does the bolt count match the spec?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
 | 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
 | 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
+
+<details><summary><b>Information</b>: see it</summary>
+
+<img src="docs/images/information.gif" width="420" alt="Animated recording of the VibeModel chat panel: 'Give me a table of the 5 longest walls: id, length, height and phase created' is answered with a table of id, type, length in m and height in mm, the phase in the text, a numbered source and the ids on one line.">
+
+</details>
+
+<details><summary><b>Modelling</b>: see it</summary>
+
+<img src="docs/images/modelling.gif" width="420" alt="Animated recording of the VibeModel chat panel: 'Place 5 Betonpaal 320x320 piles along a line from 0,0 to 12000,0, 3000 mm apart'. The first placement attempt fails on the type name, the next steps look up the type and place all five in one step; the answer lists the positions and notes that one Ctrl+Z removes them.">
+
+</details>
+
+<details><summary><b>Sheets</b>: see it</summary>
+
+<img src="docs/images/sheets.gif" width="420" alt="Animated recording of the VibeModel chat panel: 'Make a pile schedule with count and length and put it on a new A0 sheet'. Six steps create the schedule, filter out the sheet piles, place it on a new A0 sheet and check it; the answer shows the schedule as a table with a total.">
+
+</details>
+
+<details><summary><b>Context</b>: see it</summary>
+
+<img src="docs/images/context.gif" width="420" alt="Animated recording of the VibeModel chat panel in two chats: 'Remember that new sections get phase 2' is saved to the project memory; in a new chat, 'Which phase do sections get here?' is answered from that memory: 2. Bouwfase.">
+
+</details>
 
 ## How it works
 
