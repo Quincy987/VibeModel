@@ -364,7 +364,35 @@ VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn
 the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language)` — reply language,
 undo, ask-first for sheets/shared resources, compact answers); edit the wording there, both
 backends use it. Settings → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
-reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`).
+reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`) —
+the only language source and the only Dutch/English tables; `UI/UiText.cs` just composes them.
+
+**Arguments go in `?args=`.** The prompt file the CLI reads (`ClaudeCodeBackend.BuildSystemPromptText`)
+lists every command as `curl -s "http://127.0.0.1:<port>/<cmd>?args=ARGS"   ARGS: <grammar>` (the
+grammar is the command's `Usage` minus its name) under a HOW TO CALL block with the rule
+(`ClaudeCodeBackend.ArgsRule`, also repeated in every turn prompt), encoded examples,
+`curl -G --data-urlencode "args=…"` for code, and `POST /batch --data-binary $'a\nb'`. A path that
+carries its own args (`/wall%200%200%205000%200`) still runs (`RevitHttpServer.TrySplitPathArgs`).
+
+**Activity block.** Each turn's tool calls show as live step rows under the question (thinking
+indicator with mm:ss, ✓/✗ per step, intermediate text muted) and collapse to "N stappen · 48 s".
+Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySink`,
+`ChatActivityEvent`); `TurnActivity` / `ToolCallDescriber` (`Services/Chat/ChatActivity.cs`) are the
+WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
+model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
+BOTH maps — a test checks).
+
+### Successcase logbook (scripts)
+Turn workshop follow-up questions into case files for the follow-up presentation — protocol in
+`docs/successcases.md`:
+```bash
+python -I scripts/successcase_mail.py "<subject part>"                 # mail -> new case
+python -I scripts/successcase_mail.py "<subject>" --chat <chat-id>     # link the reproducing chat
+python -I scripts/successcase.py <chat-id>                             # case from a chat only
+python -I scripts/successcase.py --index-only                          # rebuild INDEX.md
+python -I -m unittest discover -s scripts/tests -v                     # tests
+```
+Cases go to `demo_out/successcases/` (gitignored — they contain colleagues' names).
 
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:

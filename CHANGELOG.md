@@ -30,6 +30,42 @@
   under ~120 words, one short line per step while working. The Claude Code backend sends it in
   every turn's `--append-system-prompt`, so a language switch applies to resumed sessions too.
 
+### Fixed — "Unknown command 'wall%200…'" (arguments in the URL path)
+- The Claude Code backend's command file showed every command as
+  `curl ".../wall <x1> <y1> …"`, so the model put the arguments in the URL path and got
+  *Unknown command 'wall%200%200…'* 3–5 times per turn. The file now opens with a
+  **HOW TO CALL** block — the rule *"Arguments always go in ?args=, URL-encoded, or in a POST /batch
+  body; never in the path"*, the encoding of space/`+`/`&`/`#`/`%`, encoded examples,
+  `curl -G --data-urlencode "args=…"` for code and free text, and `POST /batch --data-binary $'…\n…'`
+  (the old batch tip sent a literal backslash-n) — and lists each command as `/<cmd>?args=ARGS   ARGS: <grammar>`.
+  Every turn prompt repeats the rule, so resumed sessions get it too.
+- **Server safety net:** a path that carries its own arguments — `/wall%200%200%205000%200`,
+  `/wall/0 0 5000 0` — now runs as the command with those arguments (logged) instead of failing.
+
+### Added — chat activity block
+- Each turn shows a live **activity block** under the question: an indicator with an mm:ss
+  counter ("Aan het denken…" before the first token, a quiet "Duurt lang — Revit is misschien bezig"
+  hint after 60 s without progress) and one row per tool call — running, done (✓) or failed (✗ with
+  the first error line), capped at the last 8. Text the model writes between tool calls is shown
+  muted inside the block; only the text after the last tool call is the answer. When the turn ends
+  the block collapses to one line ("7 stappen · 48 s", click to expand) or disappears when no tools
+  ran. Backends report steps on a UI-only side channel; the stored chat, the token stream and the
+  model-bound history are unchanged.
+- Answer rendering: more line height and paragraph spacing, list indentation, inline code as a
+  pill, smaller headings, code blocks over 20 lines cut to 12 with a "nog N regels" line, a thin
+  rule between turns.
+- One language source and one label table: the block's texts follow **Settings → Taal / Language**
+  and its step labels are the same Dutch/English status verbs (`StatusVerbs`), now also covering
+  `whyhidden`, the DWG/point-cloud commands, the office-standards commands and the CLI's own
+  file/image/shell tools.
+
+### Added — successcase logbook (scripts)
+- `scripts/successcase.py` turns a chat log into a case file (question, answer, per-turn timing,
+  command count from the debug log, total time) under `demo_out/successcases/` and rebuilds
+  `INDEX.md`; `scripts/successcase_mail.py` starts a case from an Outlook mail (via the bot's
+  Outlook helper) and links it to a chat. Re-running keeps Who/Score/Remarks. Protocol:
+  `docs/successcases.md`. Cases contain colleagues' names and are never committed (`demo_out/`).
+
 ## v1.2.6 — Sheet Assembly, Project Folder, Visibility Diagnosis (2026-10-12)
 
 ### Added — `whyhidden` and `join`/`unjoin`
