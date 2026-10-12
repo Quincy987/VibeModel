@@ -431,7 +431,8 @@ longer list (`Strings.ExamplesList`). All texts are `Strings` keys (nl/en) compo
 completed answer the pane makes a separate cheap call — never on the token stream — for none or two
 to four one-tap chips above the input. Pre-filter (`QuickReplyService.ShouldOffer`): no call for an
 answer under 40 characters, a cancelled turn or an error. Input: the last 6 *stored* messages (500
-characters each, the current turn excluded), the question (1000) and the displayed answer (3000);
+characters each — a question keeps its start, a stored answer its end, since it opens with the step
+notes; the current turn excluded), the question (1000) and the displayed answer (3000);
 the system prompt (`SystemPromptTemplate`, one constant) gets the active view, its phase (from the
 TEMPLATE block), the selection size and the commands this turn ran (`TurnActivity.ToolNames`).
 Model per backend (`SuggestionModels.For`): Anthropic API → `claude-haiku-5-5` with the schema as a

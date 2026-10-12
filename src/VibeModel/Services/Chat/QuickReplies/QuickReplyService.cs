@@ -41,7 +41,6 @@ namespace VibeModel.Services.Chat.QuickReplies
         public string SessionId { get; set; }
         /// <summary>The session's message count right after the answer was stored.</summary>
         public int MessageIndex { get; set; }
-        public string Language { get; set; }
         public string SystemPrompt { get; set; }
         public string UserInput { get; set; }
     }
@@ -178,8 +177,9 @@ Use these only to keep your labels concrete. They are not a reason to offer anyt
 
         /// <summary>
         /// The user message: the last <see cref="RecentMessages"/> STORED messages before this turn
-        /// (not the model's working transcript), each cut to <see cref="RecentMessageChars"/>, then
-        /// the question and the answer. The current turn is cut from <paramref name="stored"/>
+        /// (not the model's working transcript), each cut to <see cref="RecentMessageChars"/> — a
+        /// question keeps its start, an answer its end (a stored answer opens with the step notes
+        /// and ends with what the user read) — then the question and the answer. The current turn is cut from <paramref name="stored"/>
         /// when it is there (it is passed separately).
         /// </summary>
         public static string BuildUserInput(IReadOnlyList<ChatSessionMessage> stored, string question, string answer)
@@ -203,7 +203,9 @@ Use these only to keep your labels concrete. They are not a reason to offer anyt
                 sb.AppendLine("EARLIER IN THIS CONVERSATION:");
                 foreach (var m in recent)
                     sb.Append(m.Role == ChatSession.RoleUser ? "User: " : "VibeModel: ")
-                      .AppendLine(Cut(m.Content, RecentMessageChars));
+                      .AppendLine(m.Role == ChatSession.RoleUser
+                          ? Cut(m.Content, RecentMessageChars)
+                          : CutKeepEnd(m.Content, RecentMessageChars));
                 sb.AppendLine();
             }
             sb.AppendLine("THE USER JUST ASKED:");
@@ -220,6 +222,12 @@ Use these only to keep your labels concrete. They are not a reason to offer anyt
         {
             var t = (text ?? "").Trim();
             return t.Length <= max ? t : t.Substring(0, max) + "…";
+        }
+
+        private static string CutKeepEnd(string text, int max)
+        {
+            var t = (text ?? "").Trim();
+            return t.Length <= max ? t : "…" + t.Substring(t.Length - max);
         }
 
         // --- The model's output -------------------------------------------------------------
@@ -291,6 +299,12 @@ Use these only to keep your labels concrete. They are not a reason to offer anyt
                 try { envelope = serializer.DeserializeObject(t) as Dictionary<string, object>; }
                 catch { envelope = null; }
                 if (envelope != null) break;
+            }
+            if (envelope == null)
+            {
+                // A pretty-printed envelope spans several lines.
+                try { envelope = serializer.DeserializeObject(stdout.Trim()) as Dictionary<string, object>; }
+                catch { envelope = null; }
             }
             if (envelope == null) return null;
             if (envelope.TryGetValue("is_error", out var err) && err is bool e && e) return null;

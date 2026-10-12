@@ -287,8 +287,9 @@ namespace VibeModel
 
         private void SampleViewAndSelection(UIApplication uiApp)
         {
+            // Unsigned difference: Environment.TickCount goes negative after ~25 days of uptime.
             var now = Environment.TickCount;
-            if (unchecked(now - _lastViewSampleTick) < 400) return;
+            if (unchecked((uint)(now - _lastViewSampleTick)) < 400u) return;
             _lastViewSampleTick = now;
             TrackViewAndSelection(uiApp.ActiveUIDocument);
         }

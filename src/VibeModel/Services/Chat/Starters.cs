@@ -24,6 +24,13 @@ namespace VibeModel.Services.Chat
     {
         public const int MaxChips = 4;
 
+        // The general examples, after the context rules (also the welcome card's fallback list).
+        private static readonly string[] DefaultKeys =
+            { Strings.WelcomeExample1, Strings.WelcomeExample2, Strings.WelcomeExample3, Strings.WelcomeExample4 };
+
+        public static IReadOnlyList<string> Defaults(string language) =>
+            DefaultKeys.Select(key => Strings.For(language, key)).ToList();
+
         public static IReadOnlyList<string> Pick(StarterContext ctx, string language)
         {
             ctx = ctx ?? new StarterContext();
@@ -34,16 +41,11 @@ namespace VibeModel.Services.Chat
             if (ctx.PackActive) picks.Add(Strings.For(language, Strings.StarterCheck));
             if (ctx.ProjectDocCount > 0) picks.Add(Strings.For(language, Strings.StarterDocs));
 
-            var defaults = new[]
-            {
-                Strings.WelcomeExample1, Strings.WelcomeExample2, Strings.WelcomeExample3,
-                // The sheet starter already is "fit these views" — the A0 example would repeat it.
-                ctx.ActiveViewIsSheet ? null : Strings.WelcomeExample4
-            };
-            foreach (var key in defaults)
+            foreach (var key in DefaultKeys)
             {
                 if (picks.Count >= MaxChips) break;
-                if (key == null) continue;
+                // The sheet starter already is "fit these views" — the A0 example would repeat it.
+                if (ctx.ActiveViewIsSheet && key == Strings.WelcomeExample4) continue;
                 var text = Strings.For(language, key);
                 if (!picks.Contains(text, StringComparer.OrdinalIgnoreCase)) picks.Add(text);
             }

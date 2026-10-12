@@ -185,11 +185,18 @@ namespace VibeModel.Services.Chat.QuickReplies
                 if (p == null) return null;
                 using (ct.Register(() => { try { if (!p.HasExited) p.Kill(); } catch { } }))
                 {
-                    var stdin = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false));
-                    stdin.Write(userInput);
-                    stdin.Close();
                     var outTask = p.StandardOutput.ReadToEndAsync();
                     var errTask = p.StandardError.ReadToEndAsync();
+                    try
+                    {
+                        var stdin = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false));
+                        stdin.Write(userInput);
+                        stdin.Close();
+                    }
+                    catch (IOException)
+                    {
+                        // The CLI already exited (e.g. on an unknown option) — its stderr says why.
+                    }
                     p.WaitForExit();
                     ct.ThrowIfCancellationRequested();
                     var stdout = outTask.Result;
@@ -208,13 +215,22 @@ namespace VibeModel.Services.Chat.QuickReplies
             }
         }
 
-        // "error: unknown option '--effort'" → drop that optional flag; a required one → stop for the session.
+        /// <summary>"error: unknown option '--effort'" → "--effort"; null when stderr is about something else.</summary>
+        internal static string RejectedOption(string stderr)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(stderr ?? "", @"unknown option '([^']+)'",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.Split('=')[0] : null;
+        }
+
+        // An optional speed-up flag is dropped and the next call works; a required one → no quick replies this session.
         private static void HandleRejectedOption(string stderr)
         {
-            if (string.IsNullOrEmpty(stderr) || stderr.IndexOf("unknown option", StringComparison.OrdinalIgnoreCase) < 0) return;
+            var option = RejectedOption(stderr);
+            if (option == null) return;
             lock (Sync)
             {
-                var optional = OptionalFlags.FirstOrDefault(f => stderr.Contains(f.Split(' ')[0]));
+                var optional = OptionalFlags.FirstOrDefault(f => f.Split(' ')[0] == option);
                 if (optional != null)
                 {
                     OptionalFlags.Remove(optional);
@@ -254,7 +270,8 @@ namespace VibeModel.Services.Chat.QuickReplies
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
             var text = Post(url, BuildRequest(systemPrompt, userInput, !_noJsonMode), json, ct, out var status);
-            if (text == null && status == 400 && !_noJsonMode)
+            // A server that does not know response_format answers 400 or 422.
+            if (text == null && (status == 400 || status == 422) && !_noJsonMode)
             {
                 _noJsonMode = true;
                 Logger.Info("Quick replies: local server rejected response_format - retrying without JSON mode");
@@ -262,11 +279,17 @@ namespace VibeModel.Services.Chat.QuickReplies
             }
             if (text == null) return null;
 
-            var root = json.DeserializeObject(text) as Dictionary<string, object>;
+            return QuickReplyService.ExtractJsonObject(MessageContent(text, json));
+        }
+
+        /// <summary>choices[0].message.content of an OpenAI-style response, or null.</summary>
+        internal static string MessageContent(string responseJson, JavaScriptSerializer json)
+        {
+            var root = json.DeserializeObject(responseJson) as Dictionary<string, object>;
             if (root == null || !root.TryGetValue("choices", out var choices) || !(choices is object[] arr) || arr.Length == 0) return null;
-            var message = (arr[0] as Dictionary<string, object>)?["message"] as Dictionary<string, object>;
-            var content = message != null && message.TryGetValue("content", out var c) ? c as string : null;
-            return QuickReplyService.ExtractJsonObject(content);
+            if (!(arr[0] is Dictionary<string, object> first) || !first.TryGetValue("message", out var m) ||
+                !(m is Dictionary<string, object> message)) return null;
+            return message.TryGetValue("content", out var c) ? c as string : null;
         }
 
         internal static Dictionary<string, object> BuildRequest(string systemPrompt, string userInput, bool jsonMode)

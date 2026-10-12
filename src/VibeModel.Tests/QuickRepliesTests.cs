@@ -87,8 +87,8 @@ namespace VibeModel.Tests
             Assert.Equal(new[] { "Selecteer ze", "Kleur ze rood" }, replies.Select(r => r.Label));
             Assert.Equal("Selecteer ze", replies[0].Prompt); // empty prompt → the label
             Assert.Equal(44, QuickReplyService.MaxLabelLength);
-            Assert.Single(QuickReplyService.ParseAndSanitize(Json(true, (new string('x', 44), "ok", false), ("b", "b", false)))
-                .Where(r => r.Label.Length == 44));
+            Assert.Single(QuickReplyService.ParseAndSanitize(Json(true, (new string('x', 44), "ok", false), ("b", "b", false))),
+                r => r.Label.Length == 44);
         }
 
         [Fact]
@@ -153,7 +153,8 @@ namespace VibeModel.Tests
             for (int i = 1; i <= 8; i++)
             {
                 stored.Add(M(ChatSession.RoleUser, "vraag " + i));
-                stored.Add(M(ChatSession.RoleAssistant, "antwoord " + i + " " + new string('z', 600)));
+                // A stored answer: step notes first, the answer the user read last.
+                stored.Add(M(ChatSession.RoleAssistant, "stap-notitie " + new string('z', 600) + " antwoord " + i));
             }
             stored.Add(M(ChatSession.RoleSystem, "Error: something"));
             stored.Add(M(ChatSession.RoleUser, "huidige vraag"));
@@ -164,11 +165,13 @@ namespace VibeModel.Tests
             Assert.StartsWith("EARLIER IN THIS CONVERSATION:", input);
             Assert.DoesNotContain("vraag 5", input);              // only the last 6 earlier messages
             Assert.Contains("User: vraag 6", input);
-            Assert.Contains("VibeModel: antwoord 8", input);
+            Assert.Contains("VibeModel: …", input);
+            Assert.Contains(" antwoord 8\r\n", input);              // the answer's end survives the cut
             Assert.DoesNotContain("Error: something", input);     // system messages are not turns
             Assert.DoesNotContain("tool-chatter", input);         // the current turn comes separately
             Assert.Equal(1, Count(input, "huidige vraag"));
             Assert.DoesNotContain(new string('z', 501), input);   // 500 chars per earlier message
+            Assert.DoesNotContain("stap-notitie", input);         // ...and of an answer, its END
             Assert.Contains("THE USER JUST ASKED:\r\nhuidige vraag", input);
             Assert.Contains("VIBEMODEL ANSWERED:\r\nhet getoonde antwoord", input);
             Assert.EndsWith("What should the user be offered as one-tap answers?", input);
@@ -256,6 +259,34 @@ namespace VibeModel.Tests
         {
             var stdout = "warning: something\n{\"type\":\"result\",\"is_error\":false,\"result\":\"Here you go:\\n```json\\n{\\\"offer\\\":false,\\\"replies\\\":[]}\\n```\"}";
             Assert.Equal("{\"offer\":false,\"replies\":[]}", QuickReplyService.ParseCliOutput(stdout));
+        }
+
+        [Fact]
+        public void CliOutput_PrettyPrintedEnvelope()
+        {
+            var stdout = "{\n  \"is_error\": false,\n  \"structured_output\": {\"offer\": false, \"replies\": []}\n}";
+            Assert.Equal("{\"offer\":false,\"replies\":[]}", QuickReplyService.ParseCliOutput(stdout));
+        }
+
+        [Theory]
+        [InlineData("error: unknown option '--effort'", "--effort")]
+        [InlineData("error: unknown option '--json-schema=x'", "--json-schema")]
+        [InlineData("Error: Unknown option '--strict-mcp-config'\n(Did you mean --effort?)", "--strict-mcp-config")]
+        [InlineData("API Error: 529 overloaded", null)]
+        [InlineData(null, null)]
+        public void CliRejectedOption_IsReadExactly(string stderr, string expected)
+        {
+            Assert.Equal(expected, ClaudeCliSuggestionModel.RejectedOption(stderr));
+        }
+
+        [Theory]
+        [InlineData("{\"choices\":[{\"message\":{\"content\":\"{\\\"offer\\\":false}\"}}]}", "{\"offer\":false}")]
+        [InlineData("{\"choices\":[{\"text\":\"x\"}]}", null)]
+        [InlineData("{\"choices\":[]}", null)]
+        [InlineData("{}", null)]
+        public void LocalResponse_MessageContent(string response, string expected)
+        {
+            Assert.Equal(expected, LocalSuggestionModel.MessageContent(response, new JavaScriptSerializer()));
         }
 
         [Theory]
@@ -370,6 +401,13 @@ namespace VibeModel.Tests
             Assert.Equal("Zet deze views passend op dit blad", chips[0]);
             Assert.DoesNotContain("Zet deze views passend op een A0", chips);
             Assert.Equal(4, chips.Count);
+        }
+
+        [Fact]
+        public void Defaults_AreTheWelcomeExamples()
+        {
+            Assert.Equal(VibeModel.UI.UiText.WelcomeExamples("nl"), Starters.Defaults("nl"));
+            Assert.Equal(VibeModel.UI.UiText.WelcomeExamples("en"), Starters.Defaults("en"));
         }
 
         [Fact]

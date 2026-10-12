@@ -10,7 +10,8 @@
   Claude Code CLI or the local model) guesses what you were about to type next and offers none, or
   two to four one-tap chips above the input. A chip that only asks or selects is sent at once; one
   that changes the model (marked with a pencil) is put in the input box so you check it and press
-  Send. No "no thanks" buttons, no invented numbers, no row at all after a plain fact. The row
+  Send. "No thanks"-style buttons are filtered out in code; the prompt also tells the model not to
+  invent numbers and to offer no row after a plain fact (live: a one-line fact got none). The row
   steps aside while you type and is never stored in the chat. The mechanism is a transfer of
   DegenAI's quick replies (same prompt structure, schema and sanitizer, Revit domain).
 

@@ -418,7 +418,6 @@ namespace VibeModel.UI
             _backend = backend;
             ClosePopup();
             ClearQuickReplies();
-            _readyHint.Visibility = Visibility.Collapsed;
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1002,7 +1001,6 @@ namespace VibeModel.UI
             }
 
             ClearQuickReplies();
-            _readyHint.Visibility = Visibility.Collapsed;
             _inputBox.Text = "";
             if (text == null) text = "";
 
@@ -1285,7 +1283,6 @@ namespace VibeModel.UI
 
             ClosePopup();
             ClearQuickReplies();
-            _readyHint.Visibility = Visibility.Collapsed;
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1333,7 +1330,6 @@ namespace VibeModel.UI
 
             ClosePopup();
             ClearQuickReplies();
-            _readyHint.Visibility = Visibility.Collapsed;
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1626,7 +1622,6 @@ namespace VibeModel.UI
             {
                 SessionId = session.Id,
                 MessageIndex = session.Messages.Count,
-                Language = Strings.Current,
                 SystemPrompt = QuickReplyService.BuildSystemPrompt(context),
                 UserInput = QuickReplyService.BuildUserInput(session.Messages.ToList(), question, answer)
             };
@@ -1693,8 +1688,10 @@ namespace VibeModel.UI
             ScrollToBottomIfNeeded();
         }
 
+        // The row and the "ready to send" hint go (send, New Chat, History, backend switch, a chip).
         private void ClearQuickReplies()
         {
+            if (_readyHint != null) _readyHint.Visibility = Visibility.Collapsed;
             _quickReplies = null;
             _quickReplyRequest = null;
             _typingTimer?.Stop();
