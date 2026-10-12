@@ -66,6 +66,10 @@ namespace VibeModel.Services.Chat
 
         protected override string ResetLogLabel => "Direct backend";
 
+        public override string ModelName => SettingsManager.GetModel();
+
+        public override string DisplayName => "Anthropic API";
+
         public AnthropicDirectBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
             : base(commands, httpPort)
         {

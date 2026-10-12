@@ -25,12 +25,27 @@ namespace VibeModel.Infrastructure
             get { lock (Lock) return _pathName; }
         }
 
+        /// <summary>
+        /// Raised (on the thread that called <see cref="Update"/>) when the title or path actually
+        /// changed — the chat pane refreshes its welcome card with it.
+        /// </summary>
+        public static event EventHandler Changed;
+
         public static void Update(string title, string pathName)
         {
+            bool changed;
             lock (Lock)
             {
-                _title = title ?? "";
-                _pathName = pathName ?? "";
+                title = title ?? "";
+                pathName = pathName ?? "";
+                changed = title != _title || pathName != _pathName;
+                _title = title;
+                _pathName = pathName;
+            }
+            if (changed)
+            {
+                try { Changed?.Invoke(null, EventArgs.Empty); }
+                catch (Exception ex) { Logger.Info("ActiveDocumentTracker.Changed handler failed - " + ex.Message); }
             }
         }
     }

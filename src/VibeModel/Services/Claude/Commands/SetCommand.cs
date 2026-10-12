@@ -91,9 +91,8 @@ namespace VibeModel.Services.Claude.Commands
                     case StorageType.Double:
                         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dblVal))
                         {
-                            // Only convert to feet for dimension parameters
-                            if (FormattingHelper.IsDimensionRelated(paramName))
-                                dblVal = RevitUnitHelper.MmToFeet(dblVal);
+                            // The value is in the unit 'params' prints (mm / m² / m³ / °).
+                            dblVal = RevitUnitHelper.FromDisplay(FormattingHelper.GetInputKind(param), dblVal);
                             param.Set(dblVal);
                             success = true;
                         }

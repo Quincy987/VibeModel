@@ -172,7 +172,7 @@ curl -s "http://localhost:18884/tag?args=12345"
 # Delete elements
 curl -s "http://localhost:18884/delete?args=12345 12346"
 
-# Set parameter value
+# Set parameter value (a number is in the unit `params` prints: mm, m², m³, °)
 curl -s "http://localhost:18884/set?args=12345 Comments Hello+World"
 
 # Color override (RGB 0-255)
@@ -387,6 +387,39 @@ Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySi
 WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
 model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
 BOTH maps — a test checks).
+
+**Tables, units, sources (RULES block).** The rules end with three more sections, each a constant
+in `ChatBackendBase` (`TableRule`, `UnitsRule`/`UnitsConversionRule`, `SourcesRule`/`SourceFormsRule`):
+a markdown table for >3 items with 2+ attributes (units in the header cell), a unit with every
+quantity, and a `[bron: …]` marker after every fact taken from the office standards, the leidraad,
+a project document or the model. Markdig runs with pipe + grid tables; `Markdown/Renderers/TableRenderer.cs`
+draws them (layout decisions — numeric columns, 30 shown rows, TSV and the column widths — are the
+WPF-free `Markdown/TableLayout.cs`). Widths use browser-style auto layout (`TableLayout.Fit`): one line
+per cell when it fits, else every column keeps its longest word, and when even that does not fit the
+text columns give way before the numeric ones; `ChatPane` refits on resize (`TableRenderer.FitTables`).
+In the default ~300 px pane a 5-column table still breaks words, hence the rule's 4-column limit.
+
+**Source markers.** `Markdown/Citations.cs` (`CitationParser`, WPF-free) finds
+`[bron: <kind> <target>]` outside code spans/fences before Markdig parses, swaps each for a
+private-use placeholder and numbers the unique sources; `CitationInlines` renders the superscript
+and the collapsed "Bronnen (N)" footer. Kinds and what a click does (`Citation.TryGetLookup`, run by
+the pane off the UI thread):
+```
+[bron: leidraad 4.2]              -> standards leidraad 4.2        (popup text)
+[bron: standaard phasing]         -> standards phasing             (popup text)
+[bron: document memo.pdf p.3]     -> readdoc memo.pdf              (scrolled to "--- page 3 ---"; §x -> first match)
+[bron: revit 1543814]             -> select + zoomto 1543814       (a parameter name without id: tooltip only)
+[bron: revit-api]                 -> tooltip only
+```
+Malformed markers (no colon, empty, unclosed, `\[bron:`) stay text. Display only: the stored chat
+JSON and the model-bound history keep the raw markers.
+
+**Welcome card.** An empty chat starts with `ChatPane.BuildWelcomeCard()`: backend + model
+(`ChatBackendBase.DisplayName` / `ModelName` — for Claude Code the model of the last turn's init
+event, else `ANTHROPIC_MODEL` / `~/.claude/settings.json`), the open model + project folder, four
+example chips. It rebuilds in place after Settings closes and when the active document changes
+(`ActiveDocumentTracker.Changed`). The header's `?` shows the longer list (`Strings.ExamplesList`).
+All its texts are `Strings` keys (nl/en) composed by `UiText`.
 
 ### Successcase logbook (scripts)
 Turn workshop follow-up questions into case files for the follow-up presentation — protocol in

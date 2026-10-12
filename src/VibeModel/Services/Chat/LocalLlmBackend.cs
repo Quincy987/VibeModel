@@ -98,6 +98,10 @@ namespace VibeModel.Services.Chat
 
         protected override string ResetLogLabel => "Local LLM backend";
 
+        public override string ModelName => SettingsManager.GetLocalLlmModel();
+
+        public override string DisplayName => Strings.Get(Strings.BackendLocal);
+
         public override void SendMessage(
             string prompt,
             IReadOnlyList<ChatAttachment> attachments,

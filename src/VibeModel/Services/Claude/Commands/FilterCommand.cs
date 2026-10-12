@@ -196,10 +196,8 @@ namespace VibeModel.Services.Claude.Commands
             }
             else if (param.StorageType == StorageType.Double)
             {
-                var rawVal = param.AsDouble();
-                // Convert feet to mm for length parameters
-                if (FormattingHelper.IsDimensionRelated(param.Definition.Name))
-                    rawVal = rawVal * 304.8;
+                // Compare in the unit 'params' prints (mm / m² / m³ / °).
+                var rawVal = RevitUnitHelper.ToDisplay(FormattingHelper.GetInputKind(param), param.AsDouble());
 
                 if (!double.TryParse(filterValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double target))
                     return false;
