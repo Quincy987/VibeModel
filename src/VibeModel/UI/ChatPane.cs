@@ -378,6 +378,7 @@ namespace VibeModel.UI
             _session = null;
 
             _backend = backend;
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1162,6 +1163,7 @@ namespace VibeModel.UI
             ChatSessionStore.Default.SaveSession(_session);
             _session = null;
 
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1207,6 +1209,7 @@ namespace VibeModel.UI
                 return;
             }
 
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();

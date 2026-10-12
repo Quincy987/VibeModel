@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Added — tables, units and sources in chat answers; a compact welcome card
+Workshop feedback (werkvoorbereiders, 2026-10-12): tables showed as raw pipes, numbers came
+without units, nobody could read back *why* a choice was made, and the welcome text was English
+and took a third of the pane.
+- **Tables.** Markdown pipe and grid tables render as a real table: bold header on a light fill,
+  alternating row tint, padded cells, numeric columns (a number with an optional unit) right-aligned,
+  column widths from the content with a cap so long text wraps instead of scrolling sideways. Long
+  tables show 30 rows and "… nog N rijen" unfolds the rest; **Kopiëren** under each table puts it on
+  the clipboard as tab-separated text (pastes into Excel as cells). The rules tell the model to use a
+  table for more than 3 items with 2+ attributes, with units in the header cell.
+- **Units.** New rules: every quantity names its unit, VibeModel output is mm unless stated, values
+  over 10 000 mm go to m / m² / m³ (said once). Command output now names the unit wherever it printed
+  a bare number: `params` (and `family`, `set`, `colorsplash`/`filter --count` labels) classify a
+  double parameter by its Revit spec — lengths in mm, areas in m², volumes in m³, angles in ° —
+  where areas, volumes, angles and non-"dimension"-named lengths used to print raw internal units;
+  `geometry` volume in m³; `section`, `viewport`, `sheetinfo`, `tag --at`, `pcprobe` and the `curves`
+  headers name their mm. **`set` and `filter` read typed values in the same unit `params` prints**
+  (an angle in °, an area in m²; before: radians and ft²).
+- **Sources.** The model cites what it took from the office standards, the leidraad, a project
+  document or the model with a marker after the sentence — `[bron: leidraad 4.2]`,
+  `[bron: standaard phasing]`, `[bron: document memo.pdf p.3]`, `[bron: revit 1543814]`,
+  `[bron: revit-api]` — and never invents one. The pane shows each as a small superscript number
+  (tooltip = the source) with a collapsed "Bronnen (N)" line under the answer; a click opens the
+  source in a popup inside the pane (the `standards` chapter or topic, the `readdoc` text scrolled
+  to the page or section) or selects and zooms to the element. The stored chat keeps the raw
+  markers, so a reopened chat renders the same.
+- **Welcome card.** An empty chat now opens with a compact card in the Settings language: backend +
+  model, the open model + its project folder, and four example chips that fill the input box. The
+  not-configured card keeps the install hints, shorter and localized. The header's **?** button shows
+  the longer example list.
+
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its
