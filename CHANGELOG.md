@@ -7,8 +7,8 @@
   selected, an open sheet, an active office standard and documents in the project folder come
   first, then the general examples.
 - **Quick replies** after every answer: a separate, cheap model call (Haiku through the API, the
-  Claude Code CLI, or the local model when tool use is on) guesses what you were about to type next and offers none, or
-  two to four one-tap chips above the input. A chip that only asks or selects is sent at once; one
+  Claude Code CLI, or the local model when tool use is on) guesses what you were about to type next
+  and offers none, or two to four one-tap chips above the input. A chip that only asks or selects is sent at once; one
   that changes the model (marked with a pencil) is put in the input box so you check it and press
   Send. "No thanks"-style buttons are filtered out in code; the prompt also tells the model not to
   invent numbers and to offer no row after a plain fact (live: a one-line fact got none). The row

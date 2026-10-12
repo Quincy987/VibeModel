@@ -424,8 +424,9 @@ when the folder has documents, then the fixed examples. The facts come from `Act
 (active view, sheet flag and selection size — sampled on Idling at most every 400 ms, on view
 activation and in every command's stamp) and a cached off-thread project-folder listing. The card
 rebuilds in place after Settings closes and, while the chat is still empty, whenever a tracked fact
-changes (`ActiveDocumentTracker.Changed`) — mid-conversation it stays put so the messages never shift. Tapping a starter fills the input. The header's `?` shows the
-longer list (`Strings.ExamplesList`). All texts are `Strings` keys (nl/en) composed by `UiText`.
+changes (`ActiveDocumentTracker.Changed`) — mid-conversation it stays put so the messages never
+shift. Tapping a starter fills the input. The header's `?` shows the longer list
+(`Strings.ExamplesList`). All texts are `Strings` keys (nl/en) composed by `UiText`.
 
 **Quick replies** (`Services/Chat/QuickReplies/`, transferred from DegenAI's quick replies). After a
 completed answer the pane makes a separate cheap call — never on the token stream — for none or two
@@ -440,7 +441,8 @@ forced tool; Claude Code → `claude -p --model haiku --output-format json --jso
 --no-session-persistence --effort low --strict-mcp-config --system-prompt …` (input on stdin, run
 from `%LOCALAPPDATA%\VibeModel\quickreplies`; a CLI that rejects `--json-schema`/`--tools` is skipped
 for the session, unknown speed-up flags are dropped one by one); local LLM → JSON mode with the schema
-in the prompt, and only with tool use on (a chat-only model could not carry out any chip). Timeout 8 s, 12 s for the CLI (its startup alone is 3–5 s; live calls took 3–7 s).
+in the prompt, and only with tool use on (a chat-only model could not carry out any chip).
+Timeout 8 s, 12 s for the CLI (its startup alone is 3–5 s; live calls took 3–7 s).
 `ParseAndSanitize` never trusts the model: `offer:false` → none; a label over 44 or a prompt over
 240 characters is dropped (not cut); decline labels ("Nee bedankt", "Laat maar", "Not now", …,
 `DeclineLabels`, whole normalized label) are dropped and logged — a hit means the prompt regressed;
