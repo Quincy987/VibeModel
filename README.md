@@ -51,7 +51,7 @@ Remember: new sections get phase 2
 
 ## What it can do
 
-Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short demo video; the scripts and links live in [docs/demos](docs/demos/README.md).
+Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live recording of the panel, folded under the table; the scripts and the rest live in [docs/demos](docs/demos/README.md).
 
 | | Topic | Status |
 |---|---|---|
@@ -64,6 +64,36 @@ Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short 
 | 7 | **Checking against a document** — *"Does the number of bolts match the specification?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
 | 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
 | 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
+
+<details><summary><b>Diagnosis</b> — see it</summary>
+
+<img src="docs/images/diagnosis.gif" width="420" alt="Animated recording of the VibeModel chat panel in Revit: a question why a wall is not visible in this view is typed and sent, one diagnosis step runs, and the answer names the cause (the wall was hidden with Hide in View) and how to unhide it, followed by one-tap follow-up suggestions.">
+
+</details>
+
+<details><summary><b>Information</b> — see it</summary>
+
+<img src="docs/images/information.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request for a table of the 5 longest walls is answered with a table of id, type, length in m and height in mm, the phase in the text, a numbered source and the ids on one line.">
+
+</details>
+
+<details><summary><b>Modelling</b> — see it</summary>
+
+<img src="docs/images/modelling.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request to place 5 piles along a line, 3000 mm apart. The first attempt fails on the type name, the next steps look up the type and place all five in one step; the answer lists the positions and notes that one Ctrl+Z removes them.">
+
+</details>
+
+<details><summary><b>Sheets</b> — see it</summary>
+
+<img src="docs/images/sheets.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request for a pile schedule on a new A0 sheet. Six steps create the schedule, filter out the sheet piles, place it on a new A0 sheet and check it; the answer shows the schedule as a table with a total.">
+
+</details>
+
+<details><summary><b>Context</b> — see it</summary>
+
+<img src="docs/images/context.gif" width="420" alt="Animated recording of the VibeModel chat panel in two chats: 'Remember that new sections get phase 2' is saved to the project memory; in a new chat, 'Which phase do sections get here?' is answered from that memory.">
+
+</details>
 
 <div align="center">
 <img src="docs/images/vibe-3d-check.gif" width="880" alt="The same model in 3D: the chat selects the quay wall, colours it, explains a stray graphic override and removes it, then answers why the view suddenly looks coarse.">

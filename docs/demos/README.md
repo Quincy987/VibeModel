@@ -8,16 +8,24 @@ yields a short GIF (chat panel only, ≤ 5 MB) that the README embeds next to th
 | # | Topic | GIF | Video | Length |
 |---|-------|-----|-------|--------|
 | 1 | Questions | _not recorded yet_ | _not recorded yet_ | ~1 min |
-| 2 | Information | _not recorded yet_ | _not recorded yet_ | ~1 min |
-| 3 | Diagnosis | _not recorded yet_ | _not recorded yet_ | ~1 min |
-| 4 | Modelling | _not recorded yet_ | _not recorded yet_ | ~2 min |
-| 5 | Sheets | _not recorded yet_ | _not recorded yet_ | ~2 min |
+| 2 | Information | [information.gif](../images/information.gif) (28 s): *Give me a table of the 5 longest walls: id, length, height and phase created* | _not recorded yet_ | ~1 min |
+| 3 | Diagnosis | [diagnosis.gif](../images/diagnosis.gif) (25 s): *Why can't I see element 1561029 in this view?* | _not recorded yet_ | ~1 min |
+| 4 | Modelling | [modelling.gif](../images/modelling.gif) (27 s): *Place 5 Betonpaal 320x320 piles along a line from 0,0 to 12000,0, 3000 mm apart* | _not recorded yet_ | ~2 min |
+| 5 | Sheets | [sheets.gif](../images/sheets.gif) (28 s): *Make a pile schedule with count and length and put it on a new A0 sheet* | _not recorded yet_ | ~2 min |
 | 6 | Annotating | _not recorded yet_ | _not recorded yet_ | ~1 min |
 | 7 | Checking against a document | _not recorded yet_ | _not recorded yet_ | ~1 min |
-| 8 | Context | _not recorded yet_ | _not recorded yet_ | ~1 min |
+| 8 | Context | [context.gif](../images/context.gif) (31 s): *Remember that new sections get phase 2* → New Chat → *Which phase do sections get here?* | _not recorded yet_ | ~1 min |
 | 9 | Exchange | _not recorded yet_ | _not recorded yet_ | ~1 min |
 
 GIFs live in `docs/images/`; videos are hosted outside the repository and linked here.
+
+The five GIFs were captured from the live add-in (v1.2.8) on a throwaway copy of a quay-wall demo
+model, never saved: the Revit window only, drawn off-screen with `PrintWindow` and cropped to the
+chat panel, the prompt set and sent through UI Automation (no keystrokes or mouse), 3 frames per
+second, the waiting part kept at one frame in nine. Topics 4, 5 and 8 were recorded with *Apply
+office standards* switched off and the template's title-block families renamed to neutral names,
+so no office-internal family or parameter names appear. Each turn's chat file and step arguments
+were searched for internal names before a GIF was kept.
 
 ## Recording rules
 
