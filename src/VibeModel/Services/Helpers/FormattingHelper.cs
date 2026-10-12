@@ -12,11 +12,7 @@ namespace VibeModel.Services.Helpers
     /// </summary>
     public static class FormattingHelper
     {
-        public static string FormatLength(double feetValue)
-        {
-            double mm = feetValue * 304.8;
-            return mm.ToString("F1", CultureInfo.InvariantCulture) + " mm";
-        }
+        public static string FormatLength(double feetValue) => RevitUnitHelper.Format(QuantityKind.Length, feetValue);
 
         public static string FormatPoint(XYZ point)
         {

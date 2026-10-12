@@ -172,7 +172,7 @@ curl -s "http://localhost:18884/tag?args=12345"
 # Delete elements
 curl -s "http://localhost:18884/delete?args=12345 12346"
 
-# Set parameter value (a number is in the unit `params` prints: mm, m², m³, °)
+# Set parameter value (lengths/areas/volumes/angles in the unit `params` prints: mm, m², m³, °; other kinds internal)
 curl -s "http://localhost:18884/set?args=12345 Comments Hello+World"
 
 # Color override (RGB 0-255)

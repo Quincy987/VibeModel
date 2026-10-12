@@ -32,8 +32,9 @@ and took a third of the pane.
   double parameter by its Revit spec — lengths in mm, areas in m², volumes in m³, angles in ° —
   where areas, volumes, angles and non-"dimension"-named lengths used to print raw internal units;
   `geometry` volume in m³; `section`, `viewport`, `sheetinfo`, `tag --at`, `pcprobe` and the `curves`
-  headers name their mm. **`set` and `filter` read typed values in the same unit `params` prints**
-  (an angle in °, an area in m²; before: radians and ft²).
+  headers name their mm. **`set` and `filter` read a typed length, area, volume or angle in the unit
+  `params` prints** (mm, m², m³, °; before: an angle in radians, an area in ft²). Other measurable
+  kinds (force, slope, …) still take Revit's internal units, as before.
 - **Sources.** The model cites what it took from the office standards, the leidraad, a project
   document or the model with a marker after the sentence — `[bron: leidraad 4.2]`,
   `[bron: standaard phasing]`, `[bron: document memo.pdf p.3]`, `[bron: revit 1543814]`,

@@ -104,8 +104,8 @@ namespace VibeModel.Markdown
     {
         // Private-use characters: Markdig treats them as plain text, so a placeholder survives
         // parsing inside one literal and the inline renderer can swap it for the superscript.
-        public const char PlaceholderStart = '';
-        public const char PlaceholderEnd = '';
+        public const char PlaceholderStart = '\uE000';
+        public const char PlaceholderEnd = '\uE001';
 
         private static readonly Regex MarkerRegex = new Regex(
             @"\G\[(?:bron|source)\s*:([^\]\n]*)\]",
@@ -201,8 +201,10 @@ namespace VibeModel.Markdown
                             placeholders.Append(Placeholder(citation.Number));
                         }
                         // The space the model puts before the marker would sit between the
-                        // sentence and its superscript.
-                        while (sb.Length > 0 && sb[sb.Length - 1] == ' ') sb.Length--;
+                        // sentence and its superscript — but not the one after a list bullet
+                        // ("- [bron: …]"), which keeps the line a list item.
+                        if (!OnlyLinePrefixBefore(sb))
+                            while (sb.Length > 0 && sb[sb.Length - 1] == ' ') sb.Length--;
                         sb.Append(placeholders);
                         i += m.Length;
                         continue;
@@ -328,12 +330,15 @@ namespace VibeModel.Markdown
             return true;
         }
 
+        // A code span closes within its paragraph: a lone backtick never swallows the markers
+        // of the paragraphs after it.
         private static int FindClosingBackticks(string text, int from, int run)
         {
+            var limit = ParagraphEnd(text, from);
             int i = from;
-            while (i < text.Length)
+            while (i < limit)
             {
-                var j = text.IndexOf('`', i);
+                var j = text.IndexOf('`', i, limit - i);
                 if (j < 0) return -1;
                 var len = 0;
                 while (j + len < text.Length && text[j + len] == '`') len++;
@@ -341,6 +346,31 @@ namespace VibeModel.Markdown
                 i = j + len;
             }
             return -1;
+        }
+
+        // The index of the next blank line (or the end of the text).
+        private static int ParagraphEnd(string text, int from)
+        {
+            var i = from;
+            while (true)
+            {
+                var nl = text.IndexOf('\n', i);
+                if (nl < 0) return text.Length;
+                var k = nl + 1;
+                while (k < text.Length && (text[k] == ' ' || text[k] == '\t' || text[k] == '\r')) k++;
+                if (k >= text.Length || text[k] == '\n') return nl;
+                i = nl + 1;
+            }
+        }
+
+        // True when the current line so far holds nothing but indentation and a list bullet
+        // ("- ", "* ", "1. ") — the marker opens the line's content.
+        private static bool OnlyLinePrefixBefore(StringBuilder sb)
+        {
+            var start = sb.Length;
+            while (start > 0 && sb[start - 1] != '\n') start--;
+            var line = sb.ToString(start, sb.Length - start);
+            return Regex.IsMatch(line, @"^\s*(?:[-*+]|\d+[.)])?\s*$");
         }
 
         private static string CollapseSpaces(string s) =>
