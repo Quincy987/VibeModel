@@ -690,7 +690,7 @@ namespace VibeModel.UI
 
             if (_backend == null || !_backend.IsAvailable)
             {
-                var msg = _backend?.StatusMessage ?? "Chat backend not initialized. Click Settings to configure your API key.";
+                var msg = _backend?.StatusMessage ?? Strings.Get(Strings.BackendNotInitialized);
                 AddMessage(new ChatMessage(ChatRole.System, msg));
                 ChatHistory.Add("System", msg);
                 if (_session != null)

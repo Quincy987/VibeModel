@@ -352,6 +352,20 @@ curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefi
   the Claude Code backend additionally runs with `--add-dir <folder>`.
 - Listing a folder on a network drive has a 3 s deadline; an offline folder is reported, never waited on.
 
+### Chat Pane (in-Revit chat)
+The pane's **Claude Code** backend spawns the CLI headless per turn:
+`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,Read [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
+`--permission-mode dontAsk` is deliberate: without it the CLI inherits the user's `defaultMode`,
+and in `auto` mode the safety classifier refused approved `delete`/`select` curls as
+"Irreversible Local Destruction". `dontAsk` makes `--allowedTools` the whole policy (Bash + Read
+run, every other tool is denied, never prompted) — narrower than `bypassPermissions`, and unlike
+`Bash(curl:*)` it keeps the `cat > /tmp/q.cs` + `exec --data-binary` pattern working. Every
+VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with
+the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language)` — reply language,
+undo, ask-first for sheets/shared resources, compact answers); edit the wording there, both
+backends use it. Settings → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
+reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`).
+
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:
 ```bash

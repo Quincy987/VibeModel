@@ -55,6 +55,9 @@ namespace VibeModel.UI
         private TextBlock _statusText;
         private Button _saveButton;
 
+        // Chat language ("nl" / "en")
+        private ComboBox _languageCombo;
+
         // Office standards
         private CheckBox _standardsEnabledCheck;
         private TextBox _packPathBox;
@@ -115,6 +118,9 @@ namespace VibeModel.UI
             mainPanel.Children.Add(_cliPanel);
             mainPanel.Children.Add(_apiPanel);
             mainPanel.Children.Add(_localPanel);
+
+            // Chat language — independent of the backend tabs.
+            mainPanel.Children.Add(CreateLanguagePanel());
 
             // Project folder (plan 10) — this model's reference documents.
             mainPanel.Children.Add(CreateProjectFolderPanel(documentTitle));
@@ -265,6 +271,36 @@ namespace VibeModel.UI
                 Margin = new Thickness(0, 0, 0, 4)
             });
 
+            return panel;
+        }
+
+        // --- Language panel ---
+
+        private StackPanel CreateLanguagePanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Taal / Language",
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            panel.Children.Add(CreateLabel(
+                "The chat replies in the language you write in; this is the fallback, and the language of the pane's own messages."));
+
+            _languageCombo = new ComboBox
+            {
+                FontSize = 13,
+                Width = 200,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            _languageCombo.Items.Add(new ComboBoxItem { Content = "Nederlands", Tag = Services.Chat.Strings.Dutch });
+            _languageCombo.Items.Add(new ComboBoxItem { Content = "English", Tag = Services.Chat.Strings.English });
+            _languageCombo.SelectedIndex = Services.Chat.Strings.IsEnglish(SettingsManager.GetLanguage()) ? 1 : 0;
+            panel.Children.Add(_languageCombo);
             return panel;
         }
 
@@ -856,6 +892,8 @@ namespace VibeModel.UI
             SettingsManager.SetLocalLlmModel(_modelBox.Text?.Trim() ?? "");
             SettingsManager.SetLocalLlmToolUse(_toolUseCheck.IsChecked == true);
             SettingsManager.SetLocalLlmTimeout((int)_timeoutSlider.Value);
+
+            SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
 
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
             SettingsManager.SetStandardsPackPath(_packPathBox.Text);

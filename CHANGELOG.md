@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+### Fixed — chat refused deletes the user had approved
+- **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read`.**
+  Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its
+  safety classifier overrode the `Bash` allow and refused `curl …/delete` — and then even
+  `select` — as *Irreversible Local Destruction*, although the user had said yes (workshop
+  2026-10-12). Reproduced headless by replaying that session against a dead port: two classifier
+  denials with the old flags, none with `dontAsk`; `delete`, `batch delete`, `exec` and `select`
+  all run, while Write/Edit/WebFetch stay denied. A CLI too old to know `dontAsk` now gets a clear
+  "update with `claude update`" message instead of a silent stale-session reset.
+- The prompt states that every VibeModel modification is one Revit undo step (Ctrl+Z), so a
+  delete or edit the user asked for is executed — never refused or handed back as manual steps.
+  The old "always confirm destructive operations" bullet is gone.
+
+### Added — chat language, ask-first rule, compact answers
+- **Settings → Taal / Language** (`Language` in settings.json: `nl` default, `en`). The model
+  replies in the language the user writes in and falls back to the setting; Revit UI terms stay
+  in English as Revit shows them. The pane's fixed texts (status verbs such as "Wand maken…" /
+  "Elementen verwijderen…", backend and error messages) come in both languages via a small
+  `Strings` helper.
+- **One rules block for every backend** (`ChatBackendBase.BuildBehaviourRules`): language, undo,
+  *ask first* — confirm in one sentence before a change that lands on a sheet or on shared project
+  resources (views on sheets, view templates, materials, families/types, shared parameters,
+  phases, worksets); working views, new views, colour overrides, selections, temporary isolates
+  and anything explicitly asked for just happen — and *compact answers*: answer first in at most 5
+  short lines, no element ids in running text (one `code` line at the end if needed), no headings
+  under ~120 words, one short line per step while working. The Claude Code backend sends it in
+  every turn's `--append-system-prompt`, so a language switch applies to resumed sessions too.
+
 ## v1.2.6 — Sheet Assembly, Project Folder, Visibility Diagnosis (2026-10-12)
 
 ### Added — `whyhidden` and `join`/`unjoin`
