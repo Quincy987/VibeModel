@@ -1,8 +1,45 @@
 # VibeModel
 
-Talk to your Revit model in plain English. VibeModel is a Revit add-in that lets you use AI (Claude) to inspect and modify your model through a simple chat interface.
+Talk to your Revit model in plain language. VibeModel is a Revit add-in that lets you use AI (Claude) to inspect and modify your model through a chat panel inside Revit. It answers in the language you write in, shows every step it takes, cites the source of what it tells you, and every change is one Ctrl+Z.
 
-<!-- TODO: Add screenshot/demo GIF here -->
+## What it can do
+
+Nine kinds of work, with an honest status (v1.2.8). ✅ works through the chat · 🟡 works with conditions or a detour · ❌ not built. Each topic gets a short demo video; see [docs/demos](docs/demos/README.md) for the scripts and links.
+
+**1. Questions – "How do I do X in Revit?"**
+✅ General Revit questions, your office manual per chapter (standards pack), and the documents in the project folder (specification, memos, drawings).
+Tip: don't ask "how", ask "do" — it can carry out the answer in your model.
+
+**2. Information – "How many piles with this rake?"**
+✅ Count, filter, measure, read parameters; create real Revit schedules with filters and totals; read DWG layers and point-cloud ground levels instead of guessing from a picture. Answers come as tables with units and a source marker.
+🟡 Only if the data is in the model (a parameter that doesn't exist can't be counted; it says so).
+
+**3. Diagnosis – "Where did my element go? Why won't Revit let me?"**
+✅ The strongest part: `whyhidden` walks every visibility gate and names the setting and the fix; `join` explains Revit's refusals and what works instead; `check` audits against the office rules; `sheetinfo` finds overlapping or off-paper views and empty stamp fields.
+
+**4. Modelling – "Draw a wall along this line, cut a section through it"**
+✅ Walls, floors, families (type, rotation, parameters, placed along a drawn line or arc), grids, levels, rooms; sections across a wall or along a line; crop to the elements; 3D views aimed from a compass direction; callouts. A multi-step job is one batch and one Ctrl+Z.
+❌ Composite profiles (an L-wall with a sloped foot), sweeps, in-place families.
+
+**5. Sheets – "Put these views on an A0 so they fit"**
+✅ Sheet with title block and stamp, views in a grid or a band, scale advice when a view doesn't fit, move views between sheets, check the result.
+🟡 You still decide the layout ("plan top, sections below"); it reads an example sheet but doesn't copy taste.
+❌ Legends (the Revit API can't create them).
+
+**6. Annotating – "Add the level string and the sheet-pile length from the spec"**
+✅ Dimensions through elements, level strings, text with leaders, tags, filled regions, detail items.
+🟡 From a specification: a first pass, not a draughtsman.
+❌ Keynotes, dimensions in 3D views.
+
+**7. Checking against a document – "Does the bolt count match the specification?"**
+🟡 It can read the PDF, count in the model and compare, and since v1.2.8 every answer cites its sources and every change lands in a project journal. Still dependent on the PDF text and on naming ("M24" vs "M24 8.8"): a signal, not proof.
+❌ Automatic drawing-vs-model comparison.
+
+**8. Context – what it knows about your project and office**
+✅ Project folder (by default the folder the model lives in), office standards pack (phases, view templates, library, checks, manual), project memory across chats ("remember that new sections get phase 2"), and a journal of what changed and why.
+
+**9. Exchange**
+✅ Screenshots of any view or sheet without opening it; PDF, DWG and IFC export to the project folder.
 
 ## What You Need
 
@@ -68,13 +105,15 @@ This works well but has some limitations compared to Claude Code (no context win
 
 ### Things you can say
 
-- "What's selected?"
-- "List all the walls"
-- "Show me the document info"
-- "Color the selected element red"
-- "Create a wall from 0,0 to 5000,0 that's 3000mm high"
-- "Delete element 12345"
-- "What are the parameters of the selected element?"
+- "What's in this model?"
+- "Why can't I see element 348122 in this view?"
+- "Give me a table of the 5 longest walls with length, height and phase"
+- "Place 6 piles along this detail line, 2.8 m apart, turned to the line"
+- "Make a section across this wall and put it on sheet 0001 at 1:50"
+- "Make a pile schedule with count and length and export the sheet as PDF"
+- "Remember that new sections get phase 2"
+
+It replies in the language you write in (Dutch by default, set in Settings), shows each step while it works, and marks facts it took from a document or the office standards with a small source number you can click.
 
 ### Using from the command line
 
