@@ -63,6 +63,15 @@ namespace VibeModel.Tests
             Assert.Empty(nl.Except(en));
         }
 
+        // Every registered command has its own step label (chatlog had none until 2026-10-13).
+        [Fact]
+        public void StatusVerbs_CoverEveryRegisteredCommand()
+        {
+            var en = new HashSet<string>(StatusVerbs.EnglishCommands);
+            var missing = new ClaudeCommandRegistry().GetCommands().Select(c => c.Value.Name).Where(n => !en.Contains(n)).ToList();
+            Assert.Empty(missing);
+        }
+
         [Theory]
         [InlineData("wall", "nl", "Wand maken…")]
         [InlineData("revit_delete", "nl", "Elementen verwijderen…")]

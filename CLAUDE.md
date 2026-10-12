@@ -137,6 +137,23 @@ never reports "all clear" for an element Revit genuinely excludes, and adds an `
 section for visible-but-unmodifiable causes (group membership, pinned, linked model, workset
 owned by another user). The report ends with a one-line `Verdict:` naming the probable cause.
 
+### View & Analysis Commands
+```bash
+curl -s "http://localhost:18884/filter?args=walls"                      # Count/list by category
+curl -s "http://localhost:18884/filter?args=walls Height > 3000"         # Operators: = != > < >= <= contains
+curl -s "http://localhost:18884/filter?args=walls --view --select"       # Only the active view; select the hits (--ids: ids only)
+curl -s "http://localhost:18884/filter?args=walls --count Mark"          # Group by a parameter value
+curl -s "http://localhost:18884/measure?args=12345 67890"                # Distance between two elements (also: 6 coordinates mm, or 'selected')
+curl -s "http://localhost:18884/whereused?args=67890"                    # Instances of a type per level (or: <family> <type>, loadable families)
+curl -s "http://localhost:18884/zoomto?args=12345"                       # Zoom the active view to element(s) / 'selected'
+curl -s "http://localhost:18884/isolate?args=walls"                      # Temporary isolate a category or ids; 'unisolate' clears it
+curl -s "http://localhost:18884/unisolate"
+curl -s "http://localhost:18884/hide?args=12345"                         # Hide a category or ids in the active view; 'show' reverses
+curl -s "http://localhost:18884/show?args=12345"
+curl -s "http://localhost:18884/colorsplash?args=walls Type"             # Colour by parameter value; 'colorsplash reset [category]'
+curl -s "http://localhost:18884/chatlog?args=10"                         # Recent messages of the chat pane
+```
+
 ### Source Data Commands (imported DWG + point clouds)
 Read actual vector/point data from imported sources instead of guessing from screenshots.
 ```bash
@@ -335,7 +352,10 @@ curl -s "http://localhost:18884/export?args=ifc"                                
 - **`export`** never runs inside a transaction (an atomic batch is refused); names collide →
   " (2)". PDF uses the sheet's own paper size, crop/scope boxes/reference planes hidden. DWG
   without a setup merges views into the sheet (no xref files). IFC runs in a rolled-back
-  transaction, so it never changes the model. Default folder: `<project folder>\export\`; a `--to`
+  transaction, so it never changes the model, and is read back: the response lists per category how
+  many Revit elements went in and as which IFC class, and which model elements in scope are missing.
+  Revit 2023's default class table maps Structural Foundations to `IfcSlab BASESLAB`, so piles arrive
+  as slabs, not `IfcPile`/`IfcFooting` (the response says so). Default folder: `<project folder>\export\`; a `--to`
   folder that does not exist is created (relative paths are under the project folder).
 - **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
   `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
