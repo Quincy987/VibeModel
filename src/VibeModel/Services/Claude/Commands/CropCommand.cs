@@ -62,31 +62,7 @@ namespace VibeModel.Services.Claude.Commands
             double margin = RevitUnitHelper.MmToFeet(a.Margin);
             if (a.Fit)
             {
-                IEnumerable<Element> elems = a.Elements.Count > 0
-                    ? a.Elements.Select(id => doc.GetElement(new ElementId(id))).Where(e => e != null)
-                    : new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().Where(SheetHelper.IsModelContent);
-                min = max = null;
-                var boxes = new List<BoundingBoxXYZ>();
-                foreach (var e in elems)
-                {
-                    var bb = e.get_BoundingBox(null);
-                    if (bb == null) continue;
-                    var ext = bb.Max - bb.Min;
-                    if (RevitUnitHelper.FeetToMm(Math.Max(ext.X, ext.Y)) > MaxElementExtentMm) continue;
-                    boxes.Add(bb);
-                }
-                // Explicit --elements are taken as given; a whole view drops far-off stragglers.
-                var keep = a.Elements.Count > 0 ? Enumerable.Range(0, boxes.Count).ToList()
-                    : SheetLayout.FitKeep(boxes.Select(b => new MmRect(RevitUnitHelper.FeetToMm(b.Min.X), RevitUnitHelper.FeetToMm(b.Min.Y),
-                                                                       RevitUnitHelper.FeetToMm(b.Max.X), RevitUnitHelper.FeetToMm(b.Max.Y))).ToList());
-                outliers = boxes.Count - keep.Count;
-                foreach (var i in keep)
-                {
-                    var bb = boxes[i];
-                    min = min == null ? bb.Min : new XYZ(Math.Min(min.X, bb.Min.X), Math.Min(min.Y, bb.Min.Y), Math.Min(min.Z, bb.Min.Z));
-                    max = max == null ? bb.Max : new XYZ(Math.Max(max.X, bb.Max.X), Math.Max(max.Y, bb.Max.Y), Math.Max(max.Z, bb.Max.Z));
-                    used++;
-                }
+                FitExtent(doc, view, a.Elements, out min, out max, out used, out outliers);
                 if (used == 0)
                     return CommandResult.Error("ELEMENT_NOT_FOUND", "No model elements to fit in '" + view.Name + "'" +
                         (a.Elements.Count > 0 ? " (none of the given ids exist)" : " (only underlays/point clouds are visible)") + ".",
@@ -158,10 +134,45 @@ namespace VibeModel.Services.Claude.Commands
         }
 
         /// <summary>
+        /// The world box of the model elements in a view — or of the given ids, taken as given —
+        /// with far-off stragglers dropped (counted in `outliers`). min/max stay null when nothing
+        /// qualifies. Shared by `crop --fit` and `look`.
+        /// </summary>
+        internal static void FitExtent(Document doc, View view, IList<int> ids, out XYZ min, out XYZ max, out int used, out int outliers)
+        {
+            IEnumerable<Element> elems = ids != null && ids.Count > 0
+                ? ids.Select(id => doc.GetElement(new ElementId(id))).Where(e => e != null)
+                : new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().Where(SheetHelper.IsModelContent);
+            min = max = null;
+            used = 0;
+            var boxes = new List<BoundingBoxXYZ>();
+            foreach (var e in elems)
+            {
+                var bb = e.get_BoundingBox(null);
+                if (bb == null) continue;
+                var ext = bb.Max - bb.Min;
+                if (RevitUnitHelper.FeetToMm(Math.Max(ext.X, ext.Y)) > MaxElementExtentMm) continue;
+                boxes.Add(bb);
+            }
+            // Explicit ids are taken as given; a whole view drops far-off stragglers.
+            var keep = ids != null && ids.Count > 0 ? Enumerable.Range(0, boxes.Count).ToList()
+                : SheetLayout.FitKeep(boxes.Select(b => new MmRect(RevitUnitHelper.FeetToMm(b.Min.X), RevitUnitHelper.FeetToMm(b.Min.Y),
+                                                                   RevitUnitHelper.FeetToMm(b.Max.X), RevitUnitHelper.FeetToMm(b.Max.Y))).ToList());
+            outliers = boxes.Count - keep.Count;
+            foreach (var i in keep)
+            {
+                var bb = boxes[i];
+                min = min == null ? bb.Min : new XYZ(Math.Min(min.X, bb.Min.X), Math.Min(min.Y, bb.Min.Y), Math.Min(min.Z, bb.Min.Z));
+                max = max == null ? bb.Max : new XYZ(Math.Max(max.X, bb.Max.X), Math.Max(max.Y, bb.Max.Y), Math.Max(max.Z, bb.Max.Z));
+                used++;
+            }
+        }
+
+        /// <summary>
         /// Set the view's crop region (in its own frame) to the world box min..max as seen in the
         /// view; depth is kept. Returns the region's size in mm.
         /// </summary>
-        private static void CropTo(View view, XYZ min, XYZ max, bool clampWidth, out double wMm, out double hMm)
+        internal static void CropTo(View view, XYZ min, XYZ max, bool clampWidth, out double wMm, out double hMm)
         {
             var cb = view.CropBox;
             var inv = cb.Transform.Inverse;

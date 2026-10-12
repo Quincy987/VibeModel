@@ -50,6 +50,9 @@ namespace VibeModel.Tests
         [InlineData("crop")]
         [InlineData("docs")]
         [InlineData("readdoc")]
+        [InlineData("look")]
+        [InlineData("place")]
+        [InlineData("placeid")]
         public void Discovery_RegistersExpectedCommandNames(string name)
         {
             Assert.True(Registry.GetCommands().ContainsKey(name),
@@ -75,6 +78,9 @@ namespace VibeModel.Tests
         [InlineData("dimension")]
         [InlineData("text")]
         [InlineData("crop")]
+        [InlineData("look")]
+        [InlineData("place")]
+        [InlineData("placeid")]
         public void IsModification_TrueForDocumentMutatingCommands(string name)
         {
             Assert.True(Registry.IsModification(name), name + " should be a modification command.");

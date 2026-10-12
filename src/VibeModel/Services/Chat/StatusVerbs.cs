@@ -73,6 +73,7 @@ namespace VibeModel.Services.Chat
                 { "text", "Adding text…" },
                 { "sheetinfo", "Checking the sheet…" },
                 { "crop", "Cropping view…" },
+                { "look", "Aiming the 3D view…" },
 
                 // Diagnosis, source data, office standards (plans 07/08/11)
                 { "health", "Checking the connection…" },
@@ -160,6 +161,7 @@ namespace VibeModel.Services.Chat
                 { "text", "Tekst plaatsen…" },
                 { "sheetinfo", "Sheet controleren…" },
                 { "crop", "View bijsnijden…" },
+                { "look", "3D-camera richten…" },
 
                 // Diagnose, brondata, kantoorstandaard
                 { "health", "Verbinding controleren…" },

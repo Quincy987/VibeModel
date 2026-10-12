@@ -13,7 +13,8 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "view";
         public string Description => "Create a view (floor plan or 3D); with an office standard it gets the office view template, phase and browser folder";
-        public string Usage => "view plan|3d [levelName] [--name <viewName>] [--template <name>|--no-template] [--activate]";
+        public string Usage => "view plan|3d [levelName] [--name <viewName>] [--template <name>|--no-template] [--activate]  " +
+                               "|  view 3d --look <" + CameraMath.Keys.Split(' ')[0] + "|x y z> " + LookSpec.FlagUsage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -39,6 +40,17 @@ namespace VibeModel.Services.Claude.Commands
             var kind = parts[0].ToLowerInvariant();
             var levelName = parts.Length >= 2 ? parts[1].Trim() : null;
 
+            LookSpec look = null;
+            if (va.AnyCameraFlag)
+            {
+                if (kind != "3d")
+                    return CommandResult.Error("BAD_ARGS", "--look and its flags are for 'view 3d'.", Usage);
+                if (va.Look == null)
+                    return CommandResult.Error("BAD_ARGS", "--at/--distance/--pitch/--margin/--box go with --look <direction>.", Usage);
+                look = LookSpec.FromParts(va.Look, va.At, va.Distance, va.Pitch, va.Margin, va.Box);
+                if (look.Error != null) return CommandResult.Error("BAD_ARGS", look.Error, Usage);
+            }
+
             var defaults = OfficeViewSetup.Resolve(doc, kind == "3d" ? "threeD" : kind, templateOverride, noTemplate, out var setupError);
             if (setupError != null) return setupError;
 
@@ -49,6 +61,17 @@ namespace VibeModel.Services.Claude.Commands
                 result = Create3D(doc, defaults, viewName);
             else
                 return CommandResult.Error("BAD_ARGS", "Unknown view type '" + parts[0] + "'.", Usage);
+
+            // --look: aim the new 3D view (its own transaction, after the template is applied).
+            if (look != null && result.Success && result.Data is Dictionary<string, object> ld &&
+                ld.TryGetValue("created", out var lc) && lc is List<object> lids && lids.Count > 0 &&
+                doc.GetElement(new ElementId((int)lids[0])) is View3D new3d)
+            {
+                var aimed = LookCommand.Orient(doc, uiApp.ActiveUIDocument, new3d, look);
+                ld["look"] = aimed.Success ? aimed.Data : null;
+                var lookText = aimed.Success ? aimed.Text : "Not aimed: " + aimed.Message + "\n";
+                result = CommandResult.Ok(result.Text.TrimEnd() + "\n\n" + lookText, ld);
+            }
 
             // --activate: open the new view (outside the creating transaction).
             if (activate && result.Success && result.Data is Dictionary<string, object> d &&
