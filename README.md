@@ -26,30 +26,26 @@ Revit work is full of small questions with slow answers: *why can't I see this e
 - **It reads before it guesses.** Visibility settings, DWG linework, point-cloud ground levels, the project's PDFs, the office standards pack.
 - **It shows its work.** Every step appears live while it runs. Every fact taken from a document or the standards carries a source marker. Every change lands in a project journal.
 - **It stays reversible.** One request is one Revit undo step, even when it took twenty commands.
-- **It speaks your language.** Dutch by default, English or whatever you type in.
+- **It speaks your language.** It replies in the language you write in; the panel's own texts come in English and Dutch.
 
 ## Quick start
 
 1. **Download** the [latest release](https://github.com/Quincy987/VibeModel/releases) and unzip it.
 2. **Run `install.ps1`** (right-click → *Run with PowerShell*). It finds your Revit versions and copies the files.
-3. **Open Revit**, click **VibeModel → Chat**, and type.
+3. **Open Revit**, click **VibeModel → Chat**, and type. An empty chat shows the open model, its project folder and four starter prompts.
 
 Connect it to Claude in one of two ways: a **Claude Code** subscription (recommended, auto-detected) or an **Anthropic API key** pasted into *Settings*. A local LLM works too. Details under [Installation](#installation).
 
-<div align="center">
-<img src="docs/images/chat-welcome.png" width="380" alt="An empty chat: backend and model, the open project and its folder, and four starter prompts as chips.">
-<br><sub>An empty chat shows the open model, its project folder and four starter prompts.</sub>
-</div>
 
 ## What you can say
 
 ```
-Wat zit er in dit model?
+What's in this model?
 Why can't I see element 348122 in this view?
 Give me a table of the 5 longest walls with length, height and phase
-Zet 6 palen langs deze detail line, om de 2,8 m, gedraaid naar de lijn
+Place 6 piles along this detail line, 2.8 m apart, turned to the line
 Make a section across this wall and put it on sheet 0001 at 1:50
-Maak een palenstaat met aantal en lengte en exporteer het blad als PDF
+Make a pile schedule with count and length and export the sheet as PDF
 Remember that new sections get phase 2
 ```
 
@@ -137,7 +133,7 @@ No Node.js needed. Some extras (project-folder file access, cost tracking) are C
 
 All in the chat panel's **Settings**:
 
-- **Taal / Language** — the fallback reply language and the panel's own texts (Dutch default).
+- **Language** — the fallback reply language and the panel's own texts (English or Dutch).
 - **Project folder** — where the model's documents live; defaults to the folder of the open `.rvt`.
 - **Standards pack folder** — an office standards pack (phases, view templates, library, checks, manual). See [standards/README.md](standards/README.md) and the sample pack in `standards/example-office/`.
 - **Project memory & journal** — on by default; writes `VibeModel\memory.md` and `VibeModel\journal.md` next to the project documents.
