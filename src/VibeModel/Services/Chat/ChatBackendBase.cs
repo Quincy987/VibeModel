@@ -15,7 +15,7 @@ namespace VibeModel.Services.Chat
     /// and CTS-based lifecycle. The agentic loops themselves stay in the subclasses —
     /// they legitimately differ (SSE streaming, NDJSON, child process, vision inlining).
     /// </summary>
-    public abstract class ChatBackendBase : IChatBackend
+    public abstract class ChatBackendBase : IChatBackend, IChatActivitySource
     {
         protected readonly int _httpPort;
         protected readonly IReadOnlyDictionary<string, IClaudeCommand> _commands;
@@ -56,6 +56,21 @@ namespace VibeModel.Services.Chat
             if (_authToken != null)
                 client.Headers[RevitHttpServer.TokenHeader] = _authToken;
             return client;
+        }
+
+        /// <summary>
+        /// Structured tool activity for the pane's step list (see <see cref="ChatActivityEvent"/>).
+        /// UI-only: nothing reported here reaches the transcript or the model.
+        /// </summary>
+        public Action<ChatActivityEvent> ActivitySink { get; set; }
+
+        // Never lets a UI-side failure break the agentic loop.
+        protected void ReportActivity(ChatActivityEvent e)
+        {
+            var sink = ActivitySink;
+            if (sink == null) return;
+            try { sink(e); }
+            catch (Exception ex) { Logger.Info("Activity sink failed — " + ex.Message); }
         }
 
         public abstract bool IsAvailable { get; }

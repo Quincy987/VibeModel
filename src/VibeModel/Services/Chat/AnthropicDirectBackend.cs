@@ -313,10 +313,14 @@ namespace VibeModel.Services.Chat
                         // happening during the (blocking) call rather than after. UI-only —
                         // not added to _conversationHistory.
                         var toolLabel = "\n\n" + StatusVerbs.Describe(toolName) + "\n\n";
+                        // The pane draws a step row instead of the label (it hides this echo).
+                        ReportActivity(ChatActivityEvent.Started(toolId,
+                            ToolCallDescriber.ForRevitTool(toolName, ArgsOf(input)), toolLabel));
                         onToken(toolLabel);
                         fullResponse.Append(toolLabel);
 
                         var result = ExecuteTool(toolName, input);
+                        ReportActivity(ChatActivityEvent.Finished(toolId, ToolCallDescriber.ErrorLine(result)));
 
                         // Screenshot results carry an image; everything else is a plain string.
                         var content = BuildToolResultContent(toolName, result);
@@ -350,14 +354,15 @@ namespace VibeModel.Services.Chat
         // HTTP executor. (BuildToolResultContent handles inlining the screenshot image.)
         private string ExecuteTool(string toolName, Dictionary<string, object> input)
         {
-            var args = "";
-            if (input != null)
-            {
-                object argsObj;
-                if (input.TryGetValue("args", out argsObj) && argsObj != null)
-                    args = argsObj.ToString();
-            }
-            return ExecuteTool(toolName, args);
+            return ExecuteTool(toolName, ArgsOf(input));
+        }
+
+        private static string ArgsOf(Dictionary<string, object> input)
+        {
+            object argsObj;
+            if (input != null && input.TryGetValue("args", out argsObj) && argsObj != null)
+                return argsObj.ToString();
+            return "";
         }
 
         // --- Attachment content building -------------------------------------------

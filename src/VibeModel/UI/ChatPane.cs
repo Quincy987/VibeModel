@@ -38,17 +38,33 @@ namespace VibeModel.UI
         private TextBlock _statusText;
         private Border _infoBanner;
 
-        // Streaming state — direct references avoid O(n) visual tree search
-        private TextBlock _streamingTextBlock;
-        private StackPanel _streamingContentPanel;
-        private Border _streamingBorder;
-        private ChatMessage _streamingMessage;
-        private StringBuilder _streamingContent;
-        // Throttled render: tokens accrue into _streamingContent; a timer flushes to the
-        // TextBlock at a fixed cadence so render cost is bounded by wall-clock, not token
-        // count (avoids an O(n²) full-string rebuild on every token for long responses).
+        // The turn in flight. Direct references avoid O(n) visual tree search.
+        private sealed class TurnUi
+        {
+            // Every streamed token, exactly as before — this (not the display) is what gets
+            // stored in the chat history JSON.
+            public StringBuilder Raw = new StringBuilder();
+            // What the pane draws: steps, muted intermediate notes, and the answer.
+            public TurnActivity Model;
+            public ActivityBlockView Block;
+            // The answer bubble below the block — created when answer text first appears.
+            public ChatMessage AnswerMessage;
+            public Border AnswerBorder;
+            public StackPanel AnswerPanel;
+            public TextBlock AnswerText;
+            public bool TextDirty;
+            public bool ActivityDirty;
+        }
+
+        private TurnUi _turn;
+        // Throttled render: tokens and activity events update the model at once; a timer
+        // flushes to the UI at a fixed cadence so render cost is bounded by wall-clock, not
+        // token count (avoids an O(n²) full-string rebuild on every token for long responses).
         private System.Windows.Threading.DispatcherTimer _streamingRenderTimer;
-        private bool _streamingDirty;
+        // Once a second while a turn runs: the mm:ss counter and the stall hint.
+        private System.Windows.Threading.DispatcherTimer _clockTimer;
+        // User messages shown so far — a thin separator goes in front of every one after the first.
+        private int _userTurnCount;
 
         private IChatBackend _backend;
         private CancellationTokenSource _cts;
@@ -337,6 +353,7 @@ namespace VibeModel.UI
 
             _backend = backend;
             _messagePanel.Children.Clear();
+            _userTurnCount = 0;
             ClearStreamingState();
             _pendingAttachments.Clear();
             RebuildAttachmentChips();
@@ -759,30 +776,33 @@ namespace VibeModel.UI
             // keeps a late reply/error in the conversation it belongs to.
             var sessionForTurn = _session;
 
-            // Streaming placeholder — plain TextBlock, replaced with rendered markdown on complete
-            _streamingMessage = new ChatMessage(ChatRole.Assistant, "");
-            _streamingContent = new StringBuilder();
-
-            StackPanel contentPanel;
-            _streamingBorder = CreateMessageChrome(_streamingMessage, out contentPanel);
-            _streamingContentPanel = contentPanel;
-            _streamingTextBlock = new TextBlock
-            {
-                // Immediate feedback the instant the user sends — replaced by the first
-                // streamed token (onToken overwrites this with the real content).
-                Text = "Looking at the model…",
-                Foreground = FgPrimary,
-                FontSize = 13,
-                TextWrapping = TextWrapping.Wrap
-            };
-            contentPanel.Children.Add(_streamingTextBlock);
-            _messagePanel.Children.Add(_streamingBorder);
+            // The activity block shows at once ("Aan het denken…" + counter) — the gap before
+            // the first token is the most confusing moment of a turn.
+            var turn = new TurnUi { Model = new TurnActivity(DateTime.UtcNow) };
+            turn.Block = new ActivityBlockView(turn.Model);
+            _turn = turn;
+            _messagePanel.Children.Add(turn.Block);
             ScrollToBottomIfNeeded();
 
             SetGenerating(true);
             StartStreamingRenderTimer();
 
             _cts = new CancellationTokenSource();
+
+            // Tool steps arrive on a side channel (UI-only); the token stream stays as it was.
+            var activitySource = _backend as IChatActivitySource;
+            if (activitySource != null)
+            {
+                activitySource.ActivitySink = evt =>
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (_turn != turn) return;
+                        turn.Model.Apply(evt, DateTime.UtcNow);
+                        turn.ActivityDirty = true;
+                    }));
+                };
+            }
 
             _backend.SendMessage(
                 text,
@@ -791,28 +811,33 @@ namespace VibeModel.UI
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        if (_streamingTextBlock == null) return;
+                        if (_turn != turn) return;
 
                         // Cheap: just accrue. The render timer flushes to the UI on a
                         // fixed cadence, so per-token work stays O(1).
-                        _streamingContent.Append(delta);
-                        _streamingDirty = true;
+                        turn.Raw.Append(delta);
+                        turn.Model.AppendText(delta, DateTime.UtcNow);
+                        turn.TextDirty = true;
                     }));
                 },
                 onComplete: fullText =>
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        if (_streamingContentPanel != null)
+                        if (_turn == turn)
                         {
-                            var content = _streamingContent.Length > 0
-                                ? _streamingContent.ToString()
+                            // Stored exactly as before: the full raw stream (status lines,
+                            // intermediate text and all). Only the display is split up.
+                            var content = turn.Raw.Length > 0
+                                ? turn.Raw.ToString()
                                 : fullText;
-                            _streamingMessage.Content = content;
+                            var cancelled = fullText == "[Cancelled]";
 
-                            // Replace plain TextBlock with rendered markdown
-                            _streamingContentPanel.Children.Remove(_streamingTextBlock);
-                            AddRenderedContent(_streamingContentPanel, content);
+                            turn.Model.Finish(DateTime.UtcNow, cancelled, content);
+                            var answer = turn.Model.Answer;
+                            if (answer.Length == 0 && cancelled)
+                                answer = fullText;
+                            EndTurnDisplay(turn, answer);
 
                             ChatHistory.Add("Claude", content);
                             sessionForTurn.Append(ChatSession.RoleAssistant, content);
@@ -827,9 +852,10 @@ namespace VibeModel.UI
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        if (_streamingBorder != null)
+                        if (_turn == turn)
                         {
-                            _messagePanel.Children.Remove(_streamingBorder);
+                            turn.Model.Finish(DateTime.UtcNow, cancelled: true);
+                            EndTurnDisplay(turn, null);
                             ClearStreamingState();
                         }
                         var errorMsg = "Error: " + error;
@@ -844,37 +870,109 @@ namespace VibeModel.UI
                 cancellationToken: _cts.Token);
         }
 
-        // Flushes accrued stream text to the TextBlock at a fixed cadence (~25fps) rather
-        // than on every token, so a long response renders in O(length) total, not O(length²).
+        // The turn ended: collapse the activity block to its summary line (or drop it when the
+        // turn ran no tools) and render the answer as normal assistant markdown below it.
+        // A null answer (error) removes the answer bubble.
+        private void EndTurnDisplay(TurnUi turn, string answer)
+        {
+            if (!turn.Block.Collapse())
+                _messagePanel.Children.Remove(turn.Block);
+
+            if (string.IsNullOrEmpty(answer))
+            {
+                if (turn.AnswerBorder != null)
+                    _messagePanel.Children.Remove(turn.AnswerBorder);
+                return;
+            }
+
+            EnsureAnswerBubble(turn);
+            turn.AnswerMessage.Content = answer; // Copy copies the answer, not the step chatter
+            turn.AnswerPanel.Children.Remove(turn.AnswerText);
+            AddRenderedContent(turn.AnswerPanel, answer);
+            turn.AnswerBorder.Visibility = Visibility.Visible;
+        }
+
+        private void EnsureAnswerBubble(TurnUi turn)
+        {
+            if (turn.AnswerBorder != null) return;
+
+            turn.AnswerMessage = new ChatMessage(ChatRole.Assistant, "");
+            StackPanel contentPanel;
+            turn.AnswerBorder = CreateMessageChrome(turn.AnswerMessage, out contentPanel);
+            turn.AnswerPanel = contentPanel;
+            turn.AnswerText = new TextBlock
+            {
+                Foreground = FgPrimary,
+                FontSize = 13,
+                LineHeight = 20,
+                TextWrapping = TextWrapping.Wrap
+            };
+            contentPanel.Children.Add(turn.AnswerText);
+            _messagePanel.Children.Add(turn.AnswerBorder);
+        }
+
+        // Flushes the turn to the UI at a fixed cadence (~25fps) rather than on every token,
+        // so a long response renders in O(length) total, not O(length²).
         private void StartStreamingRenderTimer()
         {
-            _streamingDirty = false;
             if (_streamingRenderTimer == null)
             {
                 _streamingRenderTimer = new System.Windows.Threading.DispatcherTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(40)
                 };
-                _streamingRenderTimer.Tick += (s, e) =>
+                _streamingRenderTimer.Tick += (s, e) => FlushTurn();
+            }
+            if (_clockTimer == null)
+            {
+                _clockTimer = new System.Windows.Threading.DispatcherTimer
                 {
-                    if (!_streamingDirty || _streamingTextBlock == null) return;
-                    _streamingDirty = false;
-                    _streamingTextBlock.Text = _streamingContent.ToString() + " ...";
-                    ScrollToBottomIfNeeded();
+                    Interval = TimeSpan.FromSeconds(1)
                 };
+                _clockTimer.Tick += (s, e) => _turn?.Block.Tick(DateTime.UtcNow);
             }
             _streamingRenderTimer.Start();
+            _clockTimer.Start();
+        }
+
+        private void FlushTurn()
+        {
+            var turn = _turn;
+            if (turn == null || (!turn.TextDirty && !turn.ActivityDirty)) return;
+
+            // Text since the last tool call streams in the answer bubble; when a tool call
+            // follows, the model moves it into the block as a muted note and the bubble empties.
+            var live = turn.Model.LiveText;
+            if (live.Length > 0)
+            {
+                EnsureAnswerBubble(turn);
+                turn.AnswerText.Text = live + " …";
+                turn.AnswerBorder.Visibility = Visibility.Visible;
+            }
+            else if (turn.AnswerBorder != null)
+            {
+                turn.AnswerBorder.Visibility = Visibility.Collapsed;
+            }
+
+            // Header state ("Antwoord schrijven…") depends on the text too.
+            turn.Block.Refresh(DateTime.UtcNow);
+            turn.TextDirty = false;
+            turn.ActivityDirty = false;
+            ScrollToBottomIfNeeded();
         }
 
         private void ClearStreamingState()
         {
             _streamingRenderTimer?.Stop();
-            _streamingDirty = false;
-            _streamingTextBlock = null;
-            _streamingContentPanel = null;
-            _streamingBorder = null;
-            _streamingMessage = null;
-            _streamingContent = null;
+            _clockTimer?.Stop();
+            if (_turn != null)
+            {
+                _turn.Block.StopAnimation();
+                _turn = null;
+            }
+            var activitySource = _backend as IChatActivitySource;
+            if (activitySource != null)
+                activitySource.ActivitySink = null;
         }
 
         private void CancelGeneration()
@@ -898,6 +996,7 @@ namespace VibeModel.UI
             _session = null;
 
             _messagePanel.Children.Clear();
+            _userTurnCount = 0;
             ClearStreamingState();
             _infoBanner = null;
             // Pending chips clear; stored copies stay on disk as the project archive.
@@ -942,6 +1041,7 @@ namespace VibeModel.UI
             }
 
             _messagePanel.Children.Clear();
+            _userTurnCount = 0;
             ClearStreamingState();
             _infoBanner = null;
             ChatHistory.Clear();
@@ -1016,6 +1116,22 @@ namespace VibeModel.UI
         {
             while (_messagePanel.Children.Count >= MaxMessages)
                 _messagePanel.Children.RemoveAt(0);
+
+            // A thin rule between turns, so a long conversation reads as separate exchanges.
+            if (message.Role == ChatRole.User)
+            {
+                if (_userTurnCount > 0)
+                {
+                    _messagePanel.Children.Add(new Border
+                    {
+                        Height = 1,
+                        Background = BorderColor,
+                        Margin = new Thickness(24, 10, 24, 6),
+                        SnapsToDevicePixels = true
+                    });
+                }
+                _userTurnCount++;
+            }
 
             StackPanel contentPanel;
             var border = CreateMessageChrome(message, out contentPanel);

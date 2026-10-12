@@ -24,7 +24,28 @@ namespace VibeModel.Markdown.Renderers
             };
 
             renderer.Push(paragraph);
-            renderer.WriteLeafRawLines(obj);
+            var lineCount = obj.Lines.Count;
+            if (lineCount > MarkdownStyles.CodeBlockMaxLines)
+            {
+                // Long tool output pasted into an answer is never shown raw in full.
+                var slices = obj.Lines.Lines;
+                for (var i = 0; i < MarkdownStyles.CodeBlockShownLines; i++)
+                {
+                    if (i != 0)
+                        renderer.WriteInline(new LineBreak());
+                    renderer.WriteText(ref slices[i].Slice);
+                }
+                renderer.WriteInline(new LineBreak());
+                renderer.WriteInline(new Run(UI.UiText.MoreCodeLines(lineCount - MarkdownStyles.CodeBlockShownLines))
+                {
+                    Foreground = MarkdownStyles.FgSecondary,
+                    FontStyle = FontStyles.Italic
+                });
+            }
+            else
+            {
+                renderer.WriteLeafRawLines(obj);
+            }
             renderer.Pop();
         }
     }

@@ -10,11 +10,14 @@ namespace VibeModel.Markdown.Renderers.Inlines
     {
         protected override void Write(WpfRenderer renderer, CodeInline obj)
         {
-            var run = new Run(obj.Content)
+            // A monospace "pill": lighter background, hair spaces as horizontal padding. A Run
+            // (not a UI container) so long paths still wrap and stay selectable.
+            var run = new Run("\u200A" + obj.Content + "\u200A")
             {
                 FontFamily = MarkdownStyles.MonoFont,
                 FontSize = MarkdownStyles.FontSizeCode,
-                Background = MarkdownStyles.BgCode
+                Foreground = MarkdownStyles.FgCodeInline,
+                Background = MarkdownStyles.BgCodeInline
             };
             renderer.WriteInline(run);
         }

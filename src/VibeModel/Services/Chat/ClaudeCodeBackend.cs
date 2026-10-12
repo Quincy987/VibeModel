@@ -618,7 +618,7 @@ namespace VibeModel.Services.Chat
                                 && (string)blockType == "tool_result")
                             {
                                 _lastBlockWasToolUse = false;
-                                break;
+                                ReportToolResult(block);
                             }
                         }
                     }
@@ -683,7 +683,15 @@ namespace VibeModel.Services.Chat
                                 currentBlockType = blockType as string;
                             lastBlockType = currentBlockType;
 
-                            if (currentBlockType == "text")
+                            if (currentBlockType == "tool_use")
+                            {
+                                ReportActivity(ChatActivityEvent.Started(
+                                    block.TryGetValue("id", out var toolId) ? toolId as string : null,
+                                    ToolCallDescriber.ForCliTool(
+                                        block.TryGetValue("name", out var toolName) ? toolName as string : null,
+                                        block.TryGetValue("input", out var toolInput) ? toolInput as Dictionary<string, object> : null)));
+                            }
+                            else if (currentBlockType == "text")
                             {
                                 object textObj;
                                 if (block.TryGetValue("text", out textObj) && textObj is string text)
@@ -716,6 +724,17 @@ namespace VibeModel.Services.Chat
             {
                 Logger.Error("Failed to parse NDJSON line: " + line, ex);
             }
+        }
+
+        // A tool_result block from the CLI: finishes the matching step (UI-only).
+        private void ReportToolResult(Dictionary<string, object> block)
+        {
+            object id, content, isError;
+            block.TryGetValue("tool_use_id", out id);
+            block.TryGetValue("content", out content);
+            block.TryGetValue("is_error", out isError);
+            ReportActivity(ChatActivityEvent.Finished(id as string,
+                ToolCallDescriber.ErrorLine(ToolCallDescriber.ResultText(content), isError is bool b && b)));
         }
 
         internal static string BuildPortDirective(int httpPort)
