@@ -84,6 +84,9 @@ namespace VibeModel.Services.Chat
         public const string QuickReplyReadyHint = "QuickReplyReadyHint";
         public const string QuickReplyFillsTip = "QuickReplyFillsTip";       // {0} = prompt
         public const string QuickReplySendsTip = "QuickReplySendsTip";       // {0} = prompt
+        // Settings (plan 08, project part).
+        public const string SettingProjectMemory = "SettingProjectMemory";
+        public const string SettingProjectMemoryHint = "SettingProjectMemoryHint";
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -149,6 +152,8 @@ namespace VibeModel.Services.Chat
                 { QuickReplyReadyHint, "Ready to send. Check it, then press Send." },
                 { QuickReplyFillsTip, "{0}\n(fills the input box - this changes the model, so you press Send)" },
                 { QuickReplySendsTip, "{0}\n(sends right away)" },
+                { SettingProjectMemory, "Keep project memory and journal" },
+                { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -215,6 +220,8 @@ namespace VibeModel.Services.Chat
                 { QuickReplyReadyHint, "Klaar om te versturen. Controleer en druk op Send." },
                 { QuickReplyFillsTip, "{0}\n(vult het invoerveld - dit wijzigt het model, dus jij drukt op Send)" },
                 { QuickReplySendsTip, "{0}\n(wordt meteen verstuurd)" },
+                { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
+                { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

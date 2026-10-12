@@ -172,8 +172,16 @@ curl -s "http://localhost:18884/tag?args=12345"
 # Delete elements
 curl -s "http://localhost:18884/delete?args=12345 12346"
 
-# Set parameter value (lengths/areas/volumes/angles in the unit `params` prints: mm, m², m³, °; other kinds internal)
+# Wall / floor type, level and offsets (type: exact name, else unique substring, else id)
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000 --type Generic - 300mm --level Level 1 --base-offset -400"
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 --type Timber --level Level 0 --top-level Level 2 --top-offset -100"
+curl -s "http://localhost:18884/floor?args=0,0 5000,0 5000,5000 0,5000 --type Concrete 200 --level Level 1"
+
+# Set parameter value (lengths/areas/volumes/angles in the unit `params` prints: mm, m², m³, °; other kinds internal;
+# names with spaces: quote them, or Param=value)
 curl -s "http://localhost:18884/set?args=12345 Comments Hello+World"
+curl -s -G "http://localhost:18884/set" --data-urlencode 'args=12345 "Base Offset" -500'
+curl -s -G "http://localhost:18884/set" --data-urlencode 'args=12345 Base Offset=-500'
 
 # Color override (RGB 0-255)
 curl -s "http://localhost:18884/color?args=12345 255 0 0"
@@ -182,6 +190,14 @@ curl -s "http://localhost:18884/color?args=12345 reset"
 # Place family instance
 curl -s "http://localhost:18884/place?args=Door Single-Flush 5000 2500"
 curl -s "http://localhost:18884/placeid?args=67890 5000 2500"
+curl -s -G "http://localhost:18884/placeid" --data-urlencode 'args=67890 5000 2500 -3000 --rotate 30 --set "Comments=pile A" --level Level 1'
+curl -s -G "http://localhost:18884/place" --data-urlencode 'args=Pile "Concrete 320x320" --along 4711 --spacing 2800 --rotate auto --set "Height Offset From Level=-2500"'
+curl -s "http://localhost:18884/placeid?args=67890 --along 0 0 12000 0 --count 6 --offset 500 --rotate auto+90"
+
+# Aim a 3D view: camera at a compass direction from the target, shaded with edges, cropped to the target
+curl -s "http://localhost:18884/view?args=3d --name Hoek --look zw --at 1543814,1543815"   # new 3D view, from the south-west
+curl -s "http://localhost:18884/look?args=Hoek zo --at 1543814,1543815 --pitch 20 --box"     # re-aim an existing 3D view (+ section box)
+curl -s "http://localhost:18884/look?args=iso"                                               # the active 3D view, at the whole model
 
 # Join / cut geometry between two elements (with diagnostics on refusal)
 curl -s "http://localhost:18884/join?args=12345 67890"            # JoinGeometryUtils.JoinGeometry
@@ -192,6 +208,29 @@ curl -s "http://localhost:18884/unjoin?args=12345 67890"          # Remove join 
 # Execute arbitrary C# code
 curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
 ```
+
+**Modelling flags.** `wall`/`floor --type` take a type name (exact, else a unique case-insensitive
+substring) or id; an ambiguous or unknown name lists the candidates; the response names the type.
+`wall --top-level` replaces the height (a top offset needs it). `place`/`placeid`: `--rotate <deg>`
+turns about the insertion point, counter-clockwise from project +X; `--set "Param=value"` (repeatable)
+writes INSTANCE parameters — a plain number in the unit `params` prints (mm, m², m³, °), as in `set`; a
+missing name is refused with the available names and nothing is placed. `z` is an elevation in the
+same frame as x/y: a level-hosted family gets there through the offset parameter that actually moves
+it (the visible one first), and the response names it. `--along <line id | x1 y1 x2 y2>` places along
+a detail/model line, a wall/beam's location curve or two points, all in ONE transaction (one Ctrl+Z):
+`--spacing s` alone fills the line end to end and reduces the spacing to divide it evenly (never more
+than asked, 1 % slack), `--count n` alone spreads n evenly, both together are exact from the start;
+`--offset` keeps that distance from the ends; `--rotate auto` (or `auto+90`) turns each instance to
+the line direction; arcs are followed by parameter. The response lists the ids and the actual spacing.
+`set` tries, in order: a quoted name, `Name=value`, then the longest leading words that name a
+parameter — so the old 3-token form still works.
+**`look`** (and `view 3d --look`): `n|no|o|zo|z|zw|w|nw` is where the camera STANDS seen from the
+target (`zw` = south-west of it, looking north-east; English `ne/e/se/s/sw` too), 30° down
+(`--pitch`); `top` = straight down, north up; `iso` = Revit's default; or `x y z` = the camera
+position in mm. The target is `--at <ids | x y z | selected>`, default the model elements in the view.
+The view is shaded with edges and its crop region fitted to the target (+`--margin`, default 2000 mm)
+as seen from the new camera — refit on every `look`, since a crop only fits one camera; a point target
+turns the crop off. `--box` adds a section box. Then `screenshot --view <id>`.
 
 `join` always reports both categories, whether the bounding boxes actually intersect, which API
 it called, and — on refusal — Revit's own reason in plain language plus the workaround that does
@@ -222,7 +261,7 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
-### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo)
+### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
 and read the result back without looking at the Revit UI.
 ```bash
@@ -244,6 +283,18 @@ curl -s "http://localhost:18884/dimension?args=--levels"                        
 curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
 curl -s "http://localhost:18884/list?args=dimensions --view"                                         # Values in mm; also 'list text', 'list sheets' (view counts)
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
+curl -s "http://localhost:18884/schedule?args=Palenstaat --rows"                                     # Read any schedule back (+ the sheets it is on)
+curl -s "http://localhost:18884/callout?args=Bovenaanzicht --box 100000 -5000 110000 5000 --name Detail A --scale 20"  # Plan callout ( --section: detail view)
+curl -s "http://localhost:18884/callout?args=101 --box 0 0 4000 3000 --reference Detail A"            # Reference callout to an existing view
+curl -s "http://localhost:18884/region?args=Bovenaanzicht --points 0,0 4000,0 4000,3000 0,3000 --type Beton"  # Filled region (view frame)
+curl -G -s "http://localhost:18884/region" --data-urlencode "args=Doorsnede 1-1 --detail \"Grondslag : 600\" --at -1200 850 --rotate 90"  # Detail component
+curl -s "http://localhost:18884/list?args=regions --view"                                            # Filled regions + detail items (type, m², view)
+curl -s "http://localhost:18884/viewport?args=--move 4711 --to 0002 --at 400 300"                    # View to another sheet (keeps scale/title)
+curl -s "http://localhost:18884/export?args=pdf 0001,0002"                                           # → <project folder>\export\0001 - <name>.pdf
+curl -s "http://localhost:18884/export?args=dwg --all-sheets --to C:\out"                            # Office DWG setup when the pack names one
+curl -s "http://localhost:18884/export?args=ifc"                                                     # Whole model, default IFC setup (or one view id)
 ```
 - **Coordinates.** Paper mm are measured from the sheet's lower-left (A0 = 1189×841). `text`, `tag --at`,
   `dimension --levels <x>` and `crop --box` use the view's own frame: plan → project x,y mm;
@@ -269,6 +320,23 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
   Revit's refusal message is returned verbatim with the usual cause.
+- **`schedule`** matches fields by the names Revit lists (exact, else a unique substring; unknown →
+  the schedulable fields of that category). `--filter` numbers are in the project's display unit;
+  a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per
+  value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
+  sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
+  New schedules get their columns widened to the longest cell, so type names do not wrap on the sheet.
+- **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
+  callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
+- **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
+  paper mm). Line-based detail items are refused (place them with `exec`).
+- **`viewport --move <id> --to <sheet>`** keeps the paper position when it lies in the target's free
+  area, else centres the view there; `--at x y` overrides. The old viewport id is gone afterwards.
+- **`export`** never runs inside a transaction (an atomic batch is refused); names collide →
+  " (2)". PDF uses the sheet's own paper size, crop/scope boxes/reference planes hidden. DWG
+  without a setup merges views into the sheet (no xref files). IFC runs in a rolled-back
+  transaction, so it never changes the model. Default folder: `<project folder>\export\`; a `--to`
+  folder that does not exist is created (relative paths are under the project folder).
 - **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
   `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
 
@@ -357,6 +425,41 @@ curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefi
 - Every chat turn carries a bounded `PROJECT FOLDER` block (the same manifest, ≤100 entries);
   the Claude Code backend additionally runs with `--add-dir <folder>`.
 - Listing a folder on a network drive has a 3 s deadline; an offline folder is reported, never waited on.
+
+### Project memory & journal (remember / memory / forget / journal)
+Per project, next to the reference documents: `VibeModel\memory.md` and `VibeModel\journal.md`
+in the project folder (see above); a model without a folder uses
+`%LOCALAPPDATA%\VibeModel\projects\<sanitized title>\`. Both are plain markdown, editable by hand.
+```bash
+curl -s -G http://localhost:18884/remember --data-urlencode "args=doorsnedes krijgen fase 2. Bouwfase"   # Dated fact; same fact (normalized) not saved twice
+curl -s http://localhost:18884/memory                          # Numbered, oldest first
+curl -s "http://localhost:18884/forget?args=2"                 # By number, exact text or a unique fragment
+curl -s "http://localhost:18884/memory?args=--clear"           # Empty it (the header stays)
+curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday, 2026-10-12, --last 50 (default: last 20)
+```
+- **Memory in the prompt.** Every chat turn (all backends) carries a `PROJECT MEMORY` block next
+  to PROJECT FOLDER: ≤ 2 kB, newest last, `(+N older — run memory …)` when cut, plus the rule to
+  save project decisions/preferences/corrections with `remember` (one line, the user's words)
+  and to read the block before answering "last time" questions (`ProjectMemory.PromptRule`).
+- **Journal lines** (`ProjectJournal`): one per modifying command / batch that changed the model,
+  written by `RevitCommandHandler` from the `DocumentChanged` ids
+  (`- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`),
+  and one per chat turn with the `[bron: …]` / `[source: …]` markers its answer cited
+  (`… · chat t3f9a2c "…" · sources: PRG1002- DO.pdf p.3`). A command that changed nothing (an
+  `exec` that only read) is not journaled; `export` changes nothing but is (`IJournaledCommand`:
+  `… · export pdf 0001 · wrote 0001 - Situatie.pdf · chat …`). The turn comes from the `X-VibeModel-Turn` header
+  (`<id> <url-encoded question>`, sent by the API backends) or else from the chat turn in flight
+  in this Revit session (the Claude Code CLI's own curls) — an external curl made during a chat
+  turn is attributed to that turn too.
+- **Never blocks Revit:** journal lines are queued; a background writer resolves the folder and
+  appends with a 3 s deadline; an offline folder drops lines with one logged warning and is
+  retried after 60 s. `journal` flushes the queue first. Rotation at 2 MB → `journal-<yyyymm>.md`
+  (`-2`, `-3` … when taken). Memory commands read/write with the same 3 s deadline.
+- `remember` / `memory` / `forget` / `journal` are not modifications (no transaction, no undo
+  step). `docs` does not list the `VibeModel` subfolder.
+- **Switch:** Settings → *Projectgeheugen en journaal bijhouden* (`ProjectMemoryEnabled`, default
+  on). Off: no block, no header, nothing written, and the four commands (`IProjectMemoryCommand`)
+  are left out of the prompt file, the tool lists and `help` — the exact prompt as before.
 
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:
