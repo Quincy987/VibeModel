@@ -45,3 +45,6 @@ docs/verify/*.local.md
 ## Local demo/verification output (model copies, screenshots, IB-internal material)
 demo_out/
 .verify/
+
+## Python caches (scripts/)
+__pycache__/
