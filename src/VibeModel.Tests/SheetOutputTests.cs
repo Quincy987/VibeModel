@@ -258,9 +258,9 @@ namespace VibeModel.Tests
         }
 
         [Theory]
-        [InlineData(0, 12)]
-        [InlineData(10, 24)]
-        [InlineData(61, 90)]
+        [InlineData(0, 14)]
+        [InlineData(10, 32)]
+        [InlineData(61, 150)]
         public void ColumnWidth_FollowsTheLongestCell(int chars, double mm) => Assert.Equal(mm, ScheduleText.ColumnWidthMm(chars));
 
         [Fact]

@@ -116,8 +116,11 @@ namespace VibeModel.Services.Claude
             return name + " (" + unit + ")";
         }
 
-        /// <summary>Column width on the sheet for a longest cell of n characters (2.5 mm text ≈ 2 mm a character), 12–90 mm.</summary>
-        public static double ColumnWidthMm(int longestChars) => Math.Max(12, Math.Min(90, longestChars * 2.0 + 4));
+        /// <summary>
+        /// Column width on the sheet for a longest cell of n characters, 14–150 mm. Measured on the
+        /// IB A0 schedule text: 2 mm a character still wrapped "1094850"; 2.6 mm + 6 mm padding does not.
+        /// </summary>
+        public static double ColumnWidthMm(int longestChars) => Math.Max(14, Math.Min(150, longestChars * 2.6 + 6));
 
         /// <summary>
         /// The field list for an unknown field name: close matches first, then all names — or,
