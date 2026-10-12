@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.7 — Orientation Checks, Revit/IFC Links & Chat Workshop Fixes (2026-10-12)
+
 ### Added — Maikel review: orientation rules and links by shared coordinates
 - **`project-north-true` check** — the project base point's *Angle to True North* must be 0:
   Project North never rotates; a straight view comes from the scope box or crop region. `coords`
