@@ -120,7 +120,7 @@ their parameters:
 - `links-are-links` — imported (instead of linked) CAD.
 - `project-north-true` — the project base point's *Angle to True North* must be 0 (`toleranceDeg`, default 0.01): Project North never rotates; a straight view comes from a scope box or crop region.
 - `reference-point-true-north` — instances of the family whose name contains `familyPattern` (default `Referentiepunt`) must be unrotated and pinned (`toleranceDeg`). While Project North itself is rotated it reports INFO instead of judging.
-- `links-by-shared-coordinates` — once the model has shared coordinates, every Revit link must sit where *Auto – By Shared Coordinates* puts it (`toleranceMm` default 1, `toleranceDeg`). Unloaded links and CAD links (the API keeps no record of their placement) are counted as not verifiable, never flagged.
+- `links-by-shared-coordinates` — once the model has shared coordinates, every Revit link must sit where *Auto – By Shared Coordinates* puts it (`toleranceMm` default 1, `toleranceDeg`). Unloaded links and CAD links (the API keeps no record of their placement) are counted as not verifiable, never flagged. A shared link that is later *dragged* is not flagged either: Revit moves the link's own shared position along (and asks to save it on close), so it still reads as shared.
 
 Element-level kinds (`phase-not-none`, `param-filled`, `family-source`, `pinned`,
 `reference-point-true-north`, `links-by-shared-coordinates`) also run after

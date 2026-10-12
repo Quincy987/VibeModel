@@ -13,7 +13,8 @@
   link must sit where *Auto – By Shared Coordinates* puts it (compared through both models'
   coordinate transforms; any of the link's named locations counts). Unloaded links and CAD links
   (the API keeps no record of how they were placed) are counted as not verifiable, never flagged.
-  Also runs on the link a command just made.
+  Also runs on the link a command just made. A shared link dragged afterwards still reads as
+  shared — Revit moves the link's own shared position along with it.
 - **`linkrvt "<path.rvt|.ifc>"`** — link another Revit model or an IFC by shared coordinates and
   pin it; refused (with the reason) while the model has no shared coordinates, `--origin`/`--force`
   link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused when
