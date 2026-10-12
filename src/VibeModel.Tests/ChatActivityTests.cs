@@ -237,25 +237,31 @@ namespace VibeModel.Tests
         [Fact]
         public void Summary_Dutch_And_English()
         {
-            var saved = UiText.Language;
-            try
-            {
-                UiText.Language = "nl";
-                Assert.Equal("7 stappen · 48 s", UiText.StepSummary(7, 0, TimeSpan.FromSeconds(48)));
-                Assert.Equal("1 stap · 1 mislukt · 1 min 12 s", UiText.StepSummary(1, 1, TimeSpan.FromSeconds(72)));
-                Assert.Equal("+3 eerdere stappen", UiText.EarlierSteps(3));
-                Assert.Equal("Wand maken…", UiText.StepLabel("wall"));
-                Assert.Equal("whyhidden2…", UiText.StepLabel("whyhidden2"));
+            // One language source (Settings -> Taal / Language); the tests pass it explicitly.
+            Assert.Equal("7 stappen · 48 s", UiText.StepSummary(7, 0, TimeSpan.FromSeconds(48), "nl"));
+            Assert.Equal("1 stap · 1 mislukt · 1 min 12 s", UiText.StepSummary(1, 1, TimeSpan.FromSeconds(72), "nl"));
+            Assert.Equal("+3 eerdere stappen", UiText.EarlierSteps(3, "nl"));
+            Assert.Equal("+1 eerdere stap", UiText.EarlierSteps(1, "nl"));
+            Assert.Equal("Wand maken…", UiText.StepLabel("wall", "nl"));
+            Assert.Equal("Zichtbaarheid onderzoeken…", UiText.StepLabel("whyhidden", "nl"));
+            Assert.Equal("whyhidden2…", UiText.StepLabel("whyhidden2", "nl"));
+            Assert.Equal("Bestand lezen…", UiText.StepLabel("@read", "nl"));
+            Assert.Equal("WebFetch…", UiText.StepLabel("@WebFetch", "nl"));
 
-                UiText.Language = "en";
-                Assert.Equal("2 steps · 5 s", UiText.StepSummary(2, 0, TimeSpan.FromSeconds(5)));
-                Assert.Equal("Creating wall…", UiText.StepLabel("wall")); // English reuses StatusVerbs
-                Assert.Equal("Reading file…", UiText.StepLabel("@read"));
-            }
-            finally
-            {
-                UiText.Language = saved;
-            }
+            Assert.Equal("2 steps · 5 s", UiText.StepSummary(2, 0, TimeSpan.FromSeconds(5), "en"));
+            Assert.Equal("1 step · 2 failed · 5 s", UiText.StepSummary(1, 2, TimeSpan.FromSeconds(5), "en"));
+            Assert.Equal("Creating wall…", UiText.StepLabel("wall", "en"));
+            Assert.Equal("Reading file…", UiText.StepLabel("@read", "en"));
+            Assert.Equal("whyhidden2…", UiText.StepLabel("whyhidden2", "en"));
+        }
+
+        [Fact]
+        public void StepLabels_AreTheStatusVerbs()
+        {
+            // One label table: a step row and the status line of the same command read the same.
+            foreach (var lang in new[] { "nl", "en" })
+                foreach (var cmd in new[] { "wall", "delete", "color", "whyhidden", "readdoc", "check" })
+                    Assert.Equal(StatusVerbs.Describe(cmd, lang), UiText.StepLabel(cmd, lang));
         }
 
         [Fact]

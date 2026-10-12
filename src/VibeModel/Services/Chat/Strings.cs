@@ -8,7 +8,8 @@ namespace VibeModel.Services.Chat
     /// The fixed texts the chat pane shows (status and error messages), in Dutch (default) and
     /// English, keyed by the Settings → Taal / Language choice. One static dictionary per language;
     /// a key missing from Dutch falls back to English, a key missing everywhere comes back as itself.
-    /// Status verbs live in <see cref="StatusVerbs"/>; the model-facing rules in
+    /// Status verbs and activity-block step labels live in <see cref="StatusVerbs"/> (composed
+    /// for the pane by <see cref="UI.UiText"/>); the model-facing rules in
     /// <see cref="ChatBackendBase.BuildBehaviourRules"/>.
     /// </summary>
     public static class Strings
@@ -32,6 +33,17 @@ namespace VibeModel.Services.Chat
         public const string LocalNotReachable = "LocalNotReachable";           // {0} = endpoint
         public const string LocalError = "LocalError";                         // {0} = status, {1} = body
         public const string Working = "Working";                               // {0} = command
+        // Activity block (the pane's live step list; composed by UI.UiText).
+        public const string ActivityThinking = "ActivityThinking";
+        public const string ActivityWorking = "ActivityWorking";
+        public const string ActivityWritingAnswer = "ActivityWritingAnswer";
+        public const string ActivityStallHint = "ActivityStallHint";
+        public const string StepOne = "StepOne";                               // {0} = 1
+        public const string StepMany = "StepMany";                             // {0} = count
+        public const string StepsFailed = "StepsFailed";                       // {0} = count
+        public const string EarlierStepOne = "EarlierStepOne";                 // {0} = 1
+        public const string EarlierStepMany = "EarlierStepMany";               // {0} = count
+        public const string MoreCodeLines = "MoreCodeLines";                   // {0} = count
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -51,6 +63,16 @@ namespace VibeModel.Services.Chat
                 { LocalNotReachable, "Local LLM not reachable at {0}. Is the server running?" },
                 { LocalError, "Local LLM error {0}: {1}" },
                 { Working, "Working… ({0})" },
+                { ActivityThinking, "Thinking…" },
+                { ActivityWorking, "Working…" },
+                { ActivityWritingAnswer, "Writing the answer…" },
+                { ActivityStallHint, "Taking a while — Revit may be busy" },
+                { StepOne, "{0} step" },
+                { StepMany, "{0} steps" },
+                { StepsFailed, "{0} failed" },
+                { EarlierStepOne, "+{0} earlier step" },
+                { EarlierStepMany, "+{0} earlier steps" },
+                { MoreCodeLines, "… {0} more lines (Copy shows everything)" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -71,6 +93,16 @@ namespace VibeModel.Services.Chat
                 { LocalNotReachable, "Het lokale taalmodel is niet bereikbaar op {0}. Draait de server?" },
                 { LocalError, "Fout van het lokale taalmodel {0}: {1}" },
                 { Working, "Bezig… ({0})" },
+                { ActivityThinking, "Aan het denken…" },
+                { ActivityWorking, "Bezig…" },
+                { ActivityWritingAnswer, "Antwoord schrijven…" },
+                { ActivityStallHint, "Duurt lang — Revit is misschien bezig" },
+                { StepOne, "{0} stap" },
+                { StepMany, "{0} stappen" },
+                { StepsFailed, "{0} mislukt" },
+                { EarlierStepOne, "+{0} eerdere stap" },
+                { EarlierStepMany, "+{0} eerdere stappen" },
+                { MoreCodeLines, "… nog {0} regels (Kopiëren geeft alles)" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

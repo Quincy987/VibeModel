@@ -73,6 +73,31 @@ namespace VibeModel.Services.Chat
                 { "text", "Adding text…" },
                 { "sheetinfo", "Checking the sheet…" },
                 { "crop", "Cropping view…" },
+
+                // Diagnosis, source data, office standards (plans 07/08/11)
+                { "health", "Checking the connection…" },
+                { "help", "Looking up commands…" },
+                { "whyhidden", "Diagnosing visibility…" },
+                { "imports", "Listing imports…" },
+                { "layers", "Reading DWG layers…" },
+                { "curves", "Reading DWG lines…" },
+                { "pointclouds", "Listing point clouds…" },
+                { "pcprobe", "Probing the point cloud…" },
+                { "pcline", "Reading point cloud profile…" },
+                { "template", "Looking at the template…" },
+                { "standards", "Reading office standards…" },
+                { "check", "Checking the model…" },
+                { "coords", "Reading coordinates…" },
+                { "library", "Searching the library…" },
+                { "loadfamily", "Loading family…" },
+                { "linkcad", "Linking CAD…" },
+                { "phase", "Setting phase…" },
+                { "activate", "Opening view…" },
+
+                // The Claude CLI's own tools (activity block step rows; see ToolCallDescriber)
+                { "@read", "Reading file…" },
+                { "@image", "Looking at the image…" },
+                { "@shell", "Running a command…" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -135,6 +160,31 @@ namespace VibeModel.Services.Chat
                 { "text", "Tekst plaatsen…" },
                 { "sheetinfo", "Sheet controleren…" },
                 { "crop", "View bijsnijden…" },
+
+                // Diagnose, brondata, kantoorstandaard
+                { "health", "Verbinding controleren…" },
+                { "help", "Commando's opzoeken…" },
+                { "whyhidden", "Zichtbaarheid onderzoeken…" },
+                { "imports", "Imports opsommen…" },
+                { "layers", "DWG-lagen lezen…" },
+                { "curves", "DWG-lijnen lezen…" },
+                { "pointclouds", "Puntenwolken opsommen…" },
+                { "pcprobe", "Puntenwolk peilen…" },
+                { "pcline", "Puntenwolkprofiel lezen…" },
+                { "template", "Template bekijken…" },
+                { "standards", "Kantoorstandaard lezen…" },
+                { "check", "Model controleren…" },
+                { "coords", "Coördinaten lezen…" },
+                { "library", "Bibliotheek doorzoeken…" },
+                { "loadfamily", "Familie laden…" },
+                { "linkcad", "CAD koppelen…" },
+                { "phase", "Fase instellen…" },
+                { "activate", "View openen…" },
+
+                // De eigen tools van de Claude CLI (stappen in het activiteitenblok)
+                { "@read", "Bestand lezen…" },
+                { "@image", "Afbeelding bekijken…" },
+                { "@shell", "Opdracht uitvoeren…" },
             };
 
         /// <summary>
@@ -158,6 +208,23 @@ namespace VibeModel.Services.Chat
                 return verb;
 
             return Strings.For(language, Strings.Working, command);
+        }
+
+        /// <summary>
+        /// The label of one step row in the chat pane's activity block, in the Settings language.
+        /// A step is a VibeModel command ("wall") or one of the Claude CLI's own tools ("@read",
+        /// "@image", "@shell", "@&lt;ToolName&gt;" — see <see cref="ToolCallDescriber"/>). Same verbs
+        /// as the status lines; an unmapped step reads "name…" (the row has no room for "Bezig… (name)").
+        /// </summary>
+        public static string StepLabel(string command) => StepLabel(command, Strings.Current);
+
+        public static string StepLabel(string command, string language)
+        {
+            command = command ?? "";
+            string verb;
+            if ((Strings.IsEnglish(language) ? En : Nl).TryGetValue(command, out verb))
+                return verb;
+            return (command.StartsWith("@") ? command.Substring(1) : command) + "…";
         }
 
         /// <summary>Every command with a verb, for the test that keeps both maps in step.</summary>
