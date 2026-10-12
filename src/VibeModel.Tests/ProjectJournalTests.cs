@@ -70,6 +70,33 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void CommandLine_ExportNamesTheWrittenFiles()
+        {
+            var line = ProjectJournal.FormatCommandLine(When, "export", "pdf 0001", null, null, null, Turn,
+                new List<string> { @"C:\proj\export\0001 - Situatie.pdf", @"C:\proj\export\0001 - Situatie.log" });
+            Assert.Equal("- 2026-10-12 14:03:12 · export pdf 0001 · wrote 0001 - Situatie.pdf; 0001 - Situatie.log · " +
+                         "chat t3f9a2c \"maak een muur van 5 m\"", line);
+        }
+
+        [Fact]
+        public void ExportCommand_JournalFiles_ReadsThePathsFromItsResult()
+        {
+            var data = new Dictionary<string, object>
+            {
+                { "files", new List<object>
+                    {
+                        new Dictionary<string, object> { { "path", @"C:\proj\export\a.pdf" }, { "sizeBytes", 10L } },
+                        new Dictionary<string, object> { { "path", @"C:\proj\export\b.pdf" }, { "sizeBytes", 20L } }
+                    } }
+            };
+            var files = new VibeModel.Services.Claude.Commands.ExportCommand()
+                .JournalFiles(VibeModel.Services.Claude.CommandResult.Ok("EXPORT", data));
+            Assert.Equal(new[] { @"C:\proj\export\a.pdf", @"C:\proj\export\b.pdf" }, files);
+            Assert.Empty(new VibeModel.Services.Claude.Commands.ExportCommand()
+                .JournalFiles(VibeModel.Services.Claude.CommandResult.Ok("nothing")));
+        }
+
+        [Fact]
         public void BatchText_JoinsTheCommands()
         {
             var text = ProjectJournal.BatchText(new[]

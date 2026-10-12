@@ -2,32 +2,6 @@
 
 ## [Unreleased]
 
-## v1.2.7 — Orientation Checks, Revit/IFC Links & Chat Workshop Fixes (2026-10-12)
-
-### Added — Maikel review: orientation rules and links by shared coordinates
-- **`project-north-true` check** — the project base point's *Angle to True North* must be 0:
-  Project North never rotates; a straight view comes from the scope box or crop region. `coords`
-  prints a WARN next to the angle when it is not 0 (JSON: `baseAngleZero`).
-- **`reference-point-true-north` check** — the reference point family (name contains
-  `familyPattern`) stays unrotated and pinned. While Project North itself is rotated it reports
-  INFO rather than judging an angle that would be measured against the wrong north.
-- **`links-by-shared-coordinates` check** — once the model has shared coordinates, every Revit
-  link must sit where *Auto – By Shared Coordinates* puts it (compared through both models'
-  coordinate transforms; any of the link's named locations counts). Unloaded links and CAD links
-  (the API keeps no record of how they were placed) are counted as not verifiable, never flagged.
-  Also runs on the link a command just made. A shared link dragged afterwards still reads as
-  shared — Revit moves the link's own shared position along with it.
-- **`linkrvt "<path.rvt|.ifc>"`** — link another Revit model or an IFC by shared coordinates and
-  pin it; refused (with the reason) while the model has no shared coordinates, `--origin`/`--force`
-  link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused unless
-  the IFC is newer, then converted again). When placed by shared coordinates, the
-  response states where the link landed, read back from the model. IFC linking is not yet verified
-  in Revit (no IFC file was at hand).
-- `linkcad` names the criterion it placed by ("coordinates set up: base point N/S … E/W … ≠ 0")
-  and its first-link hint says "do not rotate — Project North stays True North". The `pinned`
-  rule in the example pack also covers Revit links.
-- Fixed: after a failed shared-coordinates link, `linkcad` suggested `--first`, which has no effect
-  once the model has coordinates; it now suggests `--origin` (and moving, never rotating) there.
 ### Added — tables, units and sources in chat answers; a compact welcome card
 Workshop feedback (werkvoorbereiders, 2026-10-12): tables showed as raw pipes, numbers came
 without units, nobody could read back *why* a choice was made, and the welcome text was English
@@ -139,9 +113,37 @@ The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as c
   <n>]` reads it back. Rotates at 2 MB to `journal-<yyyymm>.md`. Lines are written by a
   background writer with a 3 s deadline; an offline folder drops them with one logged warning —
   Revit's main thread never waits on the folder.
+  `export` changes no element but is journaled too, naming the files it wrote.
 - **Settings → "Projectgeheugen en journaal bijhouden"** (default on). Off: no block, no journal,
   and the four commands are left out of every prompt and tool list — the chat exactly as before.
 - `docs` no longer lists the `VibeModel` subfolder (VibeModel's own data, not a reference document).
+
+## v1.2.7 — Orientation Checks, Revit/IFC Links & Chat Workshop Fixes (2026-10-12)
+
+### Added — Maikel review: orientation rules and links by shared coordinates
+- **`project-north-true` check** — the project base point's *Angle to True North* must be 0:
+  Project North never rotates; a straight view comes from the scope box or crop region. `coords`
+  prints a WARN next to the angle when it is not 0 (JSON: `baseAngleZero`).
+- **`reference-point-true-north` check** — the reference point family (name contains
+  `familyPattern`) stays unrotated and pinned. While Project North itself is rotated it reports
+  INFO rather than judging an angle that would be measured against the wrong north.
+- **`links-by-shared-coordinates` check** — once the model has shared coordinates, every Revit
+  link must sit where *Auto – By Shared Coordinates* puts it (compared through both models'
+  coordinate transforms; any of the link's named locations counts). Unloaded links and CAD links
+  (the API keeps no record of how they were placed) are counted as not verifiable, never flagged.
+  Also runs on the link a command just made. A shared link dragged afterwards still reads as
+  shared — Revit moves the link's own shared position along with it.
+- **`linkrvt "<path.rvt|.ifc>"`** — link another Revit model or an IFC by shared coordinates and
+  pin it; refused (with the reason) while the model has no shared coordinates, `--origin`/`--force`
+  link origin-to-origin. An IFC goes through Revit's converted `<file>.ifc.RVT` copy (reused unless
+  the IFC is newer, then converted again). When placed by shared coordinates, the
+  response states where the link landed, read back from the model. IFC linking is not yet verified
+  in Revit (no IFC file was at hand).
+- `linkcad` names the criterion it placed by ("coordinates set up: base point N/S … E/W … ≠ 0")
+  and its first-link hint says "do not rotate — Project North stays True North". The `pinned`
+  rule in the example pack also covers Revit links.
+- Fixed: after a failed shared-coordinates link, `linkcad` suggested `--first`, which has no effect
+  once the model has coordinates; it now suggests `--origin` (and moving, never rotating) there.
 
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**

@@ -18,7 +18,7 @@ namespace VibeModel.Services.Claude.Commands
     /// written with its size, and names any target file that is locked (an open PDF) instead
     /// of failing with Revit's generic error. Changes nothing in the model.
     /// </summary>
-    public class ExportCommand : IClaudeCommand, IStructuredCommand
+    public class ExportCommand : IClaudeCommand, IStructuredCommand, IJournaledCommand
     {
         public string Name => "export";
         public string Description => "Export sheets/views: 'export pdf 0001,0002' | 'export dwg --all-sheets' | 'export ifc [view]'. Default folder: " +
@@ -26,6 +26,17 @@ namespace VibeModel.Services.Claude.Commands
         public string Usage => ExportArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
+
+        /// <summary>The "files" paths of a successful export, for the project journal.</summary>
+        public IList<string> JournalFiles(CommandResult result)
+        {
+            var data = result?.Data as Dictionary<string, object>;
+            if (data == null || !data.TryGetValue("files", out var files) || !(files is List<object> list)) return new List<string>();
+            return list.OfType<Dictionary<string, object>>()
+                .Select(f => f.TryGetValue("path", out var path) ? path as string : null)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .ToList();
+        }
 
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)
         {

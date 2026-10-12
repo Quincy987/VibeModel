@@ -242,6 +242,8 @@ namespace VibeModel.Services.Claude
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
             if (cr.Success && changes != null)
                 Journal(app, request.Command, request.Args, changes, request.Turn);
+            else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
+                JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
             bool json = request.Format == ResponseFormat.Json;
 
             // Take the stamp only when it will actually be delivered — taking it resets the
@@ -452,6 +454,28 @@ namespace VibeModel.Services.Claude
                 var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args,
                     RecordedChanges.Values(changes.Added), RecordedChanges.Values(changes.Modified),
                     RecordedChanges.Values(changes.Deleted), turn ?? ProjectJournal.CurrentTurn);
+                ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Journal line skipped: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Project journal: one line for a command that changed no element but wrote files
+        /// (export), naming the files. Nothing is journaled when it wrote none.
+        /// </summary>
+        private static void JournalFiles(UIApplication app, string command, string args, IJournaledCommand journaled, CommandResult result, ChatTurnRef turn)
+        {
+            try
+            {
+                if (!ProjectData.Enabled) return;
+                var files = journaled.JournalFiles(result);
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null || files == null || files.Count == 0) return;
+                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args, null, null, null,
+                    turn ?? ProjectJournal.CurrentTurn, files);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)

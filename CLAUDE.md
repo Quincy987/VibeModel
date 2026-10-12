@@ -446,7 +446,8 @@ curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday
   (`- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`),
   and one per chat turn with the `[bron: …]` / `[source: …]` markers its answer cited
   (`… · chat t3f9a2c "…" · sources: PRG1002- DO.pdf p.3`). A command that changed nothing (an
-  `exec` that only read) is not journaled. The turn comes from the `X-VibeModel-Turn` header
+  `exec` that only read) is not journaled; `export` changes nothing but is (`IJournaledCommand`:
+  `… · export pdf 0001 · wrote 0001 - Situatie.pdf · chat …`). The turn comes from the `X-VibeModel-Turn` header
   (`<id> <url-encoded question>`, sent by the API backends) or else from the chat turn in flight
   in this Revit session (the Claude Code CLI's own curls) — an external curl made during a chat
   turn is attributed to that turn too.

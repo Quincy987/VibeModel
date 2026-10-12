@@ -31,6 +31,16 @@ namespace VibeModel.Services.Claude
     public interface IModificationCommand { }
 
     /// <summary>
+    /// A command that changes no element yet belongs in the project journal (export writes
+    /// files). The handler journals a successful run with the files it names.
+    /// </summary>
+    public interface IJournaledCommand
+    {
+        /// <summary>The files a successful run wrote (full paths), for the journal line.</summary>
+        System.Collections.Generic.IList<string> JournalFiles(CommandResult result);
+    }
+
+    /// <summary>
     /// Marker for the project memory / journal commands (remember, memory, forget, journal):
     /// offered to the chat only while Settings → "Projectgeheugen en journaal bijhouden" is on,
     /// so with it off the command list in every prompt is exactly what it was before.

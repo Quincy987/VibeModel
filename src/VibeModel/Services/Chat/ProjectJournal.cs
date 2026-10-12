@@ -134,6 +134,14 @@ namespace VibeModel.Services.Chat
             return label + " " + string.Join(" ", shown) + (ids.Count > MaxIdsShown ? " +" + (ids.Count - MaxIdsShown) + " more" : "");
         }
 
+        /// <summary>"wrote 0001 - Situatie.pdf; 0002 - Doorsneden.pdf" — file names only, capped like ids.</summary>
+        internal static string Files(string label, IList<string> paths)
+        {
+            if (paths == null || paths.Count == 0) return null;
+            var shown = paths.Take(MaxIdsShown).Select(f => Path.GetFileName(f ?? ""));
+            return label + " " + string.Join("; ", shown) + (paths.Count > MaxIdsShown ? " +" + (paths.Count - MaxIdsShown) + " more" : "");
+        }
+
         internal static string Quote(ChatTurnRef turn)
             => "chat " + turn.Id + (string.IsNullOrEmpty(turn.Question) ? "" : " \"" + turn.Question.Replace("\"", "'") + "\"");
 
@@ -142,10 +150,10 @@ namespace VibeModel.Services.Chat
         /// chat t3f9a2c "maak een muur van 5 m"". Empty id groups and the chat part are left out.
         /// </summary>
         public static string FormatCommandLine(DateTime local, string command, string args,
-            IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn)
+            IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn, IList<string> written = null)
         {
             var parts = new List<string> { "- " + Stamp(local), Shorten((command ?? "") + (string.IsNullOrWhiteSpace(args) ? "" : " " + args), MaxArgsChars) };
-            foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted) })
+            foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted), Files("wrote", written) })
                 if (p != null) parts.Add(p);
             if (turn != null) parts.Add(Quote(turn));
             return string.Join(Sep, parts);
