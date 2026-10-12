@@ -11,7 +11,7 @@ namespace VibeModel.Services.Claude.Commands
     public class ListCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "list";
-        public string Description => "List elements by category (supports any category + --view flag; 'dimensions' and 'text' show values, 'sheets' viewport counts)";
+        public string Description => "List elements by category (supports any category + --view flag; 'dimensions' and 'text' show values, 'sheets' viewport counts, 'regions' filled regions + detail items)";
         public string Usage => "list <category> [--view]";
 
         public string Execute(string args, UIApplication uiApp)
@@ -87,6 +87,15 @@ namespace VibeModel.Services.Claude.Commands
                     elements = GetCollector(doc, activeView).OfClass(typeof(TextNote)).Cast<Element>();
                     label = "TEXT NOTES";
                     break;
+                case "regions":
+                case "region":
+                case "filled regions":
+                case "detail items":
+                    // Filled regions live in the Detail Items category, next to detail components.
+                    elements = GetCollector(doc, activeView).OfCategory(BuiltInCategory.OST_DetailComponents)
+                        .WhereElementIsNotElementType().Cast<Element>();
+                    label = "REGIONS";
+                    break;
                 default:
                     var (cat, error) = FormattingHelper.ResolveCategory(elementType, doc);
                     if (cat == null)
@@ -146,6 +155,18 @@ namespace VibeModel.Services.Claude.Commands
                     elemData["text"] = tn.Text;
                     elemData["view"] = owner?.Name;
                 }
+                else if (elem is FilledRegion fr)
+                {
+                    var owner = doc.GetElement(fr.OwnerViewId) as View;
+                    var area = fr.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED);
+                    double m2 = area != null && area.HasValue ? area.AsDouble() * 0.09290304 : 0;
+                    var typeName = doc.GetElement(fr.GetTypeId())?.Name ?? "?";
+                    sb.Append("Filled region : " + typeName + " | " + m2.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " m² | View: " + (owner?.Name ?? "-"));
+                    elemData["kind"] = "filledRegion";
+                    elemData["type"] = typeName;
+                    elemData["areaM2"] = Math.Round(m2, 3);
+                    elemData["view"] = owner?.Name;
+                }
                 else if (elem is FamilyInstance fi)
                 {
                     sb.Append(fi.Symbol?.Family?.Name ?? "?");
@@ -153,6 +174,13 @@ namespace VibeModel.Services.Claude.Commands
                     sb.Append(fi.Symbol?.Name ?? "?");
                     elemData["family"] = fi.Symbol?.Family?.Name;
                     elemData["symbol"] = fi.Symbol?.Name;
+                    if (label == "REGIONS")
+                    {
+                        var owner = doc.GetElement(fi.OwnerViewId) as View;
+                        sb.Append(" | View: " + (owner?.Name ?? "-"));
+                        elemData["kind"] = "detailComponent";
+                        elemData["view"] = owner?.Name;
+                    }
                 }
                 else
                 {

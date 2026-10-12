@@ -18,8 +18,8 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "viewport";
         public string Description => "Place views on a sheet: one at --at x y, or several in a --grid CxR (inside --area). Paper mm from the " +
-                                     "sheet's lower-left (A0 = 1189×841). --scale n sets 1:n first. Also --move / --remove a viewport. " +
-                                     "Check the result with 'sheetinfo <sheet>'";
+                                     "sheet's lower-left (A0 = 1189×841). --scale n sets 1:n first. Also --move / --remove a viewport, or --move <id> --to <sheet> " +
+                                     "to put it on another sheet. Check the result with 'sheetinfo <sheet>'";
         public string Usage => ViewportArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -29,7 +29,7 @@ namespace VibeModel.Services.Claude.Commands
             var doc = uiApp.ActiveUIDocument.Document;
             var a = ViewportArgs.Parse(args);
             if (a.Error != null) return CommandResult.Error("BAD_ARGS", a.Error, "Usage: " + Usage);
-            if (a.MoveId.HasValue) return Move(doc, a);
+            if (a.MoveId.HasValue) return a.MoveToSheet != null ? MoveToSheet(doc, a) : Move(doc, a);
             if (a.RemoveId.HasValue) return Remove(doc, a.RemoveId.Value);
 
             var sheet = SheetHelper.FindSheet(doc, a.Sheet);
@@ -50,8 +50,10 @@ namespace VibeModel.Services.Claude.Commands
                 if (!(v is ViewSchedule) && !Viewport.CanAddViewToSheet(doc, sheet.Id, v.Id))
                 {
                     var on = SheetHelper.SheetOf(doc, v);
+                    var placedVp = on == null ? null : new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>().FirstOrDefault(x => x.ViewId == v.Id);
                     problems.Add("'" + v.Name + "' (" + v.Id.IntegerValue + ") " + (on != null
-                        ? "is already on sheet " + SheetHelper.Label(on) + " — a view can be on one sheet only; duplicate it ('exec' Duplicate(ViewDuplicateOption.WithDetailing)) or 'viewport --remove' it there"
+                        ? "is already on sheet " + SheetHelper.Label(on) + " — a view can be on one sheet only; move it here with 'viewport --move " +
+                          placedVp?.Id.IntegerValue + " --to " + sheet.SheetNumber + "', or duplicate it ('exec' Duplicate(ViewDuplicateOption.WithDetailing))"
                         : "cannot be placed on a sheet (" + v.ViewType + ")"));
                     continue;
                 }
@@ -245,6 +247,120 @@ namespace VibeModel.Services.Claude.Commands
             if (error != null) return CommandResult.FromTransactionError(error);
             return CommandResult.Ok("VIEWPORT MOVED\n==============\n" + a.MoveId + " on " + SheetHelper.Label(sheet) + " → " + r + "\n",
                 new Dictionary<string, object> { { "id", a.MoveId.Value }, { "outlineMm", r.ToJson() } });
+        }
+
+        /// <summary>
+        /// --move id --to sheet: the view leaves its sheet and lands on another one in one
+        /// transaction, keeping its scale, viewport type (title on/off), rotation and detail
+        /// number. When the target paper is a different size and the view cannot fit its free
+        /// area, the move is refused with the scale that would fit; a same-size sheet is fine.
+        /// </summary>
+        private static CommandResult MoveToSheet(Document doc, ViewportArgs a)
+        {
+            var el = doc.GetElement(new ElementId(a.MoveId.Value));
+            var vp = el as Viewport;
+            var ssi = el as ScheduleSheetInstance;
+            if (vp == null && ssi == null)
+                return CommandResult.Error("ELEMENT_NOT_FOUND", a.MoveId + " is not a viewport or placed schedule.", "Run 'sheetinfo <sheet>' for viewport ids.");
+            var from = doc.GetElement(vp != null ? vp.SheetId : ssi.OwnerViewId) as ViewSheet;
+            var to = SheetHelper.FindSheet(doc, a.MoveToSheet);
+            if (to == null)
+                return CommandResult.Error("ELEMENT_NOT_FOUND", "No sheet '" + a.MoveToSheet + "'.", "Run 'list sheets', or create one with 'sheet --number <nr> --name <name>'.");
+            if (to.Id == from.Id)
+                return CommandResult.Error("BAD_ARGS", "It is already on sheet " + SheetHelper.Label(to) + ".", "Use 'viewport --move " + a.MoveId + " <x> <y>' to move it on the sheet.");
+            var view = doc.GetElement(vp != null ? vp.ViewId : ssi.ScheduleId) as View;
+
+            var fromPaper = SheetHelper.PaperRect(doc, from, out var fromOrigin, out _);
+            var box = vp != null ? SheetHelper.ToPaper(fromOrigin, vp.GetBoxOutline()) : SheetHelper.ToPaper(fromOrigin, ssi.get_BoundingBox(from));
+            var toPaper = SheetHelper.PaperRect(doc, to, out var toOrigin, out _);
+            var usable = SheetLayout.UsableArea(toPaper, 10, SheetLayout.DefaultReserve(toPaper.W));
+            bool sameSize = Math.Abs(toPaper.W - fromPaper.W) < 1 && Math.Abs(toPaper.H - fromPaper.H) < 1;
+            bool fits = SheetLayout.Fits(box.W, box.H, usable);
+            int scale = vp != null ? view.Scale : 0;
+            string fitWarn = scale > 0
+                ? SheetLayout.FitWarning("'" + view.Name + "'", scale, box.W, box.H, usable, SheetLayout.SuggestScale(box.W * scale, box.H * scale, usable))
+                : "WARN: the schedule is larger than the free area of the sheet — filter or group it";
+            if (!fits && !sameSize)
+            {
+                string pn = SheetLayout.PaperName(toPaper.W, toPaper.H);
+                return CommandResult.Error("DOES_NOT_FIT",
+                    "Refused: sheet " + SheetHelper.Label(to) + " is " + Mm.F(toPaper.W) + "×" + Mm.F(toPaper.H) + " mm" + (pn != null ? " (" + pn + ")" : "") +
+                    ", a different size than " + SheetHelper.Label(from) + ", and '" + view.Name + "' (" + Mm.F(box.W) + "×" + Mm.F(box.H) +
+                    " mm on paper) does not fit its free area " + Mm.F(usable.W) + "×" + Mm.F(usable.H) + " mm. Nothing was moved.",
+                    scale > 0
+                        ? "It fits at 1:" + SheetLayout.SuggestScale(box.W * scale, box.H * scale, usable) + ": crop it ('crop " + view.Id.IntegerValue +
+                          " --fit' or '--box') and move again, or place it at that scale ('viewport --remove " + a.MoveId + "' then 'viewport " + to.SheetNumber +
+                          " " + view.Id.IntegerValue + " --scale " + SheetLayout.SuggestScale(box.W * scale, box.H * scale, usable) + "'), or pick a sheet of the same size."
+                        : "Filter or group the schedule so it gets shorter, or pick a sheet of the same size.");
+            }
+
+            // Default position: where it was on the old paper when that lies in the new free area, else that area's centre.
+            double cx, cy;
+            if (a.At != null) { cx = a.At[0]; cy = a.At[1]; }
+            else if (box.Inside(usable)) { cx = box.Cx; cy = box.Cy; }
+            else { cx = usable.Cx; cy = usable.Cy; }
+
+            ElementId newId = null;
+            MmRect placed = default(MmRect);
+            var kept = new List<string>();
+            var error = TransactionHelper.Execute(doc, "VibeModel: Move Viewport To Sheet", () =>
+            {
+                if (vp != null)
+                {
+                    var typeId = vp.GetTypeId();
+                    var rotation = vp.Rotation;
+                    var detail = vp.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER)?.AsString();
+                    doc.Delete(vp.Id);
+                    if (!Viewport.CanAddViewToSheet(doc, to.Id, view.Id))
+                        throw new InvalidOperationException("Revit does not allow '" + view.Name + "' on sheet " + SheetHelper.Label(to) + ".");
+                    var nv = Viewport.Create(doc, to.Id, view.Id, SheetHelper.ToSheet(toOrigin, cx, cy));
+                    if (nv.GetTypeId() != typeId) nv.ChangeTypeId(typeId);
+                    kept.Add("viewport type '" + doc.GetElement(typeId)?.Name + "'");
+                    if (rotation != ViewportRotation.None) { nv.Rotation = rotation; kept.Add("rotation " + rotation); }
+                    if (!string.IsNullOrEmpty(detail))
+                    {
+                        try { nv.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER)?.Set(detail); kept.Add("detail number " + detail); }
+                        catch { kept.Add("detail number " + detail + " was taken on the new sheet, Revit numbered it"); }
+                    }
+                    doc.Regenerate();
+                    nv.SetBoxCenter(SheetHelper.ToSheet(toOrigin, cx, cy));
+                    doc.Regenerate();
+                    placed = SheetHelper.ToPaper(toOrigin, nv.GetBoxOutline());
+                    newId = nv.Id;
+                }
+                else
+                {
+                    var scheduleId = ssi.ScheduleId;
+                    doc.Delete(ssi.Id);
+                    var ns = ScheduleSheetInstance.Create(doc, to.Id, scheduleId, SheetHelper.ToSheet(toOrigin, cx, cy));
+                    doc.Regenerate();
+                    var r = SheetHelper.ToPaper(toOrigin, ns.get_BoundingBox(to));
+                    ElementTransformUtils.MoveElement(doc, ns.Id, SheetHelper.ToSheet(XYZ.Zero, cx - r.Cx, cy - r.Cy));
+                    doc.Regenerate();
+                    placed = SheetHelper.ToPaper(toOrigin, ns.get_BoundingBox(to));
+                    newId = ns.Id;
+                }
+            });
+            if (error != null) return CommandResult.FromTransactionError(error);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("VIEWPORT MOVED TO ANOTHER SHEET");
+            sb.AppendLine("===============================");
+            sb.AppendLine((vp != null ? "View '" : "Schedule '") + view.Name + "'" + (scale > 0 ? " 1:" + scale : "") + ": " + SheetHelper.Label(from) + " → " + SheetHelper.Label(to));
+            sb.AppendLine("New " + (vp != null ? "viewport" : "schedule instance") + " id: " + newId.IntegerValue + " (the old id " + a.MoveId + " is gone)");
+            sb.AppendLine("Box: " + placed + (a.At != null ? " (--at)" : ""));
+            if (kept.Count > 0) sb.AppendLine("Kept: scale, " + string.Join(", ", kept));
+            if (!placed.Inside(toPaper))
+                sb.AppendLine("WARN: it runs " + Mm.F(placed.Overhang(toPaper)) + " mm off the paper — 'viewport --move " + newId.IntegerValue + " <x> <y>' to nudge it");
+            else if (!fits)
+                sb.AppendLine(fitWarn);
+            sb.AppendLine("Next: 'sheetinfo " + to.SheetNumber + "' to check overlaps.");
+            return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
+            {
+                { "id", newId.IntegerValue }, { "oldId", a.MoveId.Value }, { "view", view.Id.IntegerValue },
+                { "fromSheet", from.SheetNumber }, { "toSheet", to.SheetNumber }, { "outlineMm", placed.ToJson() }, { "fits", fits },
+                { "created", new List<object> { newId.IntegerValue } }
+            });
         }
 
         private static CommandResult Remove(Document doc, int id)
