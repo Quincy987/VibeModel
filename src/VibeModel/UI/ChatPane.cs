@@ -190,6 +190,7 @@ namespace VibeModel.UI
                 Foreground = FgPrimary,
                 FontSize = 14,
                 FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0)
             };
@@ -210,6 +211,9 @@ namespace VibeModel.UI
             // "?" - the longer example list (the welcome card only has four chips).
             _examplesButton = CreateHeaderButton("?");
             _examplesButton.FontWeight = FontWeights.SemiBold;
+            _examplesButton.Padding = new Thickness(5, 2, 5, 2);
+            _examplesButton.Margin = new Thickness(0, 0, 2, 0);
+            _examplesButton.ToolTip = Strings.Get(Strings.ExamplesTitle);
             _examplesButton.Click += (s, e) => ShowExamplesPopup();
             Grid.SetColumn(_examplesButton, 2);
             headerGrid.Children.Add(_examplesButton);
@@ -1425,6 +1429,9 @@ namespace VibeModel.UI
             panel.Children.Add(rtb);
         }
 
+        // A RichTextBox lays its document out a few px narrower than itself.
+        private const double RichTextBoxInset = 12;
+
         private RichTextBox CreateMarkdownRichTextBox(string markdown)
         {
             var doc = MarkdownHelper.ToFlowDocument(markdown, new MarkdownRenderOptions { OnCitationClick = OpenCitation });
@@ -1443,6 +1450,13 @@ namespace VibeModel.UI
 
             // Disable built-in context menu
             rtb.ContextMenu = null;
+
+            // Tables size their columns to the width the answer really gets.
+            rtb.SizeChanged += (s, e) =>
+            {
+                if (e.WidthChanged)
+                    Markdown.Renderers.TableRenderer.FitTables(doc, rtb.ActualWidth - RichTextBoxInset);
+            };
 
             return rtb;
         }

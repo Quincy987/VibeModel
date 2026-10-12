@@ -387,8 +387,11 @@ in `ChatBackendBase` (`TableRule`, `UnitsRule`/`UnitsConversionRule`, `SourcesRu
 a markdown table for >3 items with 2+ attributes (units in the header cell), a unit with every
 quantity, and a `[bron: …]` marker after every fact taken from the office standards, the leidraad,
 a project document or the model. Markdig runs with pipe + grid tables; `Markdown/Renderers/TableRenderer.cs`
-draws them (layout decisions — numeric columns, capped star widths, 30 shown rows, TSV — are the
-WPF-free `Markdown/TableLayout.cs`).
+draws them (layout decisions — numeric columns, 30 shown rows, TSV and the column widths — are the
+WPF-free `Markdown/TableLayout.cs`). Widths use browser-style auto layout (`TableLayout.Fit`): one line
+per cell when it fits, else every column keeps its longest word, and when even that does not fit the
+text columns give way before the numeric ones; `ChatPane` refits on resize (`TableRenderer.FitTables`).
+In the default ~300 px pane a 5-column table still breaks words, hence the rule's 4-column limit.
 
 **Source markers.** `Markdown/Citations.cs` (`CitationParser`, WPF-free) finds
 `[bron: <kind> <target>]` outside code spans/fences before Markdig parses, swaps each for a

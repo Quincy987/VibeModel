@@ -53,6 +53,14 @@ namespace VibeModel.Markdown
             return link;
         }
 
+        /// <summary>The small raised comma between adjacent markers.</summary>
+        public static Inline Separator() => new Run(",")
+        {
+            Foreground = MarkdownStyles.AccentBlue,
+            FontSize = MarkdownStyles.FontSizeCitation,
+            BaselineAlignment = BaselineAlignment.Superscript
+        };
+
         /// <summary>
         /// "Bronnen (3) ▸" — collapsed by default; a click unfolds one line per source
         /// ("¹ leidraad 4.2"), each clickable like its marker.

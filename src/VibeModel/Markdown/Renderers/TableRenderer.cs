@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Documents;
+using System.Windows.Media;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -38,22 +40,22 @@ namespace VibeModel.Markdown.Renderers
             var bodyText = bodyRows.Select(r => (IList<string>)CellTexts(r)).ToList();
 
             var alignments = new TextAlignment[columns];
+            var numeric = new bool[columns];
             for (int c = 0; c < columns; c++)
             {
+                var numCol = c;
+                numeric[c] = TableLayout.IsNumericColumn(bodyText.Select(r => numCol < r.Count ? r[numCol] : ""));
                 var explicitAlign = c < table.ColumnDefinitions.Count ? table.ColumnDefinitions[c].Alignment : null;
                 if (explicitAlign == TableColumnAlign.Right) alignments[c] = TextAlignment.Right;
                 else if (explicitAlign == TableColumnAlign.Center) alignments[c] = TextAlignment.Center;
                 else if (explicitAlign == TableColumnAlign.Left) alignments[c] = TextAlignment.Left;
                 else
                 {
-                    var col = c;
-                    alignments[c] = TableLayout.IsNumericColumn(bodyText.Select(r => col < r.Count ? r[col] : ""))
-                        ? TextAlignment.Right
-                        : TextAlignment.Left;
+                    alignments[c] = numeric[c] ? TextAlignment.Right : TextAlignment.Left;
                 }
             }
 
-            var weights = TableLayout.ColumnWeights(headerText, bodyText, columns);
+            var needs = TableLayout.MeasureColumns(headerText, bodyText, columns, numeric, MeasureText);
             var wpfTable = new WpfTable
             {
                 CellSpacing = 0,
@@ -62,8 +64,10 @@ namespace VibeModel.Markdown.Renderers
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 2, 0, 0)
             };
-            foreach (var w in weights)
-                wpfTable.Columns.Add(new TableColumn { Width = new GridLength(w, GridUnitType.Star) });
+            // Widths are refit to the pane's real width by FitTables (the pane calls it on resize).
+            wpfTable.Tag = needs;
+            foreach (var w in TableLayout.Fit(needs, TableLayout.AssumedWidth))
+                wpfTable.Columns.Add(new TableColumn { Width = new GridLength(w) });
 
             renderer.Push(wpfTable);
             if (headerRows.Count > 0)
@@ -106,7 +110,7 @@ namespace VibeModel.Markdown.Renderers
                 var span = Math.Max(1, cell.ColumnSpan);
                 var wpfCell = new WpfTableCell
                 {
-                    Padding = new Thickness(6, 3, 6, 3),
+                    Padding = new Thickness(5, 3, 5, 3),
                     TextAlignment = column < alignments.Length ? alignments[column] : TextAlignment.Left,
                     ColumnSpan = span
                 };
@@ -173,6 +177,33 @@ namespace VibeModel.Markdown.Renderers
             return footer;
         }
 
+        /// <summary>
+        /// Refits every table in <paramref name="document"/> to <paramref name="width"/> px
+        /// (the space the document gets): see <see cref="TableLayout.Fit"/>.
+        /// </summary>
+        public static void FitTables(FlowDocument document, double width)
+        {
+            if (document == null || width <= 0) return;
+            FitTables(document.Blocks, width);
+        }
+
+        private static void FitTables(BlockCollection blocks, double width)
+        {
+            foreach (var block in blocks)
+            {
+                if (block is WpfTable table && table.Tag is TableLayout.ColumnNeed[] needs && needs.Length == table.Columns.Count)
+                {
+                    var widths = TableLayout.Fit(needs, width);
+                    for (int i = 0; i < widths.Length; i++)
+                        if (Math.Abs(table.Columns[i].Width.Value - widths[i]) >= 1)
+                            table.Columns[i].Width = new GridLength(widths[i]);
+                }
+                else if (block is Section section) FitTables(section.Blocks, width);
+                else if (block is List list)
+                    foreach (var item in list.ListItems) FitTables(item.Blocks, width - 30);
+            }
+        }
+
         // Tags so tests (and nothing else) can find the footer parts.
         internal const string TableFooterTag = "vm-table-footer";
         internal const string MoreRowsTag = "vm-table-more";
@@ -185,6 +216,18 @@ namespace VibeModel.Markdown.Renderers
             link.TextDecorations = null;
             link.Cursor = System.Windows.Input.Cursors.Hand;
             return link;
+        }
+
+        private static readonly Typeface CellFace = new Typeface(SystemFonts.MessageFontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        private static readonly Typeface HeaderFace = new Typeface(SystemFonts.MessageFontFamily, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+
+        // Width (px) of one line of cell text at the table's font size.
+        private static double MeasureText(string text, bool header)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            var formatted = new FormattedText(CitationParser.PlaceholdersToSuperscript(text), CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, header ? HeaderFace : CellFace, MarkdownStyles.FontSizeTable, Brushes.Black, 1.0);
+            return formatted.WidthIncludingTrailingWhitespace;
         }
 
         // --- Plain text of a cell (for numeric detection, widths and TSV) ---------------

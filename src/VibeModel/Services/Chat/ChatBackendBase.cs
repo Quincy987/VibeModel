@@ -262,7 +262,7 @@ namespace VibeModel.Services.Chat
         // and nobody could read back WHY a choice was made. The pane renders markdown tables
         // and turns [bron: …] markers into clickable sources (Markdown/Citations.cs).
         internal const string TableRule =
-            "When you present more than 3 items with 2+ attributes, use a markdown table; first column = name/id, units in the header cell (`Lengte (mm)`), never in every cell. A table does not count towards the 5 lines.";
+            "When you present more than 3 items with 2+ attributes, use a markdown table; first column = name/id, units in the header cell (`Lengte (mm)`), never in every cell. The chat pane is narrow: at most 4 columns, short headers, merge or drop the rest. A table does not count towards the 5 lines.";
         internal const string UnitsRule =
             "Always name the unit with every quantity (mm, m, m², m³, kg, kN, °, s); never give a bare number.";
         internal const string UnitsConversionRule =

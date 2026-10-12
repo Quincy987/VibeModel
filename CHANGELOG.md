@@ -8,10 +8,11 @@ without units, nobody could read back *why* a choice was made, and the welcome t
 and took a third of the pane.
 - **Tables.** Markdown pipe and grid tables render as a real table: bold header on a light fill,
   alternating row tint, padded cells, numeric columns (a number with an optional unit) right-aligned,
-  column widths from the content with a cap so long text wraps instead of scrolling sideways. Long
+  column widths fitted to the pane like a browser table (numbers never break, long text wraps, no
+  sideways scrolling; refit when the pane is resized). Long
   tables show 30 rows and "… nog N rijen" unfolds the rest; **Kopiëren** under each table puts it on
   the clipboard as tab-separated text (pastes into Excel as cells). The rules tell the model to use a
-  table for more than 3 items with 2+ attributes, with units in the header cell.
+  table for more than 3 items with 2+ attributes, at most 4 columns, with units in the header cell.
 - **Units.** New rules: every quantity names its unit, VibeModel output is mm unless stated, values
   over 10 000 mm go to m / m² / m³ (said once). Command output now names the unit wherever it printed
   a bare number: `params` (and `family`, `set`, `colorsplash`/`filter --count` labels) classify a

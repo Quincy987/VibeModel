@@ -194,25 +194,48 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void ColumnWeights_AreCapped_AndHeadersNeverBreakMidWord()
-        {
-            var header = new List<string> { "Naam", "Lengte (mm)", "Opmerking" };
-            var rows = new List<IList<string>>
-            {
-                new List<string> { "W1", "3000", new string('x', 200) },
-            };
-            var w = TableLayout.ColumnWeights(header, rows, 3);
-            Assert.Equal(TableLayout.MaxWeight + 2, w[2]);       // a long text column is capped (wraps)
-            Assert.True(w[1] >= "(mm)".Length + 2);
-            Assert.True(w[0] >= TableLayout.MinWeight + 2);
-        }
-
-        [Fact]
         public void Tsv_HasHeaderAndRows_WithTabsAndNoStrayWhitespace()
         {
             var tsv = TableLayout.ToTsv(new List<string> { "Naam", "Lengte (mm)" },
                 new List<IList<string>> { new List<string> { "W1\tx", "3000" }, new List<string> { "W2", "4 500" + CitationParser.Placeholder(1) } });
             Assert.Equal("Naam\tLengte (mm)\r\nW1 x\t3000\r\nW2\t4 500¹\r\n", tsv);
+        }
+
+        private static readonly System.Func<string, bool, double> SevenPx = (t, bold) => t.Length * 7.0;
+
+        [Fact]
+        public void MeasureColumns_MinIsTheLongestWord_AndNumbersNeverBreak()
+        {
+            var header = new List<string> { "Wand", "Lengte (mm)", "Opmerking" };
+            var rows = new List<IList<string>> { new List<string> { "W1", "12 000", "een heel lange opmerking" } };
+            var needs = TableLayout.MeasureColumns(header, rows, 3, new[] { false, true, false }, SevenPx);
+            var chrome = TableLayout.CellChrome;
+            Assert.Equal(4 * 7 + chrome, needs[0].Min);                  // "Wand"
+            Assert.Equal(6 * 7 + chrome, needs[1].Min);                  // "Lengte" / "12 000" whole
+            Assert.Equal(11 * 7 + chrome, needs[1].Max);                 // "Lengte (mm)" on one line
+            Assert.Equal(9 * 7 + chrome, needs[2].Min);                  // "opmerking"
+            Assert.Equal(24 * 7 + chrome, needs[2].Max);
+        }
+
+        [Fact]
+        public void Fit_OneLineWhenItFits_ElseWordsFirst_ElseProportional()
+        {
+            var needs = new[]
+            {
+                new TableLayout.ColumnNeed { Min = 100, Max = 150 },   // Beton_Metselwerk_650
+                new TableLayout.ColumnNeed { Min = 50, Max = 50 },     // 35,41
+                new TableLayout.ColumnNeed { Min = 70, Max = 170 },    // 1. Bestaande situatie
+            };
+            Assert.Equal(new double[] { 150, 50, 170 }, TableLayout.Fit(needs, 500));   // compact, not stretched
+            var mid = TableLayout.Fit(needs, 300);                                         // 80 spare over the words
+            Assert.Equal(new double[] { 126, 50, 123 }, mid);
+            Assert.True(mid.Sum() <= 300);
+            var tight = TableLayout.Fit(needs, 176);                                       // below the words
+            Assert.Equal(new double[] { 80, 40, 56 }, tight);                              // no numeric column: proportional
+
+            needs[1].Numeric = true;                                                       // "35,41" stays whole,
+            Assert.Equal(new double[] { 74, 50, 51 }, TableLayout.Fit(needs, 176));        // the text columns give way
+            Assert.Equal(new double[] { 36, 18, 25 }, TableLayout.Fit(needs, 80));         // numbers > half the room: proportional
         }
 
         [Fact]
@@ -281,7 +304,8 @@ namespace VibeModel.Tests
                 var table = All(doc).OfType<WpfTable>().Single();
 
                 Assert.Equal(3, table.Columns.Count);
-                Assert.True(table.Columns.All(c => c.Width.IsStar));
+                // Short and numeric columns are sized to fit (no mid-number wrap).
+                Assert.True(table.Columns.All(c => c.Width.IsAbsolute));
                 Assert.Equal(2, table.RowGroups.Count);
 
                 var header = table.RowGroups[0].Rows.Single();
@@ -302,6 +326,37 @@ namespace VibeModel.Tests
                 var footer = All(doc).OfType<Paragraph>().Single(p => (p.Tag as string) == TableRenderer.TableFooterTag);
                 Assert.Equal("Kopiëren", Text(footer).Trim());
                 Assert.DoesNotContain(All(doc).OfType<Hyperlink>(), h => (h.Tag as string) == TableRenderer.MoreRowsTag);
+            });
+        }
+
+        [Fact]
+        public void Columns_RefitToThePaneWidth_KeepingNumbersWhole()
+        {
+            Sta(() =>
+            {
+                var md = "| Wand (type) | Lengte (m) | Fase gemaakt |\n|---|---|---|\n" +
+                         "| Beton_Metselwerk_650 | 35,41 | 1. Bestaande situatie |\n";
+                var doc = MarkdownHelper.ToFlowDocument(md, Nl);
+                var table = All(doc).OfType<WpfTable>().Single();
+                var needs = (TableLayout.ColumnNeed[])table.Tag;
+
+                TableRenderer.FitTables(doc, 1000);
+                Assert.Equal(needs.Select(n => System.Math.Floor(n.Max)), table.Columns.Select(c => c.Width.Value));
+
+                var narrow = needs.Sum(n => n.Min) + 20;
+                TableRenderer.FitTables(doc, narrow);
+                Assert.True(table.Columns[1].Width.Value >= needs[1].Min - 1);   // "35,41" stays whole
+                Assert.True(table.Columns.Sum(c => c.Width.Value) <= narrow);
+            });
+        }
+
+        [Fact]
+        public void Adjacent_Markers_AreSeparated()
+        {
+            Sta(() =>
+            {
+                var doc = MarkdownHelper.ToFlowDocument("Vijf wanden [bron: revit 11; revit 12; revit-api].", Nl);
+                Assert.StartsWith("Vijf wanden¹,²,³.", new TextRange(doc.Blocks.FirstBlock.ContentStart, doc.Blocks.FirstBlock.ContentEnd).Text);
             });
         }
 
