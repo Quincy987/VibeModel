@@ -89,6 +89,12 @@ sheet, the refusal says "a view can be on one sheet only", which is wrong for le
 
 ### 1.4 Verdict
 
+> **Decision (2026-10-13):** the office template's own legends are the seed — `legend` duplicates
+> `Legenda_materialen` (or any named legend) and adds swatch/symbol rows. **No seed `.rvt`, no
+> legend components (`type:` rows) in v1** — low priority; the component path above is kept as
+> the documented route if type legends are ever wanted.
+
+
 🟡 → ✅ **when a seed exists.** Everything needed is reachable through the API except creating
 the first legend view and the first legend component. Both can come from:
 
@@ -326,8 +332,8 @@ dimension --levels --view <3d> --at <id>     # level string next to an element (
 
 1. **`dimension --view`** (✅, M) — the largest gain for the least risk, and `--view` also helps
    2D sheets.
-2. **`legend`** (🟡→✅, M) — needs a decision first: who owns the seed `.rvt` (the office's Revit
-   application manager, inside the pack). Until then: the swatch/symbol rows only.
+2. **`legend`** (✅, S–M) — duplicate a template legend + swatch/symbol rows only (decision above);
+   no seed file, no legend components. Low priority.
 3. **`keynotes`/`keynote`** (S) — only when the office starts keynoting. README §6 already
    changes now to the measured truth: keynote tags ❌ (API), keynote values possible.
 
