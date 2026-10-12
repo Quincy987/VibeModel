@@ -183,20 +183,37 @@ namespace VibeModel.Services.Claude
         public double? Reserve;        // mm kept free on the right for the title-block stamp
         public bool? Title;
         public int? MoveId; public double[] MoveTo;
+        public string MoveToSheet;     // --move id --to <sheet>: another sheet (MoveTo then null, At optional)
         public int? RemoveId;
         public string Error;
 
         public const string Usage = "viewport <sheetNumber|sheetId> <viewId|name>[,<viewId|name>...] [--at <x> <y>] " +
                                     "[--grid <cols>x<rows>] [--area <x0> <y0> <x1> <y1>] [--scale <n>] [--margin <mm>] " +
-                                    "[--reserve <mm>] [--title on|off]  |  viewport --move <viewportId> <x> <y>  |  viewport --remove <viewportId>";
+                                    "[--reserve <mm>] [--title on|off]  |  viewport --move <viewportId> <x> <y>  |  " +
+                                    "viewport --move <viewportId> --to <sheetNumber> [--at <x> <y>]  |  viewport --remove <viewportId>";
 
         public static ViewportArgs Parse(string args)
         {
             var r = new ViewportArgs();
             var f = FlagArgs.Parse(args);
-            r.Error = f.Unknown("at", "grid", "area", "scale", "margin", "reserve", "title", "move", "remove");
+            r.Error = f.Unknown("at", "grid", "area", "scale", "margin", "reserve", "title", "move", "remove", "to");
             if (r.Error != null) return r;
 
+            if (f.Has("to") && !f.Has("move")) { r.Error = "--to goes with --move <viewportId> (move a placed view to another sheet)."; return r; }
+            if (f.Has("move") && f.Has("to"))
+            {
+                var v = (f.Values("move") ?? new List<string>()).SelectMany(t => t.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)).ToList();
+                if (v.Count != 1 || !int.TryParse(v[0], out int id))
+                { r.Error = "Usage: viewport --move <viewportId> --to <sheetNumber> [--at <x> <y>]  (no x y after the id when --to is given; use --at)"; return r; }
+                r.MoveId = id;
+                r.MoveToSheet = f.Text("to");
+                if (string.IsNullOrWhiteSpace(r.MoveToSheet)) { r.Error = "--to needs a sheet number (or id)."; return r; }
+                if (f.Has("at") && !f.TryNums("at", 2, out r.At, out r.Error)) return r;
+                // The view keeps its scale and title; layout flags have nothing to act on here.
+                foreach (var flag in new[] { "grid", "area", "scale", "margin", "reserve", "title", "remove" })
+                    if (f.Has(flag)) { r.Error = "--" + flag + " does not go with --move --to (the view keeps its scale and title; place it with --at)."; return r; }
+                return r;
+            }
             if (f.Has("move"))
             {
                 var v = (f.Values("move") ?? new List<string>()).SelectMany(t => t.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)).ToList();

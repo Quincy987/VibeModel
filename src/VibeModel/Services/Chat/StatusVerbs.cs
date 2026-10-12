@@ -36,6 +36,10 @@ namespace VibeModel.Services.Chat
                 { "filter", "Filtering elements…" },
                 { "docs", "Listing project documents…" },
                 { "readdoc", "Reading project document…" },
+                { "remember", "Remembering for this project…" },
+                { "memory", "Reading project memory…" },
+                { "forget", "Forgetting a project fact…" },
+                { "journal", "Reading the project journal…" },
 
                 // Modify
                 { "wall", "Creating wall…" },
@@ -73,6 +77,11 @@ namespace VibeModel.Services.Chat
                 { "text", "Adding text…" },
                 { "sheetinfo", "Checking the sheet…" },
                 { "crop", "Cropping view…" },
+                { "look", "Aiming the 3D view…" },
+                { "schedule", "Building schedule…" },
+                { "callout", "Creating callout…" },
+                { "region", "Drawing filled region…" },
+                { "export", "Exporting…" },
 
                 // Diagnosis, source data, office standards (plans 07/08/11)
                 { "health", "Checking the connection…" },
@@ -125,6 +134,10 @@ namespace VibeModel.Services.Chat
                 { "filter", "Elementen filteren…" },
                 { "docs", "Projectmap bekijken…" },
                 { "readdoc", "Projectdocument lezen…" },
+                { "remember", "Onthouden voor dit project…" },
+                { "memory", "Projectgeheugen lezen…" },
+                { "forget", "Projectfeit vergeten…" },
+                { "journal", "Projectjournaal lezen…" },
 
                 // Wijzigen
                 { "wall", "Wand maken…" },
@@ -161,6 +174,11 @@ namespace VibeModel.Services.Chat
                 { "text", "Tekst plaatsen…" },
                 { "sheetinfo", "Sheet controleren…" },
                 { "crop", "View bijsnijden…" },
+                { "look", "3D-camera richten…" },
+                { "schedule", "Staat maken…" },
+                { "callout", "Detail-uitsnede maken…" },
+                { "region", "Vlak tekenen…" },
+                { "export", "Exporteren…" },
 
                 // Diagnose, brondata, kantoorstandaard
                 { "health", "Verbinding controleren…" },

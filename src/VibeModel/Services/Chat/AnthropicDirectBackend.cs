@@ -66,6 +66,10 @@ namespace VibeModel.Services.Chat
 
         protected override string ResetLogLabel => "Direct backend";
 
+        public override string ModelName => SettingsManager.GetModel();
+
+        public override string DisplayName => "Anthropic API";
+
         public AnthropicDirectBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
             : base(commands, httpPort)
         {
@@ -97,7 +101,8 @@ namespace VibeModel.Services.Chat
             }
 
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(apiKey, prompt, attachments, onToken, onComplete, onError, ct),
+                ct => RunJournaledTurn(prompt, onComplete,
+                    complete => RunAgenticLoop(apiKey, prompt, attachments, onToken, complete, onError, ct)),
                 onComplete, onError, cancellationToken, "AnthropicDirectBackend error");
         }
 

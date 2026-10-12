@@ -256,11 +256,13 @@ namespace VibeModel.Services.Chat
             return false;
         }
 
-        /// <summary>Folders Revit creates next to a model: "&lt;model&gt;_backup", point-cloud "… Support".</summary>
+        /// <summary>Folders Revit creates next to a model ("&lt;model&gt;_backup", point-cloud "… Support") and VibeModel's own.</summary>
         internal static bool IsSkippedFolder(string folderName)
         {
             if (string.IsNullOrEmpty(folderName)) return true;
             if (folderName.StartsWith(".", StringComparison.Ordinal)) return true;
+            // VibeModel's own project data (memory.md, journal.md) is not a reference document.
+            if (folderName.Equals(ProjectData.SubfolderName, StringComparison.OrdinalIgnoreCase)) return true;
             return folderName.EndsWith("_backup", StringComparison.OrdinalIgnoreCase) ||
                    folderName.EndsWith("Support", StringComparison.OrdinalIgnoreCase) ||
                    folderName.Equals("Revit_temp", StringComparison.OrdinalIgnoreCase);

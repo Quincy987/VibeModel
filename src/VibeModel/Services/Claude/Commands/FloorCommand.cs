@@ -14,7 +14,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "floor";
         public string Description => "Create a floor from points (coordinates in mm)";
-        public string Usage => "floor <x1,y1> <x2,y2> <x3,y3> [<x4,y4>] ... [--phase <kind>]";
+        public string Usage => FloorArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp)
         {
@@ -24,7 +24,9 @@ namespace VibeModel.Services.Claude.Commands
             if (phase.Error != null) return phase.ErrorText;
             args = phase.Remaining;
 
-            var points = ParsePoints(args);
+            var fa = FloorArgs.Parse(args);
+            if (fa.Error != null) return "ERROR: " + fa.Error;
+            var points = ParsePoints(fa.Points);
             if (points == null || points.Count < 3)
                 return "ERROR: Need at least 3 points.\nUsage: floor <x1,y1> <x2,y2> <x3,y3> [<x4,y4>] ...\nCoordinates in mm, e.g.: floor 0,0 5000,0 5000,5000 0,5000";
 
@@ -37,15 +39,28 @@ namespace VibeModel.Services.Claude.Commands
                     return "ERROR: Points " + (i + 1) + " and " + ((i + 1) % points.Count + 1) + " are identical or too close.";
             }
 
-            var floorType = new FilteredElementCollector(doc)
-                .OfClass(typeof(FloorType))
-                .Cast<FloorType>()
-                .FirstOrDefault();
+            var floorTypes = new FilteredElementCollector(doc).OfClass(typeof(FloorType)).Cast<FloorType>().ToList();
+            FloorType floorType;
+            if (fa.Type != null)
+            {
+                var hit = NameMatch.Find(floorTypes.Select(t => new NameMatch.Item(t.Id.IntegerValue, t.Name)), fa.Type, "floor type", out var typeErr);
+                if (hit == null) return "ERROR: " + typeErr;
+                floorType = floorTypes.First(t => t.Id.IntegerValue == hit.Id);
+            }
+            else
+            {
+                floorType = floorTypes.FirstOrDefault();
+                if (floorType == null)
+                    return "ERROR: No floor type found in document";
+            }
 
-            if (floorType == null)
-                return "ERROR: No floor type found in document";
-
-            var level = FormattingHelper.GetPreferredLevel(doc, uiApp.ActiveUIDocument);
+            Level level;
+            if (fa.Level != null)
+            {
+                level = WallCommand.FindLevel(new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList(), fa.Level, out var levelErr);
+                if (level == null) return "ERROR: " + levelErr;
+            }
+            else level = FormattingHelper.GetPreferredLevel(doc, uiApp.ActiveUIDocument);
 
             if (level == null)
                 return "ERROR: No level found in document";
@@ -75,7 +90,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("=============");
             sb.AppendLine();
             sb.AppendLine("ID: " + newFloor.Id.IntegerValue);
-            sb.AppendLine("Type: " + floorType.Name);
+            sb.AppendLine("Type: " + floorType.Name + " (id " + floorType.Id.IntegerValue + (fa.Type != null ? ", --type" : ", default: first floor type; --type <name> to choose") + ")");
             sb.AppendLine("Level: " + level.Name);
             sb.AppendLine("Points: " + points.Count);
             for (int i = 0; i < points.Count; i++)

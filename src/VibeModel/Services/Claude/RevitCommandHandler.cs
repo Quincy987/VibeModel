@@ -7,6 +7,7 @@ using System.Web.Script.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
+using VibeModel.Services.Chat;
 using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude
@@ -19,6 +20,12 @@ namespace VibeModel.Services.Claude
     {
         private const int MaxQueueSize = 50;
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
+
+        // Writing files takes longer than a model edit: `export --all-sheets` gets the batch ceiling.
+        private static readonly TimeSpan ExportTimeout = TimeSpan.FromSeconds(300);
+
+        internal static TimeSpan TimeoutFor(string command)
+            => string.Equals(command, "export", StringComparison.OrdinalIgnoreCase) ? ExportTimeout : CommandTimeout;
 
         /// <summary>
         /// True while the Execute method is processing commands on the main thread.
@@ -48,7 +55,8 @@ namespace VibeModel.Services.Claude
         /// Called by HTTP server (background thread).
         /// Enqueues a command and blocks until the main thread processes it.
         /// </summary>
-        public string EnqueueAndWait(string command, string args, ResponseFormat fmt = ResponseFormat.Text)
+        public string EnqueueAndWait(string command, string args, ResponseFormat fmt = ResponseFormat.Text,
+            ChatTurnRef turn = null)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -56,7 +64,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(command, args, fmt);
+            var request = new CommandRequest(command, args, fmt) { Turn = turn };
             _queue.Enqueue(request);
 
             try
@@ -72,11 +80,12 @@ namespace VibeModel.Services.Claude
 
             try
             {
-                if (!request.ResponseReady.Wait(CommandTimeout))
+                var timeout = TimeoutFor(command);
+                if (!request.ResponseReady.Wait(timeout))
                 {
                     request.Cancel();
                     Logger.Warn("Command timed out: " + command);
-                    return "ERROR: Revit did not respond within 30 seconds. Is Revit in a modal dialog?";
+                    return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds + " seconds. Is Revit in a modal dialog?";
                 }
 
                 return request.Result;
@@ -93,7 +102,7 @@ namespace VibeModel.Services.Claude
         /// wrap the entire loop (one undo entry). Uses a timeout scaled to the batch size.
         /// </summary>
         public string EnqueueBatchAndWait(IReadOnlyList<BatchCommand> commands, bool atomic,
-            ResponseFormat fmt = ResponseFormat.Text)
+            ResponseFormat fmt = ResponseFormat.Text, ChatTurnRef turn = null)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -101,7 +110,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(commands, atomic, fmt);
+            var request = new CommandRequest(commands, atomic, fmt) { Turn = turn };
             _queue.Enqueue(request);
 
             try
@@ -219,7 +228,7 @@ namespace VibeModel.Services.Claude
         {
             // Record what a modifying command adds so the office rules can check exactly that.
             bool modifying = _registry.IsModification(request.Command);
-            List<ElementId> created = null;
+            RecordedChanges changes = null;
             CommandResult cr;
             if (modifying) CreatedElementsRecorder.Arm();
             try
@@ -228,9 +237,13 @@ namespace VibeModel.Services.Claude
             }
             finally
             {
-                if (modifying) created = CreatedElementsRecorder.Disarm();
+                if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
             }
-            var findings = cr.Success && created != null ? PostCommandCheck.Run(app, created) : null;
+            var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
+            if (cr.Success && changes != null)
+                Journal(app, request.Command, request.Args, changes, request.Turn);
+            else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
+                JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
             bool json = request.Format == ResponseFormat.Json;
 
             // Take the stamp only when it will actually be delivered — taking it resets the
@@ -335,7 +348,7 @@ namespace VibeModel.Services.Claude
             var entries = new List<object>();      // json form (per-command results)
             bool anyModified = false, anyError = false, rolledBack = false;
 
-            List<ElementId> created;
+            RecordedChanges changes;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
                 tg.Start();
@@ -386,12 +399,14 @@ namespace VibeModel.Services.Claude
                 }
                 finally
                 {
-                    created = CreatedElementsRecorder.Disarm();
+                    changes = CreatedElementsRecorder.DisarmChanges();
                 }
             }
 
             // Office rules over everything the batch created (nothing when rolled back).
-            List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, created) : null;
+            List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
+            if (anyModified && !rolledBack)
+                Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn);
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             if (checkLine != null) sb.AppendLine(checkLine);
 
@@ -415,6 +430,58 @@ namespace VibeModel.Services.Claude
             }
 
             return stamp != null ? stamp.AppendToText(sb.ToString()) : sb.ToString();
+        }
+
+        private static IEnumerable<KeyValuePair<string, string>> BatchItems(IReadOnlyList<BatchCommand> batch)
+        {
+            foreach (var item in batch) yield return new KeyValuePair<string, string>(item.Command, item.Args);
+        }
+
+        /// <summary>
+        /// Project journal: one line for a modifying command / batch that changed the model.
+        /// Only formats and queues here — the background writer touches the (maybe network)
+        /// folder. A command that changed nothing (an exec that only read) is not journaled.
+        /// Attributed to the chat turn of its X-VibeModel-Turn header, else to the chat turn
+        /// running in this session (the Claude Code CLI's curls carry no header).
+        /// </summary>
+        private static void Journal(UIApplication app, string command, string args, RecordedChanges changes, ChatTurnRef turn)
+        {
+            try
+            {
+                if (changes == null || changes.IsEmpty || !ProjectData.Enabled) return;
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null) return;
+                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args,
+                    RecordedChanges.Values(changes.Added), RecordedChanges.Values(changes.Modified),
+                    RecordedChanges.Values(changes.Deleted), turn ?? ProjectJournal.CurrentTurn);
+                ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Journal line skipped: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Project journal: one line for a command that changed no element but wrote files
+        /// (export), naming the files. Nothing is journaled when it wrote none.
+        /// </summary>
+        private static void JournalFiles(UIApplication app, string command, string args, IJournaledCommand journaled, CommandResult result, ChatTurnRef turn)
+        {
+            try
+            {
+                if (!ProjectData.Enabled) return;
+                var files = journaled.JournalFiles(result);
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null || files == null || files.Count == 0) return;
+                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args, null, null, null,
+                    turn ?? ProjectJournal.CurrentTurn, files);
+                ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Journal line skipped: " + ex.Message);
+            }
         }
 
         // Readable undo-dropdown label, e.g. "VibeModel: 3× wall, 1× floor".
@@ -487,6 +554,9 @@ namespace VibeModel.Services.Claude
         public IReadOnlyList<BatchCommand> Batch { get; }
         public bool Atomic { get; }
         public bool IsBatch => Batch != null;
+
+        /// <summary>The chat turn that sent it (X-VibeModel-Turn header); null for other clients.</summary>
+        public ChatTurnRef Turn { get; set; }
 
         public string Result { get; set; }
         public ManualResetEventSlim ResponseReady { get; } = new ManualResetEventSlim(false);

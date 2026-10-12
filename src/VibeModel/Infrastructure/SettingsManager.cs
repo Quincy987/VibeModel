@@ -171,6 +171,24 @@ namespace VibeModel.Infrastructure
 
         public static void SetStandardsEnabled(bool enabled) => SetValue("StandardsEnabled", enabled);
 
+        /// <summary>
+        /// Project memory + journal (plan 08, project part). Default on; off = no PROJECT MEMORY
+        /// block, no memory/journal commands offered, nothing written — the chat as before.
+        /// </summary>
+        public static bool GetProjectMemoryEnabled()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("ProjectMemoryEnabled", out val))
+            {
+                if (val is bool b) return b;
+                if (val is string s) return !s.Equals("false", StringComparison.OrdinalIgnoreCase);
+            }
+            return true;
+        }
+
+        public static void SetProjectMemoryEnabled(bool enabled) => SetValue("ProjectMemoryEnabled", enabled);
+
         // --- Project folder context (plan 10) ----------------------------------------------
 
         private const string ProjectFoldersKey = "ProjectContextFolders";

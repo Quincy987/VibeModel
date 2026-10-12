@@ -98,6 +98,10 @@ namespace VibeModel.Services.Chat
 
         protected override string ResetLogLabel => "Local LLM backend";
 
+        public override string ModelName => SettingsManager.GetLocalLlmModel();
+
+        public override string DisplayName => Strings.Get(Strings.BackendLocal);
+
         public override void SendMessage(
             string prompt,
             IReadOnlyList<ChatAttachment> attachments,
@@ -114,7 +118,8 @@ namespace VibeModel.Services.Chat
             }
 
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(endpoint, prompt, attachments, onToken, onComplete, onError, ct),
+                ct => RunJournaledTurn(prompt, onComplete,
+                    complete => RunAgenticLoop(endpoint, prompt, attachments, onToken, complete, onError, ct)),
                 onComplete, onError, cancellationToken, "LocalLlmBackend error");
         }
 

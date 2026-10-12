@@ -44,6 +44,41 @@ namespace VibeModel.Services.Chat
         public const string EarlierStepOne = "EarlierStepOne";                 // {0} = 1
         public const string EarlierStepMany = "EarlierStepMany";               // {0} = count
         public const string MoreCodeLines = "MoreCodeLines";                   // {0} = count
+        // Tables in answers.
+        public const string TableMoreRowOne = "TableMoreRowOne";               // {0} = 1
+        public const string TableMoreRowMany = "TableMoreRowMany";             // {0} = count
+        public const string TableCopy = "TableCopy";
+        public const string TableCopied = "TableCopied";
+        public const string TableCopyTip = "TableCopyTip";
+        // Source markers ([bron: …]) and their popup.
+        public const string SourcesFooter = "SourcesFooter";                   // {0} = count
+        public const string CitationOpenHint = "CitationOpenHint";
+        public const string SourceLoading = "SourceLoading";
+        public const string SourceFailed = "SourceFailed";                     // {0} = error
+        public const string SourceSelected = "SourceSelected";                 // {0} = element id
+        public const string SourceMatchNotFound = "SourceMatchNotFound";       // {0} = page / section
+        public const string SourceClose = "SourceClose";
+        // Welcome card at the top of an empty chat.
+        public const string BackendLocal = "BackendLocal";
+        public const string DefaultModel = "DefaultModel";
+        public const string WelcomeFolder = "WelcomeFolder";                   // {0} = folder
+        public const string WelcomeNoFolder = "WelcomeNoFolder";
+        public const string WelcomeNoModel = "WelcomeNoModel";
+        public const string WelcomeExample1 = "WelcomeExample1";
+        public const string WelcomeExample2 = "WelcomeExample2";
+        public const string WelcomeExample3 = "WelcomeExample3";
+        public const string WelcomeExample4 = "WelcomeExample4";
+        public const string WelcomeChipTip = "WelcomeChipTip";
+        public const string WelcomeSetup = "WelcomeSetup";
+        public const string WelcomeSetupCli = "WelcomeSetupCli";
+        public const string WelcomeSetupApi = "WelcomeSetupApi";
+        public const string WelcomeSetupLocal = "WelcomeSetupLocal";
+        public const string ExamplesTitle = "ExamplesTitle";
+        public const string ExamplesList = "ExamplesList";                     // one example per line
+        public const string ExamplesTip = "ExamplesTip";
+        // Settings (plan 08, project part).
+        public const string SettingProjectMemory = "SettingProjectMemory";
+        public const string SettingProjectMemoryHint = "SettingProjectMemoryHint";
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -73,6 +108,37 @@ namespace VibeModel.Services.Chat
                 { EarlierStepOne, "+{0} earlier step" },
                 { EarlierStepMany, "+{0} earlier steps" },
                 { MoreCodeLines, "… {0} more lines (Copy shows everything)" },
+                { TableMoreRowOne, "… {0} more row" },
+                { TableMoreRowMany, "… {0} more rows" },
+                { TableCopy, "Copy" },
+                { TableCopied, "Copied" },
+                { TableCopyTip, "Copy the table (pastes into Excel as cells)" },
+                { SourcesFooter, "Sources ({0})" },
+                { CitationOpenHint, "Click to open the source" },
+                { SourceLoading, "Loading the source…" },
+                { SourceFailed, "Could not open the source: {0}" },
+                { SourceSelected, "Element {0} is selected and zoomed to in Revit." },
+                { SourceMatchNotFound, "{0} not found in the text - showing the start." },
+                { SourceClose, "Close (Esc)" },
+                { BackendLocal, "Local LLM" },
+                { DefaultModel, "default model" },
+                { WelcomeFolder, "Project folder: {0}" },
+                { WelcomeNoFolder, "no project folder" },
+                { WelcomeNoModel, "No model open" },
+                { WelcomeExample1, "What is in this model?" },
+                { WelcomeExample2, "Why can't I see element …?" },
+                { WelcomeExample3, "Make a section across this wall" },
+                { WelcomeExample4, "Fit these views onto an A0 sheet" },
+                { WelcomeChipTip, "Put this question in the input box" },
+                { WelcomeSetup, "No chat backend is set up yet. Pick one:" },
+                { WelcomeSetupCli, "Claude Code (recommended): npm install -g @anthropic-ai/claude-code" },
+                { WelcomeSetupApi, "API key: Settings → Anthropic API key" },
+                { WelcomeSetupLocal, "Local model: Settings → Local LLM (llama.cpp, Ollama, LM Studio)" },
+                { ExamplesTitle, "Examples" },
+                { ExamplesList, "What is in this model?\nList the 5 longest walls in a table with length, height and phase\nWhy can't I see element 12345 in this view?\nMake a section across this wall\nFit these views onto an A0 sheet\nWhich phase should a new section get according to the leidraad?\nWhich documents are in the project folder?\nCheck this model against the office standard\nCreate 4 walls forming a 5 x 5 m room\nColour the selected elements red" },
+                { ExamplesTip, "Every change the chat makes is one Ctrl+Z. Click an example to use it." },
+                { SettingProjectMemory, "Keep project memory and journal" },
+                { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -103,6 +169,37 @@ namespace VibeModel.Services.Chat
                 { EarlierStepOne, "+{0} eerdere stap" },
                 { EarlierStepMany, "+{0} eerdere stappen" },
                 { MoreCodeLines, "… nog {0} regels (Kopiëren geeft alles)" },
+                { TableMoreRowOne, "… nog {0} rij" },
+                { TableMoreRowMany, "… nog {0} rijen" },
+                { TableCopy, "Kopiëren" },
+                { TableCopied, "Gekopieerd" },
+                { TableCopyTip, "Tabel kopiëren (plakt in Excel als cellen)" },
+                { SourcesFooter, "Bronnen ({0})" },
+                { CitationOpenHint, "Klik om de bron te openen" },
+                { SourceLoading, "Bron ophalen…" },
+                { SourceFailed, "De bron kon niet worden geopend: {0}" },
+                { SourceSelected, "Element {0} is in Revit geselecteerd en in beeld gebracht." },
+                { SourceMatchNotFound, "{0} niet gevonden in de tekst - het begin wordt getoond." },
+                { SourceClose, "Sluiten (Esc)" },
+                { BackendLocal, "Lokaal taalmodel" },
+                { DefaultModel, "standaardmodel" },
+                { WelcomeFolder, "Projectmap: {0}" },
+                { WelcomeNoFolder, "geen projectmap" },
+                { WelcomeNoModel, "Geen model open" },
+                { WelcomeExample1, "Wat zit er in dit model?" },
+                { WelcomeExample2, "Waarom zie ik element … niet?" },
+                { WelcomeExample3, "Maak een doorsnede dwars op deze wand" },
+                { WelcomeExample4, "Zet deze views passend op een A0" },
+                { WelcomeChipTip, "Zet deze vraag in het invoerveld" },
+                { WelcomeSetup, "De chat is nog niet ingesteld. Kies één:" },
+                { WelcomeSetupCli, "Claude Code (aanbevolen): npm install -g @anthropic-ai/claude-code" },
+                { WelcomeSetupApi, "API-sleutel: Settings → Anthropic API key" },
+                { WelcomeSetupLocal, "Lokaal model: Settings → Local LLM (llama.cpp, Ollama, LM Studio)" },
+                { ExamplesTitle, "Voorbeelden" },
+                { ExamplesList, "Wat zit er in dit model?\nGeef een tabel van de 5 langste wanden met lengte, hoogte en fase\nWaarom zie ik element 12345 niet in deze view?\nMaak een doorsnede dwars op deze wand\nZet deze views passend op een A0\nWelke fase hoort een nieuwe doorsnede te krijgen volgens de leidraad?\nWelke documenten zitten in de projectmap?\nControleer dit model tegen de kantoorstandaard\nMaak 4 wanden die een ruimte van 5 x 5 m vormen\nKleur de geselecteerde elementen rood" },
+                { ExamplesTip, "Elke wijziging van de chat is één keer Ctrl+Z. Klik op een voorbeeld om het te gebruiken." },
+                { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
+                { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

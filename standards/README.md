@@ -80,6 +80,7 @@ Derived data (library index, document index, generated core, check log, addition
   "sheets": { "defaultTitleblock": "EX_TITLEBLOCK : A1", "stampParameters": ["EX_META_*"] },
   "coordinates": { "roundToMm": 1000 },
   "linkCad": { "pinAfterLink": true, "correctOffAxisLines": false, "orientToView": false, "refuseFirstDgnReason": "..." },
+  "export": { "dwgSetup": "EX_DWG export" },          // `export dwg` uses this saved DWG export setup (--setup overrides)
   "standardsFolder": "\\\\server\\revit\\standards\\",   // default for the Settings "source documents folder"
   "distill": { "sources": [                            // what `standards distill` reads, MOST IMPORTANT FIRST
     { "document": "modelling manual", "chapters": ["4.2", "2.1", "1"] },  // file-name part; a chapter includes its subchapters

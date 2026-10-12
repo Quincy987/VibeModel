@@ -19,6 +19,9 @@ namespace VibeModel.Markdown
         public static readonly SolidColorBrush FgCodeInline = Freeze(new SolidColorBrush(Color.FromRgb(0xD8, 0xD8, 0xD8)));
         public static readonly SolidColorBrush AccentBlue = Freeze(new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0)));
         public static readonly SolidColorBrush BorderColor = Freeze(new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46)));
+        // Tables: a subtle header fill and row tint on the assistant bubble (#2D2D30).
+        public static readonly SolidColorBrush BgTableHeader = Freeze(new SolidColorBrush(Color.FromRgb(0x3C, 0x3C, 0x42)));
+        public static readonly SolidColorBrush BgTableRowAlt = Freeze(new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x37)));
         public static readonly SolidColorBrush QuoteBorder = Freeze(new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0)));
 
         public static readonly FontFamily MonoFont = new FontFamily("Consolas");
@@ -29,10 +32,15 @@ namespace VibeModel.Markdown
         public const double FontSizeH1 = 16;
         public const double FontSizeH2 = 15;
         public const double FontSizeH3 = 14;
+        public const double FontSizeTable = 12;
+        public const double FontSizeSmall = 11;
+        // Source markers (¹ ²) and the "Bronnen" footer.
+        public const double FontSizeCitation = 11;
 
         // Comfortable reading rhythm for body text (≈1.5× the font size).
         public const double LineHeight = 19.5;
         public const double ParagraphSpacing = 8;
+        public const double LineHeightTable = 17;
 
         // A code fence longer than this shows its first CodeBlockShownLines lines only; the
         // message's Copy button still copies everything.

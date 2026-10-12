@@ -31,6 +31,30 @@ namespace VibeModel.Services.Claude
     public interface IModificationCommand { }
 
     /// <summary>
+    /// A command that changes no element yet belongs in the project journal (export writes
+    /// files). The handler journals a successful run with the files it names.
+    /// </summary>
+    public interface IJournaledCommand
+    {
+        /// <summary>The files a successful run wrote (full paths), for the journal line.</summary>
+        System.Collections.Generic.IList<string> JournalFiles(CommandResult result);
+    }
+
+    /// <summary>
+    /// Marker for the project memory / journal commands (remember, memory, forget, journal):
+    /// offered to the chat only while Settings → "Projectgeheugen en journaal bijhouden" is on,
+    /// so with it off the command list in every prompt is exactly what it was before.
+    /// </summary>
+    public interface IProjectMemoryCommand { }
+
+    /// <summary>Which commands the chat backends and help offer right now.</summary>
+    public static class ProjectMemoryCommands
+    {
+        public static bool IsOffered(IClaudeCommand command)
+            => !(command is IProjectMemoryCommand) || Chat.ProjectData.Enabled;
+    }
+
+    /// <summary>
     /// Optional richer contract a command can implement IN ADDITION TO IClaudeCommand to
     /// return a structured result (machine data + self-correcting errors). Commands that don't
     /// implement it are auto-wrapped by the registry, so migration is per-command, not big-bang.

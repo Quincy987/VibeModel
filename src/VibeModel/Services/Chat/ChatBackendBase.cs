@@ -76,6 +76,15 @@ namespace VibeModel.Services.Chat
         public abstract bool IsAvailable { get; }
         public abstract string StatusMessage { get; }
 
+        /// <summary>
+        /// The model this backend talks to, for the pane's welcome card; null when unknown
+        /// (the card then says "standaardmodel").
+        /// </summary>
+        public virtual string ModelName => null;
+
+        /// <summary>"Claude Code", "Anthropic API", "Lokaal taalmodel" — the welcome card's first word.</summary>
+        public virtual string DisplayName => "Chat";
+
         // Exposed so the chat UI can reach the local Revit server (e.g. to resolve the
         // current document title for per-project attachment storage).
         public int HttpPort => _httpPort;
@@ -135,6 +144,10 @@ namespace VibeModel.Services.Chat
 
                 using (var client = CreateRevitClient())
                 {
+                    // Project journal: tie what this tool changes to the chat question.
+                    var turn = ProjectJournal.CurrentTurn;
+                    if (turn != null)
+                        client.Headers[ProjectJournal.TurnHeader] = turn.ToHeader();
                     var result = client.DownloadString(url);
                     Logger.Info("Tool " + toolName + " result: " + (result.Length > 200 ? result.Substring(0, 200) + "..." : result));
                     return result;
@@ -226,7 +239,32 @@ namespace VibeModel.Services.Chat
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
+            // Project memory (plan 08): the facts saved for this project + the rule to save more.
+            AppendOfficeContext(sb, ProjectMemory.BuildPromptBlockForActiveDocument());
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Runs one chat turn as a project-journal turn: commands it causes are attributed to
+        /// <paramref name="question"/>, and when it completes one line with the question and the
+        /// sources the answer cited ([bron: …]) is journaled. With the journal off this is just
+        /// <c>run(onComplete)</c>.
+        /// </summary>
+        protected static void RunJournaledTurn(string question, Action<string> onComplete, Action<Action<string>> run)
+        {
+            var turn = ProjectJournal.BeginTurn(question);
+            try
+            {
+                run(turn == null ? onComplete : answer =>
+                {
+                    ProjectJournal.EndTurn(turn, answer);
+                    onComplete(answer);
+                });
+            }
+            finally
+            {
+                ProjectJournal.EndTurn(turn, null);
+            }
         }
 
         /// <summary>
@@ -248,6 +286,20 @@ namespace VibeModel.Services.Chat
         // Decisions behind it (workshop 2026-10-12): deletions/edits the user asked for are
         // executed (everything is one Ctrl+Z); changes are fine without asking unless they reach
         // an official sheet or a shared project resource; answers stay short.
+
+        // Workshop 2026-10-12, part 2: lists of walls came back as raw pipes and bare numbers,
+        // and nobody could read back WHY a choice was made. The pane renders markdown tables
+        // and turns [bron: …] markers into clickable sources (Markdown/Citations.cs).
+        internal const string TableRule =
+            "When you present more than 3 items with 2+ attributes, use a markdown table; first column = name/id, units in the header cell (`Lengte (mm)`), never in every cell. The chat pane is narrow: at most 4 columns, short headers, merge or drop the rest. A table does not count towards the 5 lines.";
+        internal const string UnitsRule =
+            "Always name the unit with every quantity (mm, m, m², m³, kg, kN, °, s); never give a bare number.";
+        internal const string UnitsConversionRule =
+            "VibeModel commands return mm unless stated; convert to m / m² / m³ when values exceed 10 000 mm and say so once.";
+        internal const string SourcesRule =
+            "Cite the source of every fact or choice you took from the office standards, the leidraad, a project document, or a model value, with one [bron: …] marker directly after the sentence; do not cite general Revit knowledge; never invent a source — only cite what you actually read this session.";
+        internal const string SourceFormsRule =
+            "Marker forms (plain text exactly like this, never inside backticks or code): [bron: leidraad <chapter>] (read with standards <doc> <chapter>), [bron: standaard <topic>] (standards <topic>), [bron: document <file> p.N] or [bron: document <file> §x] (readdoc), [bron: revit <element id|parameter>] (a value read from the model), [bron: revit-api] (API behaviour or limitation). Separate two sources with `;`. The pane shows a marker as a small clickable number, so an id inside a marker is fine.";
 
         /// <summary>
         /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
@@ -271,6 +323,14 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- No element ids in running text unless the user asks for them; put ids in a single `code` line at the end if they are needed.");
             sb.AppendLine("- Use short bullet lists for choices. No headings for answers under ~120 words. Never repeat the question.");
             sb.AppendLine("- While working, emit at most one short line per step (what you are doing, 6 words max); the detailed reasoning stays internal.");
+            sb.AppendLine("Tables");
+            sb.AppendLine("- " + TableRule);
+            sb.AppendLine("Units");
+            sb.AppendLine("- " + UnitsRule);
+            sb.AppendLine("- " + UnitsConversionRule);
+            sb.AppendLine("Sources");
+            sb.AppendLine("- " + SourcesRule);
+            sb.AppendLine("- " + SourceFormsRule);
             return sb.ToString();
         }
 

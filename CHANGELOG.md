@@ -2,6 +2,122 @@
 
 ## [Unreleased]
 
+### Added — tables, units and sources in chat answers; a compact welcome card
+Workshop feedback (werkvoorbereiders, 2026-10-12): tables showed as raw pipes, numbers came
+without units, nobody could read back *why* a choice was made, and the welcome text was English
+and took a third of the pane.
+- **Tables.** Markdown pipe and grid tables render as a real table: bold header on a light fill,
+  alternating row tint, padded cells, numeric columns (a number with an optional unit) right-aligned,
+  column widths fitted to the pane like a browser table (numbers never break, long text wraps, no
+  sideways scrolling; refit when the pane is resized). Long
+  tables show 30 rows and "… nog N rijen" unfolds the rest; **Kopiëren** under each table puts it on
+  the clipboard as tab-separated text (pastes into Excel as cells). The rules tell the model to use a
+  table for more than 3 items with 2+ attributes, at most 4 columns, with units in the header cell.
+- **Units.** New rules: every quantity names its unit, VibeModel output is mm unless stated, values
+  over 10 000 mm go to m / m² / m³ (said once). Command output now names the unit wherever it printed
+  a bare number: `params` (and `family`, `set`, `colorsplash`/`filter --count` labels) classify a
+  double parameter by its Revit spec — lengths in mm, areas in m², volumes in m³, angles in ° —
+  where areas, volumes, angles and non-"dimension"-named lengths used to print raw internal units;
+  `geometry` volume in m³; `section`, `viewport`, `sheetinfo`, `tag --at`, `pcprobe` and the `curves`
+  headers name their mm. **`set` and `filter` read typed values in the same unit `params` prints**
+  (an angle in °, an area in m²; before: radians and ft²).
+- **Sources.** The model cites what it took from the office standards, the leidraad, a project
+  document or the model with a marker after the sentence — `[bron: leidraad 4.2]`,
+  `[bron: standaard phasing]`, `[bron: document memo.pdf p.3]`, `[bron: revit 1543814]`,
+  `[bron: revit-api]` — and never invents one. The pane shows each as a small superscript number
+  (tooltip = the source) with a collapsed "Bronnen (N)" line under the answer; a click opens the
+  source in a popup inside the pane (the `standards` chapter or topic, the `readdoc` text scrolled
+  to the page or section) or selects and zooms to the element. The stored chat keeps the raw
+  markers, so a reopened chat renders the same.
+- **Welcome card.** An empty chat now opens with a compact card in the Settings language: backend +
+  model, the open model + its project folder, and four example chips that fill the input box. The
+  not-configured card keeps the install hints, shorter and localized. The header's **?** button shows
+  the longer example list.
+### Added — modelling flags instead of self-written code (workshop 2026-10-12)
+The capability overview marked these as "works only via code the chat writes itself"; they are
+now first-class flags. Every existing positional form parses as before.
+- **`wall … --type <name|id>`, `floor … --type <name|id>`**: exact name, else a unique
+  case-insensitive substring, else the id; an ambiguous name lists the matches (with the wall
+  kind, so two types both called `Beton_300` — basic and stacked — can be told apart), an unknown
+  one lists every type. The response names the type used. Also `--level <name>` on both, and on
+  `wall` `--base-offset <mm>`, `--top-level <name>` and `--top-offset <mm>`.
+- **`place` / `placeid`**: `--rotate <deg>` (about the insertion point, counter-clockwise from
+  +X), `--set "Param=value"` (repeatable, instance parameters, mm/° for plain numbers; a missing
+  name is refused with the available names and nothing is placed; a type parameter is pointed at
+  `set <typeId>`), `--level <name>`. **`z` now works for level-hosted families**: it was ignored;
+  the instance is moved through the offset parameter that actually moves it (the one visible in
+  Properties first, each candidate checked against the result) and the response names it.
+- **`--along <line id | x1 y1 x2 y2> --spacing <mm> [--count <n>] [--offset <mm>] [--rotate auto|auto+90]`**:
+  n instances along a detail line, model line, a wall/beam's location curve or two points, as
+  one transaction (one Ctrl+Z), with the ids and the actual spacing in the response. Spacing alone
+  fills the line end to end and is reduced to divide it evenly (never more than asked, 1 % slack);
+  count alone spreads evenly; both together are exact. Arcs are followed by parameter, and
+  `--rotate auto` turns each instance to the tangent there.
+- **`look [<3D view>] <n|no|o|zo|z|zw|w|nw|top|iso|x y z> [--at ids|x y z|selected] [--distance] [--pitch] [--margin] [--box]`**
+  and **`view 3d --look …`**: the camera stands at that compass direction from the target
+  ("camera from the water onto the corner" = `zw`), 30° down, shaded with edges; the crop region
+  is refitted to the target as seen from the new camera (a crop fits only one camera), `--box`
+  adds a section box. Default target: the model elements in the view.
+- **`set <id> "<param with spaces>" <value>`** works, as do `set <id> Base Offset=500` and the
+  unquoted `set <id> Base Offset 500` (the longest leading words that name a parameter win); the
+  3-token form is unchanged. Plain numbers on length parameters are mm and on angles degrees,
+  whatever the project's display units (it used to go through the display units first).
+### Added — sheets 2: schedules, callouts, filled regions, views to another sheet, export
+The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as commands:
+- **`schedule <category> --fields "Family and Type,Count,Length"`** creates a real Revit schedule
+  (hoeveelhedenstaat). Fields are matched by the names Revit lists (built-in, project and shared
+  parameters; an unknown name lists every schedulable field of that category). `--filter
+  "<field> <op> <value>"` (`= != > >= < <= contains !contains beginswith endswith`, or the
+  URL-friendly `eq ne gt ge lt le`; numbers are in the project's display unit), `--group <field>`
+  gives one row per value with the quantities summed, `--total` a grand total, `--name`. The
+  response prints the first 20 rows as a text table with the units in the headers;
+  `schedule <name|id> --rows [n]` reads any schedule back (and says which sheets it is on; an
+  empty one names its filter count and phase). Columns are widened to their longest cell so type
+  names do not wrap on the sheet; an unknown field shows close matches first.
+- **`callout <parent view> --box x1 y1 x2 y2`** — a plan callout (or `--section`: a detail view)
+  over a rectangle in the parent's frame, the convention of `crop --box`. The pack's `callout`
+  view defaults apply (else those of `plan`/`section`); `--name`, `--scale`, `--template`/
+  `--no-template`. The response gives the scale and the paper size at that scale.
+  `--reference <view>` makes a reference callout to an existing view instead.
+- **`region <view> --points x,y x,y x,y …`** — a filled region from a closed polygon in the view's
+  own frame (`--type` picks the filled region type; crossing or zero-area outlines are refused
+  before Revit sees them); **`region <view> --detail "Family : Type" --at x y [--rotate deg]`** places
+  a detail component. **`list regions [--view]`** reads both back (type, area, view).
+- **`viewport --move <id> --to <sheet> [--at x y]`** moves a placed view (or schedule) to another
+  sheet in one transaction, keeping scale, viewport type (title on/off), rotation and detail
+  number. On a sheet of a different size a view that cannot fit is refused with the scale that
+  would fit; nothing is moved. The viewport gets a new id, which the response gives.
+- **`export pdf|dwg|ifc <sheets|views> | --all-sheets`** in one go: PDF through Revit's own PDF
+  exporter (one file per sheet, sheet size; `--combine` for one file), DWG with the office pack's
+  saved setup (`export.dwgSetup` in pack.json; `--setup` overrides; otherwise views merged into the
+  sheet, no xrefs), IFC with the default setup (the whole model, or one view's elements). Files
+  go to `<project folder>\export\` (`--to` changes it), named `{number} - {name}` (`--name` with
+  `{number} {name} {project} {date} {format}`). The response lists every file written with its
+  size; a target file that is locked (an open PDF) is named and skipped. `export` gets a 300 s
+  request timeout instead of 30 s.
+### Added — project memory and project journal (plan 08, project part)
+- **Project memory.** `remember <fact>` saves one dated line ("doorsnedes krijgen fase 2.
+  Bouwfase") to `VibeModel\memory.md` in the project folder (plan 10; models without a folder use
+  `%LOCALAPPDATA%\VibeModel\projects\<title>\`). The same fact (case, spacing, quotes, trailing
+  punctuation ignored) is not saved twice. `memory` lists the facts numbered, `forget <n|text>`
+  removes one, `memory --clear` empties the file. Plain markdown, editable by hand.
+- **Every chat turn carries a `PROJECT MEMORY` block** (≤ 2 kB, newest last, "+N older — run
+  memory" when cut) next to the PROJECT FOLDER block, on all three backends, with the rule: save a
+  project decision/preference/correction with `remember` (one line, the user's words) and say so;
+  read PROJECT MEMORY before answering "last time" questions.
+- **Project journal** (`VibeModel\journal.md`): the add-in appends one line per modifying command
+  or batch that changed the model — time, command + args, ids created/modified/deleted and the
+  chat question behind it — and one line per chat turn with the sources its answer cited
+  (`[bron: …]` markers). The chat backends send the turn in an `X-VibeModel-Turn` header; the
+  Claude Code CLI's own curls are attributed to the turn in flight. `journal [today|<date>|--last
+  <n>]` reads it back. Rotates at 2 MB to `journal-<yyyymm>.md`. Lines are written by a
+  background writer with a 3 s deadline; an offline folder drops them with one logged warning —
+  Revit's main thread never waits on the folder.
+  `export` changes no element but is journaled too, naming the files it wrote.
+- **Settings → "Projectgeheugen en journaal bijhouden"** (default on). Off: no block, no journal,
+  and the four commands are left out of every prompt and tool list — the chat exactly as before.
+- `docs` no longer lists the `VibeModel` subfolder (VibeModel's own data, not a reference document).
+
 ## v1.2.7 — Orientation Checks, Revit/IFC Links & Chat Workshop Fixes (2026-10-12)
 
 ### Added — Maikel review: orientation rules and links by shared coordinates

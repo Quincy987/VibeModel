@@ -120,7 +120,7 @@ namespace VibeModel.Services.Claude.Commands
                 foreach (var t in texts.Take(30))
                 {
                     var c = t.Coord;
-                    sb.AppendLine("  " + t.Id.IntegerValue + "  at " + Mm.F(RevitUnitHelper.FeetToMm(c.X - origin.X)) + ", " + Mm.F(RevitUnitHelper.FeetToMm(c.Y - origin.Y)) +
+                    sb.AppendLine("  " + t.Id.IntegerValue + "  at " + Mm.F(RevitUnitHelper.FeetToMm(c.X - origin.X)) + ", " + Mm.F(RevitUnitHelper.FeetToMm(c.Y - origin.Y)) + " mm" +
                                   "  \"" + Short(t.Text) + "\"");
                 }
             }
