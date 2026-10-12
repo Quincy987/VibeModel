@@ -60,6 +60,7 @@ namespace VibeModel.UI
 
         // Office standards
         private CheckBox _standardsEnabledCheck;
+        private CheckBox _projectMemoryCheck;
         private TextBox _packPathBox;
         private TextBox _standardsFolderBox;
 
@@ -384,6 +385,18 @@ namespace VibeModel.UI
             };
             panel.Children.Add(_projectFolderSource);
             UpdateProjectFolderRow();
+
+            // Project memory + journal (plan 08) live in that folder's VibeModel subfolder.
+            _projectMemoryCheck = new CheckBox
+            {
+                Content = Services.Chat.Strings.Get(Services.Chat.Strings.SettingProjectMemory),
+                IsChecked = SettingsManager.GetProjectMemoryEnabled(),
+                Foreground = FgPrimary,
+                FontSize = 12,
+                Margin = new Thickness(0, 6, 0, 2)
+            };
+            panel.Children.Add(_projectMemoryCheck);
+            panel.Children.Add(CreateLabel(Services.Chat.Strings.Get(Services.Chat.Strings.SettingProjectMemoryHint)));
             return panel;
         }
 
@@ -896,6 +909,7 @@ namespace VibeModel.UI
             SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
 
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
+            SettingsManager.SetProjectMemoryEnabled(_projectMemoryCheck.IsChecked == true);
             SettingsManager.SetStandardsPackPath(_packPathBox.Text);
             SettingsManager.SetStandardsFolder(_standardsFolderBox.Text);
 

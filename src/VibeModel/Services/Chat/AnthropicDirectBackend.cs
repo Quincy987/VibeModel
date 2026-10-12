@@ -101,7 +101,8 @@ namespace VibeModel.Services.Chat
             }
 
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(apiKey, prompt, attachments, onToken, onComplete, onError, ct),
+                ct => RunJournaledTurn(prompt, onComplete,
+                    complete => RunAgenticLoop(apiKey, prompt, attachments, onToken, complete, onError, ct)),
                 onComplete, onError, cancellationToken, "AnthropicDirectBackend error");
         }
 

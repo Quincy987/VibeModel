@@ -426,6 +426,40 @@ curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefi
   the Claude Code backend additionally runs with `--add-dir <folder>`.
 - Listing a folder on a network drive has a 3 s deadline; an offline folder is reported, never waited on.
 
+### Project memory & journal (remember / memory / forget / journal)
+Per project, next to the reference documents: `VibeModel\memory.md` and `VibeModel\journal.md`
+in the project folder (see above); a model without a folder uses
+`%LOCALAPPDATA%\VibeModel\projects\<sanitized title>\`. Both are plain markdown, editable by hand.
+```bash
+curl -s -G http://localhost:18884/remember --data-urlencode "args=doorsnedes krijgen fase 2. Bouwfase"   # Dated fact; same fact (normalized) not saved twice
+curl -s http://localhost:18884/memory                          # Numbered, oldest first
+curl -s "http://localhost:18884/forget?args=2"                 # By number, exact text or a unique fragment
+curl -s "http://localhost:18884/memory?args=--clear"           # Empty it (the header stays)
+curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday, 2026-10-12, --last 50 (default: last 20)
+```
+- **Memory in the prompt.** Every chat turn (all backends) carries a `PROJECT MEMORY` block next
+  to PROJECT FOLDER: ≤ 2 kB, newest last, `(+N older — run memory …)` when cut, plus the rule to
+  save project decisions/preferences/corrections with `remember` (one line, the user's words)
+  and to read the block before answering "last time" questions (`ProjectMemory.PromptRule`).
+- **Journal lines** (`ProjectJournal`): one per modifying command / batch that changed the model,
+  written by `RevitCommandHandler` from the `DocumentChanged` ids
+  (`- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`),
+  and one per chat turn with the `[bron: …]` / `[source: …]` markers its answer cited
+  (`… · chat t3f9a2c "…" · sources: PRG1002- DO.pdf p.3`). A command that changed nothing (an
+  `exec` that only read) is not journaled. The turn comes from the `X-VibeModel-Turn` header
+  (`<id> <url-encoded question>`, sent by the API backends) or else from the chat turn in flight
+  in this Revit session (the Claude Code CLI's own curls) — an external curl made during a chat
+  turn is attributed to that turn too.
+- **Never blocks Revit:** journal lines are queued; a background writer resolves the folder and
+  appends with a 3 s deadline; an offline folder drops lines with one logged warning and is
+  retried after 60 s. `journal` flushes the queue first. Rotation at 2 MB → `journal-<yyyymm>.md`
+  (`-2`, `-3` … when taken). Memory commands read/write with the same 3 s deadline.
+- `remember` / `memory` / `forget` / `journal` are not modifications (no transaction, no undo
+  step). `docs` does not list the `VibeModel` subfolder.
+- **Switch:** Settings → *Projectgeheugen en journaal bijhouden* (`ProjectMemoryEnabled`, default
+  on). Off: no block, no header, nothing written, and the four commands (`IProjectMemoryCommand`)
+  are left out of the prompt file, the tool lists and `help` — the exact prompt as before.
+
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:
 `claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.

@@ -6,7 +6,13 @@
 > turn, and stored as plain shareable files so curated global facts can later ship with the
 > repo for new users (seed pack — separate plan 09).
 
-> **STATUS (proposed).** Nothing here is built. Note: plan 06 (usage tracking/export) was
+> **STATUS (project part built, 2026-10-12).** Built: a per-PROJECT memory (`remember` /
+> `memory` / `forget`, `VibeModel\memory.md` in the plan-10 project folder, a bounded PROJECT MEMORY
+> block every turn) plus a project journal (audit trail, `journal`) — see CLAUDE.md "Project memory &
+> journal". NOT built: the user profile, the global capability map, auto-capture candidates and
+> the seed pack (plan 09) described below.
+>
+> Original status: nothing here is built. Note: plan 06 (usage tracking/export) was
 > **never built** — no export pipeline exists, so this plan ships memory as plain local files
 > and leaves zip-export bundling to plan 06 / plan 09 whenever they land.
 

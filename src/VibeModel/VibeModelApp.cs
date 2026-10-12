@@ -336,12 +336,14 @@ namespace VibeModel
                 if (doc == null) return;
                 var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
 
-                // Office standards: the post-command check looks at what a command added, and
+                // Office standards: the post-command check looks at what a command added (the
+                // project journal also at what it modified and deleted), and
                 // the prompt snapshot is re-rendered on the next idle.
                 Services.Standards.StandardsContext.MarkPromptDirty();
                 if (Services.Standards.CreatedElementsRecorder.IsArmed &&
                     e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted)
-                    Services.Standards.CreatedElementsRecorder.Record(e.GetAddedElementIds());
+                    Services.Standards.CreatedElementsRecorder.Record(
+                        e.GetAddedElementIds(), e.GetModifiedElementIds(), e.GetDeletedElementIds());
 
                 switch (e.Operation)
                 {

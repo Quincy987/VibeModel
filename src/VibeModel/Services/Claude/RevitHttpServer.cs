@@ -239,6 +239,7 @@ namespace VibeModel.Services.Claude
             // auth token header (used by the shared-secret gate when a token is configured).
             string accept = null;
             string token = null;
+            string turn = null;
             foreach (var line in lines)
             {
                 if (accept == null && line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
@@ -248,6 +249,11 @@ namespace VibeModel.Services.Claude
                 else if (token == null && line.StartsWith(TokenHeader + ":", StringComparison.OrdinalIgnoreCase))
                 {
                     token = line.Substring(TokenHeader.Length + 1).Trim();
+                }
+                else if (turn == null && line.StartsWith(Chat.ProjectJournal.TurnHeader + ":", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Project journal: which chat turn sent this (id + url-encoded question).
+                    turn = line.Substring(Chat.ProjectJournal.TurnHeader.Length + 1).Trim();
                 }
             }
 
@@ -294,7 +300,7 @@ namespace VibeModel.Services.Claude
                 }
             }
 
-            return new HttpRequest(method, rawPath, body, accept, token);
+            return new HttpRequest(method, rawPath, body, accept, token) { Turn = Chat.ChatTurnRef.FromHeader(turn) };
         }
 
         private HttpResponse ProcessRequest(HttpRequest request)
@@ -350,7 +356,7 @@ namespace VibeModel.Services.Claude
 
             if (path == "batch" && request.Method == "POST")
             {
-                return HandleBatch(request.Body, rawQuery, fmt);
+                return HandleBatch(request.Body, rawQuery, fmt, request.Turn);
             }
 
             // Single command — use POST body as args if no query args
@@ -360,7 +366,7 @@ namespace VibeModel.Services.Claude
                 args = request.Body.TrimEnd('\r', '\n');
             }
 
-            var result = _commandHandler.EnqueueAndWait(path, args, fmt);
+            var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
@@ -413,14 +419,14 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
-        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt)
+        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt, Chat.ChatTurnRef turn)
         {
             var parsed = BatchParser.Parse(body, rawQuery);
             if (!parsed.IsValid)
                 return new HttpResponse(400, parsed.Error);
 
             // One request → one TransactionGroup → one undo entry.
-            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt);
+            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt, turn);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
@@ -503,6 +509,7 @@ namespace VibeModel.Services.Claude
             public string Body { get; }
             public string Accept { get; }
             public string Token { get; }
+            public Chat.ChatTurnRef Turn { get; set; }
 
             public HttpRequest(string method, string path, string body, string accept = null, string token = null)
             {

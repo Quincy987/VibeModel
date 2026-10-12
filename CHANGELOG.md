@@ -121,6 +121,27 @@ The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as c
   `{number} {name} {project} {date} {format}`). The response lists every file written with its
   size; a target file that is locked (an open PDF) is named and skipped. `export` gets a 300 s
   request timeout instead of 30 s.
+### Added — project memory and project journal (plan 08, project part)
+- **Project memory.** `remember <fact>` saves one dated line ("doorsnedes krijgen fase 2.
+  Bouwfase") to `VibeModel\memory.md` in the project folder (plan 10; models without a folder use
+  `%LOCALAPPDATA%\VibeModel\projects\<title>\`). The same fact (case, spacing, quotes, trailing
+  punctuation ignored) is not saved twice. `memory` lists the facts numbered, `forget <n|text>`
+  removes one, `memory --clear` empties the file. Plain markdown, editable by hand.
+- **Every chat turn carries a `PROJECT MEMORY` block** (≤ 2 kB, newest last, "+N older — run
+  memory" when cut) next to the PROJECT FOLDER block, on all three backends, with the rule: save a
+  project decision/preference/correction with `remember` (one line, the user's words) and say so;
+  read PROJECT MEMORY before answering "last time" questions.
+- **Project journal** (`VibeModel\journal.md`): the add-in appends one line per modifying command
+  or batch that changed the model — time, command + args, ids created/modified/deleted and the
+  chat question behind it — and one line per chat turn with the sources its answer cited
+  (`[bron: …]` markers). The chat backends send the turn in an `X-VibeModel-Turn` header; the
+  Claude Code CLI's own curls are attributed to the turn in flight. `journal [today|<date>|--last
+  <n>]` reads it back. Rotates at 2 MB to `journal-<yyyymm>.md`. Lines are written by a
+  background writer with a 3 s deadline; an offline folder drops them with one logged warning —
+  Revit's main thread never waits on the folder.
+- **Settings → "Projectgeheugen en journaal bijhouden"** (default on). Off: no block, no journal,
+  and the four commands are left out of every prompt and tool list — the chat exactly as before.
+- `docs` no longer lists the `VibeModel` subfolder (VibeModel's own data, not a reference document).
 
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
