@@ -135,6 +135,10 @@ namespace VibeModel.Services.Chat
 
                 using (var client = CreateRevitClient())
                 {
+                    // Project journal: tie what this tool changes to the chat question.
+                    var turn = ProjectJournal.CurrentTurn;
+                    if (turn != null)
+                        client.Headers[ProjectJournal.TurnHeader] = turn.ToHeader();
                     var result = client.DownloadString(url);
                     Logger.Info("Tool " + toolName + " result: " + (result.Length > 200 ? result.Substring(0, 200) + "..." : result));
                     return result;
@@ -226,7 +230,32 @@ namespace VibeModel.Services.Chat
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
+            // Project memory (plan 08): the facts saved for this project + the rule to save more.
+            AppendOfficeContext(sb, ProjectMemory.BuildPromptBlockForActiveDocument());
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Runs one chat turn as a project-journal turn: commands it causes are attributed to
+        /// <paramref name="question"/>, and when it completes one line with the question and the
+        /// sources the answer cited ([bron: …]) is journaled. With the journal off this is just
+        /// <c>run(onComplete)</c>.
+        /// </summary>
+        protected static void RunJournaledTurn(string question, Action<string> onComplete, Action<Action<string>> run)
+        {
+            var turn = ProjectJournal.BeginTurn(question);
+            try
+            {
+                run(turn == null ? onComplete : answer =>
+                {
+                    ProjectJournal.EndTurn(turn, answer);
+                    onComplete(answer);
+                });
+            }
+            finally
+            {
+                ProjectJournal.EndTurn(turn, null);
+            }
         }
 
         /// <summary>

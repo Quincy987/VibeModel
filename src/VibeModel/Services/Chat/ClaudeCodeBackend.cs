@@ -243,7 +243,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Available commands (ARGS = what goes in ?args=, before encoding; [..] optional, a | b alternatives):");
             sb.AppendLine();
 
-            foreach (var cmd in commands.Values.OrderBy(c => c.Name))
+            foreach (var cmd in commands.Values.Where(ProjectMemoryCommands.IsOffered).OrderBy(c => c.Name))
             {
                 sb.AppendLine("  " + cmd.Name + " - " + cmd.Description);
                 var grammar = ArgsGrammar(cmd.Name, cmd.Usage);
@@ -292,6 +292,7 @@ namespace VibeModel.Services.Chat
             // allowed tools include Read, which handles PDFs and images natively, so
             // pointing it at the paths is all that's needed. Session resume keeps the
             // read content in the CLI's own history afterwards.
+            var question = prompt;
             prompt = BuildPromptWithAttachments(prompt, attachments);
 
             lock (_processLock)
@@ -308,7 +309,8 @@ namespace VibeModel.Services.Chat
             {
                 try
                 {
-                    RunClaudeProcess(prompt, onToken, onComplete, onError, cancellationToken);
+                    RunJournaledTurn(question, onComplete,
+                        complete => RunClaudeProcess(prompt, onToken, complete, onError, cancellationToken));
                 }
                 catch (OperationCanceledException)
                 {
@@ -404,6 +406,8 @@ namespace VibeModel.Services.Chat
             // Project folder (plan 10): the manifest goes into the prompt, and the folder itself
             // is made readable to the CLI's own tools.
             AppendOfficeContext(appendPrompt, ProjectDocs.BuildPromptBlockForActiveDocument(true, out var projectFolder));
+            // Project memory (plan 08): saved facts + the rule to save more (nothing when off).
+            AppendOfficeContext(appendPrompt, ProjectMemory.BuildPromptBlockForActiveDocument());
             if (projectFolder.IsSet)
             {
                 args.Append(" --add-dir ");

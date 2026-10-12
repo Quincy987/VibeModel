@@ -36,6 +36,10 @@ namespace VibeModel.Services.Chat
                 { "filter", "Filtering elements…" },
                 { "docs", "Listing project documents…" },
                 { "readdoc", "Reading project document…" },
+                { "remember", "Remembering for this project…" },
+                { "memory", "Reading project memory…" },
+                { "forget", "Forgetting a project fact…" },
+                { "journal", "Reading the project journal…" },
 
                 // Modify
                 { "wall", "Creating wall…" },
@@ -124,6 +128,10 @@ namespace VibeModel.Services.Chat
                 { "filter", "Elementen filteren…" },
                 { "docs", "Projectmap bekijken…" },
                 { "readdoc", "Projectdocument lezen…" },
+                { "remember", "Onthouden voor dit project…" },
+                { "memory", "Projectgeheugen lezen…" },
+                { "forget", "Projectfeit vergeten…" },
+                { "journal", "Projectjournaal lezen…" },
 
                 // Wijzigen
                 { "wall", "Wand maken…" },

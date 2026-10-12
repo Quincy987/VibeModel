@@ -22,7 +22,7 @@ namespace VibeModel.Services.Chat
 
             foreach (var cmd in commands.Values.OrderBy(c => c.Name))
             {
-                if (SkipCommands.Contains(cmd.Name))
+                if (SkipCommands.Contains(cmd.Name) || !ProjectMemoryCommands.IsOffered(cmd))
                     continue;
 
                 if (format == ToolFormat.Anthropic)

@@ -32,6 +32,7 @@ namespace VibeModel.Services.Claude.Commands
 
             var commands = _registry.GetCommands()
                 .Values
+                .Where(ProjectMemoryCommands.IsOffered)
                 .OrderBy(c => c.Name)
                 .ToList();
 

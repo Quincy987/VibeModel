@@ -114,7 +114,8 @@ namespace VibeModel.Services.Chat
             }
 
             RunOnBackgroundThread(
-                ct => RunAgenticLoop(endpoint, prompt, attachments, onToken, onComplete, onError, ct),
+                ct => RunJournaledTurn(prompt, onComplete,
+                    complete => RunAgenticLoop(endpoint, prompt, attachments, onToken, complete, onError, ct)),
                 onComplete, onError, cancellationToken, "LocalLlmBackend error");
         }
 
