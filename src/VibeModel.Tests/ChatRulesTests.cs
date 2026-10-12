@@ -106,6 +106,25 @@ namespace VibeModel.Tests
             Assert.Contains("6 words max", rules);
         }
 
+        // Logs 2026-10-12: answers ran to 6-8 lines (a closing next-steps list, the phase-1 view
+        // re-explained every turn). One offer line stays: the quick-reply chips need it.
+        [Fact]
+        public void Rules_KeepOneOfferLine_AndThePhaseNoteOnlyWhenHidden()
+        {
+            var rules = ChatBackendBase.BuildBehaviourRules("nl");
+            Assert.Contains("everything else does — notes, warnings and offers included", rules);
+            Assert.Contains(ChatBackendBase.NextStepRule, rules);
+            Assert.Contains("at most ONE short line", ChatBackendBase.NextStepRule);
+            Assert.Contains(ChatBackendBase.PhaseNoteRule, rules);
+            Assert.Contains("cannot be seen in that view", ChatBackendBase.PhaseNoteRule);
+
+            var behaviour = new System.Text.StringBuilder();
+            ChatBackendBase.AppendCommonBehavior(behaviour);
+            Assert.DoesNotContain("next steps", behaviour.ToString());
+            var turn = ClaudeCodeBackend.BuildTurnPrompt(@"C:\x\p.txt", 18884, "CURRENT REVIT CONTEXT: x", "nl");
+            Assert.DoesNotContain("at most 2 specific suggestions", turn);
+        }
+
         [Fact]
         public void Rules_DifferOnlyInTheFallbackLanguage()
         {

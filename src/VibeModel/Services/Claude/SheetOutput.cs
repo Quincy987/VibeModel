@@ -247,4 +247,195 @@ namespace VibeModel.Services.Claude
             return (bytes / (1024.0 * 1024)).ToString("0.##", CultureInfo.InvariantCulture) + " MB";
         }
     }
+
+    /// <summary>
+    /// What an IFC file written by Revit actually contains: one entry per exported element
+    /// (IFC class, predefined type, the Revit element id Revit writes in the Tag attribute).
+    /// `export ifc` reads its own file back with this, because the class an element ends up as
+    /// is decided by the export class mapping and the family's IfcExportAs — piles exported as
+    /// IfcSlab.BASESLAB looked "missing" to a grep for IFCPILE/IFCFOOTING. Pure — unit-tested.
+    /// </summary>
+    internal sealed class IfcContents
+    {
+        public sealed class Item
+        {
+            public string IfcClass;     // "IfcSlab"
+            public string Predefined;   // "BASESLAB", or null
+            public int RevitId;
+        }
+
+        public readonly List<Item> Items = new List<Item>();
+
+        // Spatial structure, openings and relations are not "elements" of the model; their
+        // 8th attribute is a long name or absent, never a Revit id.
+        private static readonly HashSet<string> NotElements = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCZONE",
+            "IFCOPENINGELEMENT", "IFCGRID", "IFCANNOTATION"
+        };
+
+        /// <summary>Streams the file (Revit writes one entity per line; a wrapped entity is joined).</summary>
+        public static IfcContents Read(string path)
+        {
+            using (var r = new StreamReader(path, Encoding.UTF8, true))
+                return Read(r);
+        }
+
+        public static IfcContents Read(TextReader r)
+        {
+            var c = new IfcContents();
+            var pending = new StringBuilder();
+            string line;
+            while ((line = r.ReadLine()) != null)
+            {
+                if (pending.Length == 0 && !line.StartsWith("#", StringComparison.Ordinal)) continue;
+                pending.Append(line);
+                if (!line.TrimEnd().EndsWith(";", StringComparison.Ordinal)) continue;
+                var item = ParseElement(pending.ToString());
+                pending.Clear();
+                if (item != null) c.Items.Add(item);
+            }
+            return c;
+        }
+
+        /// <summary>
+        /// "#463541=IFCSLAB('guid',#18,'Name',$,'Type',#1,#2,'1611287',.BASESLAB.);" → IfcSlab,
+        /// BASESLAB, 1611287. Null for anything that is not an exported element.
+        /// </summary>
+        internal static Item ParseElement(string entity)
+        {
+            int eq = entity.IndexOf('=');
+            int open = eq < 0 ? -1 : entity.IndexOf('(', eq);
+            if (open < 0) return null;
+            var name = entity.Substring(eq + 1, open - eq - 1).Trim();
+            if (!name.StartsWith("IFC", StringComparison.OrdinalIgnoreCase) || NotElements.Contains(name)
+                || name.StartsWith("IFCREL", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith("TYPE", StringComparison.OrdinalIgnoreCase) || name.EndsWith("STYLE", StringComparison.OrdinalIgnoreCase))
+                return null;
+            var attrs = SplitAttributes(entity, open);
+            // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement,
+            // Representation, then (IfcElement) Tag — Revit's element id.
+            if (attrs.Count < 8 || !attrs[0].StartsWith("'") || !attrs[1].StartsWith("#")) return null;
+            var tag = attrs[7];
+            if (tag.Length < 3 || tag[0] != '\'' || tag[tag.Length - 1] != '\'') return null;
+            if (!int.TryParse(tag.Substring(1, tag.Length - 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)) return null;
+            var last = attrs[attrs.Count - 1];
+            string predefined = attrs.Count > 8 && last.Length > 2 && last[0] == '.' && last[last.Length - 1] == '.'
+                ? last.Substring(1, last.Length - 2) : null;
+            if (predefined == "NOTDEFINED" || predefined == "USERDEFINED") predefined = null;
+            return new Item { IfcClass = PrettyClass(name), Predefined = predefined, RevitId = id };
+        }
+
+        /// <summary>Top-level attributes of a STEP entity; quotes ('' escapes) and nested lists respected.</summary>
+        internal static List<string> SplitAttributes(string entity, int open)
+        {
+            var res = new List<string>();
+            var cur = new StringBuilder();
+            int depth = 0; bool inStr = false;
+            for (int i = open + 1; i < entity.Length; i++)
+            {
+                char ch = entity[i];
+                if (inStr)
+                {
+                    cur.Append(ch);
+                    if (ch == '\'')
+                    {
+                        if (i + 1 < entity.Length && entity[i + 1] == '\'') { cur.Append('\''); i++; }
+                        else inStr = false;
+                    }
+                    continue;
+                }
+                if (ch == '\'') { inStr = true; cur.Append(ch); continue; }
+                if (ch == '(') depth++;
+                if (ch == ')')
+                {
+                    if (depth == 0) { res.Add(cur.ToString().Trim()); return res; }
+                    depth--;
+                }
+                if (ch == ',' && depth == 0) { res.Add(cur.ToString().Trim()); cur.Clear(); continue; }
+                cur.Append(ch);
+            }
+            return res;
+        }
+
+        // IFCWALLSTANDARDCASE → IfcWallStandardCase for the known words (longest match first);
+        // an unknown remainder stays lower case.
+        private static readonly string[] Words = new[]
+        {
+            "BUILDING", "ELEMENT", "ASSEMBLY", "COVERING", "CURTAIN", "FOOTING", "FURNISHING", "MEMBER", "COLUMN", "RAILING",
+            "FLIGHT", "STAIR", "RAMP", "SLAB", "BEAM", "PILE", "PLATE", "WALL", "ROOF", "DOOR", "WINDOW", "PART", "ACCESSORY",
+            "DISCRETE", "FASTENER", "MECHANICAL", "REINFORCING", "BAR", "MESH", "TENDON", "FLOW", "TERMINAL", "SEGMENT",
+            "FITTING", "DISTRIBUTION", "CONTROL", "TRANSPORT", "VIRTUAL", "GEOGRAPHIC", "CHIMNEY", "SHADING", "DEVICE",
+            "CIVIL", "EARTHWORKS", "SURFACE", "FEATURE", "PROXY", "SYSTEM", "CASE", "STANDARD"
+        }.OrderByDescending(x => x.Length).ToArray();
+
+        internal static string PrettyClass(string upper)
+        {
+            var rest = upper.Substring(3).ToUpperInvariant();
+            var sb = new StringBuilder("Ifc");
+            int i = 0;
+            while (i < rest.Length)
+            {
+                var w = Words.FirstOrDefault(x => string.CompareOrdinal(rest, i, x, 0, x.Length) == 0);
+                if (w == null) { sb.Append(rest.Substring(i).ToLowerInvariant()); break; }
+                sb.Append(w[0]).Append(w.Substring(1).ToLowerInvariant());
+                i += w.Length;
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The response lines: per Revit category the number of Revit elements and the IFC
+        /// class(es) they became, then the categories in scope that are (partly) missing from the
+        /// file. Counts are Revit elements, not IFC entities: one shape-edited floor can arrive
+        /// as dozens of IfcSlab pieces that all carry its id.
+        /// <paramref name="categoryOf"/> maps a Revit id to its category name (null = unknown);
+        /// <paramref name="inScope"/> is category → ids of the model elements the export covered.
+        /// </summary>
+        public List<string> Describe(Func<int, string> categoryOf, IDictionary<string, List<int>> inScope, int maxCategories = 12)
+        {
+            var lines = new List<string>();
+            var exported = new HashSet<int>(Items.Select(x => x.RevitId));
+            // One entry per Revit element: the class of its first IFC entity.
+            var elements = Items.GroupBy(x => x.RevitId).Select(g => g.First()).ToList();
+            var byCat = elements.GroupBy(x => categoryOf(x.RevitId) ?? "(unknown)")
+                .Select(g => new
+                {
+                    Cat = g.Key,
+                    Count = g.Count(),
+                    Classes = string.Join(", ", g.GroupBy(x => x.IfcClass + (x.Predefined != null ? "." + x.Predefined : ""))
+                        .OrderByDescending(h => h.Count()).Select(h => h.Key + (g.Count() == h.Count() ? "" : " ×" + h.Count())))
+                })
+                .OrderByDescending(x => x.Count).ThenBy(x => x.Cat, StringComparer.OrdinalIgnoreCase).ToList();
+
+            int scopeTotal = inScope?.Sum(kv => kv.Value.Count) ?? 0;
+            int scopeFound = inScope?.Sum(kv => kv.Value.Count(exported.Contains)) ?? 0;
+            lines.Add("IFC contents (read back from the file): " + elements.Count + " Revit element" + (elements.Count == 1 ? "" : "s") +
+                      (Items.Count != elements.Count ? " (" + Items.Count + " IFC entities)" : "") +
+                      (scopeTotal > 0 ? " — " + scopeFound + " of the " + scopeTotal + " model elements in scope" : ""));
+            int w = byCat.Take(maxCategories).Select(x => x.Cat.Length).DefaultIfEmpty(0).Max();
+            foreach (var x in byCat.Take(maxCategories))
+                lines.Add("  " + x.Cat.PadRight(w) + "  " + x.Count.ToString(CultureInfo.InvariantCulture).PadLeft(5) + " → " + x.Classes);
+            if (byCat.Count > maxCategories)
+                lines.Add("  … " + (byCat.Count - maxCategories) + " more categories (" + byCat.Skip(maxCategories).Sum(x => x.Count) + " elements)");
+
+            if (inScope != null)
+            {
+                var missing = inScope.Select(kv => new { Cat = kv.Key, Total = kv.Value.Count, Found = kv.Value.Count(exported.Contains) })
+                    .Where(x => x.Total > 0 && x.Found < x.Total)
+                    .OrderBy(x => x.Found > 0 ? 1 : 0).ThenByDescending(x => x.Total - x.Found).ToList();
+                if (missing.Count > 0)
+                {
+                    lines.Add("Not in the file: " + string.Join(", ", missing.Take(8).Select(x =>
+                        x.Cat + " " + (x.Found == 0 ? "— none of " + x.Total : (x.Total - x.Found) + " of " + x.Total))) +
+                        (missing.Count > 8 ? ", … " + (missing.Count - 8) + " more" : ""));
+                    if (missing.Any(x => x.Found == 0))
+                        lines.Add("  A category with none exported is usually mapped to 'Not Exported' in the IFC export classes " +
+                                  "(File → Export → Options → IFC Options), or its elements/types have 'Export to IFC' = Don't Export; " +
+                                  "a whole-model export also skips elements demolished in, or created after, the export phase.");
+                }
+            }
+            return lines;
+        }
+    }
 }
