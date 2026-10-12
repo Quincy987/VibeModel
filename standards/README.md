@@ -19,7 +19,7 @@ paths and are **not** committed to this public repository; keep them on the offi
 | Default-correct creation | `wall`, `floor`, `place`, `placeid`, `room` (+ `--phase`), `phase` | New elements get the pack's default phase (`phaseTable.default`); `--phase existing\|new\|temp\|demolish\|future` overrides. |
 | Office views and sheets | `view`, `sheet` | New views get the pack's view template, phase, phase filter and browser-folder parameters; new sheets get the default title block. Every choice is reported. |
 | Library | `library <terms>`, `loadfamily "<path>"` | Searches a cached index of `libraryPaths`; `place` suggests a library family when the requested one is not loaded. |
-| Underlays | `linkcad`, `linkrvt`, `coords` | Links (never imports) with the pack's link settings, pins; RVT/IFC only by shared coordinates; reports the coordinate setup. |
+| Underlays | `linkcad`, `linkrvt`, `coords` | Links (never imports) with the pack's link settings, pins; RVT/IFC by shared coordinates (refused while the model has none, unless `--origin`); reports the coordinate setup. |
 | Audit | `check`, `check --stats` | Runs `checks.json`; after every modifying command the element-level rules run on what was just created and a one-line summary is appended. |
 | Source documents | `standards --index`, `standards docs`, `standards <doc> <chapter>`, `standards distill` | Indexes the office manuals (PDF/txt) by chapter; optional LLM distillation into `core.generated.md`. |
 
