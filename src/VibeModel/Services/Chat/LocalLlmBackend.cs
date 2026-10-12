@@ -42,11 +42,11 @@ namespace VibeModel.Services.Chat
             {
                 var endpoint = SettingsManager.GetLocalLlmEndpoint();
                 if (string.IsNullOrWhiteSpace(endpoint))
-                    return "Local LLM endpoint not configured. Click Settings to set it up.";
+                    return Strings.Get(Strings.LocalEndpointMissing);
 
                 return IsAvailable
                     ? "Local LLM (" + endpoint + ")"
-                    : "Local LLM not reachable at " + endpoint + ". Is the server running?";
+                    : Strings.Get(Strings.LocalNotReachable, endpoint);
             }
         }
 
@@ -109,7 +109,7 @@ namespace VibeModel.Services.Chat
             var endpoint = SettingsManager.GetLocalLlmEndpoint();
             if (string.IsNullOrWhiteSpace(endpoint))
             {
-                onError("Local LLM endpoint not configured. Click Settings to set it up.");
+                onError(Strings.Get(Strings.LocalEndpointMissing));
                 return;
             }
 
@@ -167,7 +167,7 @@ namespace VibeModel.Services.Chat
                 {
                     var errorBody = httpResponse.Content.ReadAsStringAsync().Result;
                     Logger.Error("LocalLLM API error " + (int)httpResponse.StatusCode + ": " + errorBody);
-                    onError("Local LLM error " + (int)httpResponse.StatusCode + ": " + errorBody);
+                    onError(Strings.Get(Strings.LocalError, (int)httpResponse.StatusCode, errorBody));
                     return;
                 }
 

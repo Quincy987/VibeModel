@@ -130,6 +130,16 @@ namespace VibeModel.Infrastructure
             Save(settings);
         }
 
+        // --- Chat language ------------------------------------------------------------------
+
+        /// <summary>
+        /// Chat language: "nl" (default) or "en". Picks the pane's fixed texts and the reply
+        /// language the model falls back to when the user's own language is unclear.
+        /// </summary>
+        public static string GetLanguage() => Services.Chat.Strings.Normalize(GetString("Language", Services.Chat.Strings.Dutch));
+
+        public static void SetLanguage(string language) => SetValue("Language", Services.Chat.Strings.Normalize(language));
+
         // --- Office standards (plan 11) --------------------------------------------------
 
         /// <summary>

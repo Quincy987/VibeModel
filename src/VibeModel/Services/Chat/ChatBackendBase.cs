@@ -149,7 +149,7 @@ namespace VibeModel.Services.Chat
             {
                 if (_isSending)
                 {
-                    onError("A message is already being processed. Please wait or cancel first.");
+                    onError(Strings.Get(Strings.MessageInProgress));
                     return;
                 }
                 _isSending = true;
@@ -197,12 +197,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
             sb.AppendLine("You can control Revit by calling the provided tools. Each tool maps to a VibeModel command.");
             sb.AppendLine();
-            sb.AppendLine("BEHAVIOR:");
-            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
-            sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
-            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
-            sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
-            sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
+            AppendCommonBehavior(sb);
             AppendBehaviorTail(sb);
             sb.AppendLine();
             sb.AppendLine("TIPS:");
@@ -211,9 +206,56 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Always check revit_info first to understand the current document.");
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
+            sb.AppendLine();
+            sb.Append(BuildBehaviourRules(Strings.Current));
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The BEHAVIOR bullets every backend shares. What to ask first, how long to answer and
+        /// which language to use are NOT here — those are the rules block below.
+        /// </summary>
+        internal static void AppendCommonBehavior(StringBuilder sb)
+        {
+            sb.AppendLine("BEHAVIOR:");
+            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
+            sb.AppendLine("- Prefer short, direct answers with exact values and parameter names.");
+            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
+            sb.AppendLine("- When you complete a task, you may end with 1-2 logical next steps, one short line each.");
+        }
+
+        // --- Behaviour rules (language, undo, ask-first, compact answers) -----------------
+        // Edit the wording HERE: both prompt paths (the API backends' system prompt and the
+        // Claude Code backend's per-turn --append-system-prompt) take this block verbatim.
+        // Decisions behind it (workshop 2026-10-12): deletions/edits the user asked for are
+        // executed (everything is one Ctrl+Z); changes are fine without asking unless they reach
+        // an official sheet or a shared project resource; answers stay short.
+
+        /// <summary>
+        /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
+        /// reply language when the user's own language is unclear.
+        /// </summary>
+        internal static string BuildBehaviourRules(string language)
+        {
+            var fallback = Strings.LanguageName(language);
+            var sb = new StringBuilder();
+            sb.AppendLine("RULES (these override anything above that conflicts):");
+            sb.AppendLine("Language");
+            sb.AppendLine("- Reply in the language the user writes in. If unclear, use " + fallback + ".");
+            sb.AppendLine("- Keep Revit UI terms (ribbon/command names) in English as Revit shows them, everything else in the user's language.");
+            sb.AppendLine("Undo");
+            sb.AppendLine("- Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.");
+            sb.AppendLine("Ask first");
+            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, view templates, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
+            sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
+            sb.AppendLine("Compact answers");
+            sb.AppendLine("- Answer first, in at most 5 short lines.");
+            sb.AppendLine("- No element ids in running text unless the user asks for them; put ids in a single `code` line at the end if they are needed.");
+            sb.AppendLine("- Use short bullet lists for choices. No headings for answers under ~120 words. Never repeat the question.");
+            sb.AppendLine("- While working, emit at most one short line per step (what you are doing, 6 words max); the detailed reasoning stays internal.");
             return sb.ToString();
         }
 

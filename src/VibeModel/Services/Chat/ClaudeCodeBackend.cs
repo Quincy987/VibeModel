@@ -14,8 +14,14 @@ namespace VibeModel.Services.Chat
 {
     public class ClaudeCodeBackend : ChatBackendBase
     {
-        private const string NotFoundMessage =
-            "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code";
+        // How the headless CLI is allowed to act. Explicit on purpose: without --permission-mode
+        // the CLI inherits the user's own defaultMode, and in "auto" mode its safety classifier
+        // ignores the broad Bash allow and refused `curl …/delete` (and then even `select`) as
+        // "Irreversible Local Destruction" — workshop 2026-10-12. "dontAsk" makes --allowedTools
+        // the whole policy: Bash and Read run without a prompt, every other tool (Write, Edit,
+        // WebFetch, …) is denied outright. Nothing the CLI does through VibeModel is irreversible:
+        // every command is one Revit undo step.
+        internal const string PermissionArgs = "--permission-mode dontAsk --allowedTools Bash,Read";
 
         private const int DetectTimeoutMs = 2000;
         // Pre-flight /health probe before spawning the CLI: fail fast with a clear
@@ -162,7 +168,7 @@ namespace VibeModel.Services.Chat
             }
 
             _isAvailable = false;
-            _statusMessage = NotFoundMessage;
+            _statusMessage = Strings.Get(Strings.ClaudeNotFound);
             Logger.Warn("Claude Code CLI not found in any known location");
         }
 
@@ -220,13 +226,11 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
             sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
             sb.AppendLine();
-            sb.AppendLine("BEHAVIOR:");
-            sb.AppendLine("- You are a senior Revit modeling assistant. Speak in clear, professional language using standard AEC/BIM terminology.");
-            sb.AppendLine("- Keep responses concise — prefer short, direct answers with exact values, element IDs, and parameter names.");
-            sb.AppendLine("- Adapt your detail level to the user: give brief answers to experienced users, add context when a question suggests less familiarity.");
-            sb.AppendLine("- When you complete a task, suggest 1-2 logical next steps based on the current model context. Keep suggestions brief and at the end of your response.");
-            sb.AppendLine("- Always confirm destructive operations (delete, overwrite) before executing.");
-            sb.AppendLine("- When a task involves multiple steps, outline the full sequence up front so the user can approve or adjust before you proceed.");
+            // The RULES block (language, undo, ask-first, compact answers) is not in this file: it
+            // travels in every turn's --append-system-prompt, so a resumed session that read this
+            // file long ago still gets the current language and wording.
+            AppendCommonBehavior(sb);
+            sb.AppendLine("- When a task involves multiple steps, name the sequence in one line, then carry it out — stop for approval only where the Ask first rule says so.");
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
@@ -258,7 +262,7 @@ namespace VibeModel.Services.Chat
             {
                 if (_isSending)
                 {
-                    onError("A message is already being processed. Please wait or cancel first.");
+                    onError(Strings.Get(Strings.MessageInProgress));
                     return;
                 }
                 _isSending = true;
@@ -326,8 +330,7 @@ namespace VibeModel.Services.Chat
             // spawning the CLI and letting the model flail on connection-refused curls.
             if (!IsServerHealthy())
             {
-                onError("VibeModel's HTTP server isn't responding on port " + _httpPort +
-                        ". Restart Revit (or check whether another program is blocking the port), then try again.");
+                onError(Strings.Get(Strings.ServerNotResponding, _httpPort));
                 return;
             }
 
@@ -342,7 +345,8 @@ namespace VibeModel.Services.Chat
             var args = new StringBuilder();
             args.Append("-p ");
             args.Append(EscapeArg(prompt));
-            args.Append(" --output-format stream-json --verbose --allowedTools Bash,Read");
+            args.Append(" --output-format stream-json --verbose ");
+            args.Append(PermissionArgs);
 
             if (resumeAttempted)
             {
@@ -353,25 +357,8 @@ namespace VibeModel.Services.Chat
             // Gather live model context before each invocation
             var context = GatherModelContext();
 
-            var appendPrompt = new StringBuilder();
-            appendPrompt.Append("You are inside Revit. Read " + _systemPromptPath +
-                " for available commands. Always use curl to interact with Revit. " +
-                "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
-            appendPrompt.AppendLine();
-            // Heals resumed sessions whose history mentions a dead port (e.g. after a
-            // fallback-port instance closed): the live port always wins.
-            appendPrompt.Append(BuildPortDirective(_httpPort));
-
-            if (!string.IsNullOrEmpty(context))
-            {
-                appendPrompt.AppendLine();
-                appendPrompt.AppendLine();
-                appendPrompt.AppendLine(context);
-                appendPrompt.AppendLine();
-                appendPrompt.AppendLine("IMPORTANT: Be proactive. Based on the context above, suggest 2-3 specific things");
-                appendPrompt.AppendLine("you can help with. If the user has elements selected, comment on them.");
-                appendPrompt.Append("Keep suggestions relevant to what's in the model. Use plain language.");
-            }
+            var appendPrompt = new StringBuilder(
+                BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current));
 
             // Office standards (plan 11): live template facts + the active pack's core rules go
             // into the per-turn system prompt — not into the prompt FILE, which the model reads
@@ -419,7 +406,7 @@ namespace VibeModel.Services.Chat
 
             if (process == null)
             {
-                onError("Failed to start Claude Code process");
+                onError(Strings.Get(Strings.ProcessStartFailed));
                 return;
             }
 
@@ -493,21 +480,26 @@ namespace VibeModel.Services.Chat
                     string notice;
                     if (_lastBlockWasToolUse)
                     {
-                        notice = "\n\n[Stopped: task went idle for 3 min mid-tool. " +
-                                 "Session was reset to avoid a broken transcript - " +
-                                 "please rephrase your request.]";
+                        notice = "\n\n" + Strings.Get(Strings.IdleStoppedMidTool);
                         _sessionId = null;
                     }
                     else
                     {
-                        notice = "\n\n[Stopped: task went idle for 3 min. " +
-                                 "Say \"continue\" to resume.]";
+                        notice = "\n\n" + Strings.Get(Strings.IdleStopped);
                     }
                     onToken(notice);
                     fullResponse.Append(notice);
                 }
 
                 var stderr = stderrBuilder.ToString().Trim();
+
+                // An older CLI that does not know the permission mode fails on argument parsing —
+                // that is not a stale session, so say what to do instead of resetting the chat.
+                if (process.ExitCode != 0 && fullResponse.Length == 0 && IsPermissionModeRejected(stderr))
+                {
+                    onError(Strings.Get(Strings.CliTooOld) + "\n" + stderr);
+                    return;
+                }
 
                 // 3. Stale-resume retry - silent failure of a --resume invocation
                 //    means the session ID is no longer valid in the CLI's store.
@@ -518,7 +510,7 @@ namespace VibeModel.Services.Chat
                     Logger.Warn("Resume failed (exit " + process.ExitCode +
                                 "), retrying as fresh chat. stderr: " + stderr);
                     _sessionId = null;
-                    var prefix = "[Resumed session was stale - starting fresh chat.]\n\n";
+                    var prefix = Strings.Get(Strings.StaleResume) + "\n\n";
                     onToken(prefix);
                     RunClaudeProcess(prompt, onToken, onComplete, onError,
                         cancellationToken, isResumeRetry: true);
@@ -530,7 +522,7 @@ namespace VibeModel.Services.Chat
                 {
                     onError(!string.IsNullOrEmpty(stderr)
                         ? stderr
-                        : "Claude Code exited with code " + process.ExitCode);
+                        : Strings.Get(Strings.ProcessExitCode, process.ExitCode));
                     return;
                 }
 
@@ -716,6 +708,48 @@ namespace VibeModel.Services.Chat
             {
                 Logger.Error("Failed to parse NDJSON line: " + line, ex);
             }
+        }
+
+        /// <summary>
+        /// The per-turn system prompt (before the office / project-folder blocks): where the
+        /// command list is, the live port, the model context, and the RULES block in
+        /// <paramref name="language"/>. Rebuilt every turn, so a language switch in Settings
+        /// applies from the next message on — also in a resumed session.
+        /// </summary>
+        internal static string BuildTurnPrompt(string systemPromptPath, int httpPort, string context, string language)
+        {
+            var sb = new StringBuilder();
+            sb.Append("You are inside Revit. Read " + systemPromptPath +
+                " for available commands. Always use curl to interact with Revit. " +
+                "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
+            sb.AppendLine();
+            // Heals resumed sessions whose history mentions a dead port (e.g. after a
+            // fallback-port instance closed): the live port always wins.
+            sb.Append(BuildPortDirective(httpPort));
+
+            if (!string.IsNullOrEmpty(context))
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.AppendLine(context);
+                sb.AppendLine();
+                sb.Append("Use the context above to answer. If the user has elements selected, take them into account. " +
+                    "When it helps, end with at most 2 specific suggestions, one short line each.");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.Append(BuildBehaviourRules(language).TrimEnd());
+            return sb.ToString();
+        }
+
+        // The CLI's message for a rejected option value:
+        // "option '--permission-mode <mode>' argument 'dontAsk' is invalid".
+        internal static bool IsPermissionModeRejected(string stderr)
+        {
+            return !string.IsNullOrEmpty(stderr)
+                && stderr.IndexOf("--permission-mode", StringComparison.Ordinal) >= 0
+                && stderr.IndexOf("invalid", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         internal static string BuildPortDirective(int httpPort)

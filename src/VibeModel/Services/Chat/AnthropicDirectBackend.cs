@@ -60,7 +60,7 @@ namespace VibeModel.Services.Chat
             {
                 return IsAvailable
                     ? "Anthropic API (direct)"
-                    : "API key not configured. Click Settings to add your Anthropic API key.";
+                    : Strings.Get(Strings.ApiKeyMissing);
             }
         }
 
@@ -84,7 +84,7 @@ namespace VibeModel.Services.Chat
             var apiKey = SettingsManager.GetApiKey();
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                onError("API key not configured. Click Settings to add your Anthropic API key.");
+                onError(Strings.Get(Strings.ApiKeyMissing));
                 return;
             }
 
@@ -650,11 +650,11 @@ namespace VibeModel.Services.Chat
             return body;
         }
 
-        // Anthropic-specific behavior tail: has the "outline the full sequence up front"
-        // bullet and the fuller "query it" / "suggest a workaround" wording.
+        // Anthropic-specific behavior tail: has the "name the sequence" bullet and the fuller
+        // "query it" / "suggest a workaround" wording.
         protected override void AppendBehaviorTail(StringBuilder sb)
         {
-            sb.AppendLine("- When a task involves multiple steps, outline the full sequence up front so the user can approve or adjust before you proceed.");
+            sb.AppendLine("- When a task involves multiple steps, name the sequence in one line, then carry it out — stop for approval only where the Ask first rule says so.");
             sb.AppendLine("- Prefer concrete Revit operations over abstract explanations. If a question can be answered by querying the model, query it rather than speculating.");
             sb.AppendLine("- When something fails, explain what went wrong in plain terms and suggest an alternative approach.");
             sb.AppendLine("- Stay within the boundaries of what VibeModel commands can do. If a request falls outside available commands, say so honestly and suggest a workaround.");
