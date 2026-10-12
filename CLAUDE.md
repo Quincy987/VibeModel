@@ -172,8 +172,16 @@ curl -s "http://localhost:18884/tag?args=12345"
 # Delete elements
 curl -s "http://localhost:18884/delete?args=12345 12346"
 
-# Set parameter value (a number is in the unit `params` prints: mm, m², m³, °)
+# Wall / floor type, level and offsets (type: exact name, else unique substring, else id)
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000 --type Generic - 300mm --level Level 1 --base-offset -400"
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 --type Timber --level Level 0 --top-level Level 2 --top-offset -100"
+curl -s "http://localhost:18884/floor?args=0,0 5000,0 5000,5000 0,5000 --type Concrete 200 --level Level 1"
+
+# Set parameter value (a number is in the unit `params` prints: mm, m², m³, °;
+# names with spaces: quote them, or Param=value)
 curl -s "http://localhost:18884/set?args=12345 Comments Hello+World"
+curl -s -G "http://localhost:18884/set" --data-urlencode 'args=12345 "Base Offset" -500'
+curl -s -G "http://localhost:18884/set" --data-urlencode 'args=12345 Base Offset=-500'
 
 # Color override (RGB 0-255)
 curl -s "http://localhost:18884/color?args=12345 255 0 0"
@@ -182,6 +190,14 @@ curl -s "http://localhost:18884/color?args=12345 reset"
 # Place family instance
 curl -s "http://localhost:18884/place?args=Door Single-Flush 5000 2500"
 curl -s "http://localhost:18884/placeid?args=67890 5000 2500"
+curl -s -G "http://localhost:18884/placeid" --data-urlencode 'args=67890 5000 2500 -3000 --rotate 30 --set "Comments=pile A" --level Level 1'
+curl -s -G "http://localhost:18884/place" --data-urlencode 'args=Pile "Concrete 320x320" --along 4711 --spacing 2800 --rotate auto --set "Height Offset From Level=-2500"'
+curl -s "http://localhost:18884/placeid?args=67890 --along 0 0 12000 0 --count 6 --offset 500 --rotate auto+90"
+
+# Aim a 3D view: camera at a compass direction from the target, shaded with edges, cropped to the target
+curl -s "http://localhost:18884/view?args=3d --name Hoek --look zw --at 1543814,1543815"   # new 3D view, from the south-west
+curl -s "http://localhost:18884/look?args=Hoek zo --at 1543814,1543815 --pitch 20 --box"     # re-aim an existing 3D view (+ section box)
+curl -s "http://localhost:18884/look?args=iso"                                               # the active 3D view, at the whole model
 
 # Join / cut geometry between two elements (with diagnostics on refusal)
 curl -s "http://localhost:18884/join?args=12345 67890"            # JoinGeometryUtils.JoinGeometry
@@ -192,6 +208,29 @@ curl -s "http://localhost:18884/unjoin?args=12345 67890"          # Remove join 
 # Execute arbitrary C# code
 curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
 ```
+
+**Modelling flags.** `wall`/`floor --type` take a type name (exact, else a unique case-insensitive
+substring) or id; an ambiguous or unknown name lists the candidates; the response names the type.
+`wall --top-level` replaces the height (a top offset needs it). `place`/`placeid`: `--rotate <deg>`
+turns about the insertion point, counter-clockwise from project +X; `--set "Param=value"` (repeatable)
+writes INSTANCE parameters — a plain number on a length is mm, on an angle degrees, as in `set`; a
+missing name is refused with the available names and nothing is placed. `z` is an elevation in the
+same frame as x/y: a level-hosted family gets there through the offset parameter that actually moves
+it (the visible one first), and the response names it. `--along <line id | x1 y1 x2 y2>` places along
+a detail/model line, a wall/beam's location curve or two points, all in ONE transaction (one Ctrl+Z):
+`--spacing s` alone fills the line end to end and reduces the spacing to divide it evenly (never more
+than asked, 1 % slack), `--count n` alone spreads n evenly, both together are exact from the start;
+`--offset` keeps that distance from the ends; `--rotate auto` (or `auto+90`) turns each instance to
+the line direction; arcs are followed by parameter. The response lists the ids and the actual spacing.
+`set` tries, in order: a quoted name, `Name=value`, then the longest leading words that name a
+parameter — so the old 3-token form still works.
+**`look`** (and `view 3d --look`): `n|no|o|zo|z|zw|w|nw` is where the camera STANDS seen from the
+target (`zw` = south-west of it, looking north-east; English `ne/e/se/s/sw` too), 30° down
+(`--pitch`); `top` = straight down, north up; `iso` = Revit's default; or `x y z` = the camera
+position in mm. The target is `--at <ids | x y z | selected>`, default the model elements in the view.
+The view is shaded with edges and its crop region fitted to the target (+`--margin`, default 2000 mm)
+as seen from the new camera — refit on every `look`, since a crop only fits one camera; a point target
+turns the crop off. `--box` adds a section box. Then `screenshot --view <id>`.
 
 `join` always reports both categories, whether the bounding boxes actually intersect, which API
 it called, and — on refusal — Revit's own reason in plain language plus the workaround that does
