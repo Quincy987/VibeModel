@@ -17,6 +17,7 @@ namespace VibeModel.Services.Claude
     /// Supports:
     ///   GET /command              → execute "command" with no args
     ///   GET /command?args=x+y+z   → execute "command" with args "x y z"
+    ///   GET /command%20x%20y      → same (safety net: args in the path instead of ?args=)
     ///   POST /batch               → body = one command per line
     ///   GET /health               → "OK"
     /// </summary>
@@ -315,6 +316,16 @@ namespace VibeModel.Services.Claude
             if (path.StartsWith("/"))
                 path = path.Substring(1);
 
+            // Safety net: "/wall%200%200%205000%200" (args in the path) runs as "wall" with
+            // args "0 0 5000 0" instead of failing with "Unknown command 'wall%200…'".
+            string pathArgs;
+            if (TrySplitPathArgs(path, out var pathCommand, out pathArgs))
+            {
+                Logger.Info("Args in the URL path - treating '" + pathCommand + "' + '" + pathArgs + "' as ?args=");
+                path = pathCommand;
+                queryArgs = string.IsNullOrEmpty(queryArgs) ? pathArgs : pathArgs + " " + queryArgs;
+            }
+
             // Response format: ?format=json or an explicit Accept: application/json.
             // Curl's default Accept (*/*) must NOT trigger JSON — text stays the default.
             bool wantsJson = QueryHasFormatJson(rawQuery)
@@ -412,6 +423,38 @@ namespace VibeModel.Services.Claude
             var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
+        }
+
+        /// <summary>
+        /// Recognises a request path that carries the arguments itself — "wall%200%200%205000%200",
+        /// "wall 0 0", "wall/0 0 5000 0": the first segment (up to the first space or '/', after
+        /// percent-decoding) is the command, the rest is the args, verbatim. False for a plain
+        /// command path ("info", "wall"), which is routed exactly as before.
+        /// </summary>
+        internal static bool TrySplitPathArgs(string path, out string command, out string args)
+        {
+            command = null;
+            args = null;
+            if (string.IsNullOrEmpty(path)) return false;
+
+            string decoded;
+            try { decoded = Uri.UnescapeDataString(path); }
+            catch (UriFormatException) { return false; }
+
+            int cut = -1;
+            for (int i = 0; i < decoded.Length; i++)
+            {
+                if (char.IsWhiteSpace(decoded[i]) || decoded[i] == '/') { cut = i; break; }
+            }
+            if (cut <= 0) return false;
+
+            var name = decoded.Substring(0, cut);
+            foreach (var c in name)
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-') return false;
+
+            command = name;
+            args = decoded.Substring(cut + 1).Trim();
+            return true;
         }
 
         internal static string ParseQueryArgs(string query)

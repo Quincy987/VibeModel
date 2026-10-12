@@ -189,6 +189,30 @@ namespace VibeModel.Services.Chat
             }
         }
 
+        // The model kept writing `curl ".../wall 0 0 5000 0"` (the old Usage lines put the
+        // grammar straight after the slash) and got "Unknown command 'wall%200…'" several times a
+        // turn. Stated in the prompt file AND in every turn prompt (a resumed session may not
+        // re-read the file); the server also accepts the path form as a safety net.
+        internal const string ArgsRule =
+            "Arguments always go in ?args=, URL-encoded, or in a POST /batch body; never in the path.";
+
+        /// <summary>
+        /// The argument part of a command's Usage: "wall &lt;x1&gt; … | wall …" → "&lt;x1&gt; … | …".
+        /// Empty for a command without arguments.
+        /// </summary>
+        internal static string ArgsGrammar(string name, string usage)
+        {
+            if (string.IsNullOrWhiteSpace(usage)) return "";
+            var forms = System.Text.RegularExpressions.Regex.Split(usage.Trim(), @"\s+\|\s+")
+                .Select(f => f.Trim())
+                .Select(f => f == name ? ""
+                    : f.StartsWith(name + " ", StringComparison.Ordinal) ? f.Substring(name.Length + 1).Trim()
+                    : f)
+                .ToList();
+            if (forms.All(f => f.Length == 0)) return "";
+            return string.Join(" | ", forms.Select(f => f.Length == 0 ? "(none)" : f));
+        }
+
         internal static string BuildSystemPromptText(
             IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort, string authToken)
         {
@@ -205,22 +229,34 @@ namespace VibeModel.Services.Chat
                 sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell. Requests without this header return 401.");
                 sb.AppendLine();
             }
-            sb.AppendLine("Available commands:");
+            var baseUrl = RevitHttpServer.BaseUrl(httpPort);
+            sb.AppendLine("HOW TO CALL A COMMAND (the only form that works):");
+            sb.AppendLine("- " + ArgsRule);
+            sb.AppendLine("- Encoding: space -> %20, a literal + -> %2B, & -> %26, # -> %23, % -> %25, newline -> %0A.");
+            sb.AppendLine("- Examples:");
+            sb.AppendLine("    curl -s \"" + baseUrl + "/info\"");
+            sb.AppendLine("    curl -s \"" + baseUrl + "/wall?args=0%200%206000%200\"");
+            sb.AppendLine("    curl -s \"" + baseUrl + "/color?args=12345%20255%200%200\"");
+            sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (curl encodes ?args= for you - use this for code and free text)");
+            sb.AppendLine("    curl -s -X POST \"" + baseUrl + "/batch\" --data-binary $'wall 0 0 5000 0\\nwall 5000 0 5000 5000'   (plain text, one command per line, one undo step)");
+            sb.AppendLine();
+            sb.AppendLine("Available commands (ARGS = what goes in ?args=, before encoding; [..] optional, a | b alternatives):");
             sb.AppendLine();
 
             foreach (var cmd in commands.Values.OrderBy(c => c.Name))
             {
                 sb.AppendLine("  " + cmd.Name + " - " + cmd.Description);
-                if (!string.IsNullOrEmpty(cmd.Usage))
-                    sb.AppendLine("    Usage: curl -s \"" + RevitHttpServer.BaseUrl(httpPort) + "/" + cmd.Usage + "\"");
+                var grammar = ArgsGrammar(cmd.Name, cmd.Usage);
+                if (grammar.Length > 0)
+                    sb.AppendLine("    Usage: curl -s \"" + baseUrl + "/" + cmd.Name + "?args=ARGS\"   ARGS: " + grammar);
                 else
-                    sb.AppendLine("    Usage: curl -s " + RevitHttpServer.BaseUrl(httpPort) + "/" + cmd.Name);
+                    sb.AppendLine("    Usage: curl -s \"" + baseUrl + "/" + cmd.Name + "\"");
             }
 
             sb.AppendLine();
             sb.AppendLine("Tips:");
             sb.AppendLine("- All dimensions are in millimeters (mm)");
-            sb.AppendLine("- Use /batch with POST for multiple commands: curl -s -X POST " + RevitHttpServer.BaseUrl(httpPort) + "/batch -d \"command1 args\\ncommand2 args\"");
+            sb.AppendLine("- Use POST /batch for several commands in one undo step (see the example above).");
             sb.AppendLine("- Always check /info first to understand the current document");
             sb.AppendLine("- Use /selected to inspect what the user has selected");
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
@@ -731,6 +767,7 @@ namespace VibeModel.Services.Chat
                 " for available commands. Always use curl to interact with Revit. " +
                 "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
             sb.AppendLine();
+            sb.AppendLine(ArgsRule);
             // Heals resumed sessions whose history mentions a dead port (e.g. after a
             // fallback-port instance closed): the live port always wins.
             sb.Append(BuildPortDirective(httpPort));

@@ -51,7 +51,7 @@ namespace VibeModel.Services.Claude.Commands
             }
 
             sb.AppendLine();
-            sb.AppendLine("USAGE:");
+            sb.AppendLine("USAGE (arguments always go in ?args=, URL-encoded, or in a POST /batch body; never in the path):");
             sb.AppendLine("  curl -s http://localhost:18884/selected");
             sb.AppendLine("  curl -s \"http://localhost:18884/set?args=123+Comments+Hello\"");
             sb.AppendLine("  curl -s http://localhost:18884/list?args=walls");
