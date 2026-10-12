@@ -18,7 +18,7 @@ namespace VibeModel.Markdown
 
         // "3000", "-1.5", "12 345,6 mm", "2,5 m²", "45°", "≈ 300 kg", "1.2e3" is NOT accepted.
         private static readonly Regex NumberWithUnit = new Regex(
-            @"^[\-+−±~≈]?\s*\d[\d  ' .,]*(?:\s*(?:mm²|mm2|mm|cm²|cm|m²|m2|m³|m3|km|m|kg|t|kN/m²|kN/m2|kN/m|kNm|kN|N|°|%|s|min|h|ft|in))?$",
+            @"^[\-+−±~≈]?\s*\d[\d\u00A0\u202F' .,]*(?:\s*(?:mm²|mm2|mm|cm²|cm|m²|m2|m³|m3|km|m|kg|t|kN/m²|kN/m2|kN/m|kNm|kN|N|°|%|s|min|h|ft|in))?$",
             RegexOptions.CultureInvariant);
 
         private static readonly HashSet<string> EmptyMarkers = new HashSet<string> { "", "-", "–", "—", "n.v.t.", "n/a" };

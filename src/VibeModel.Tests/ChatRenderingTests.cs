@@ -209,6 +209,14 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void NumbersGroupedWithNonBreakingSpaces_AreNumeric()
+        {
+            // "12 345" as Dutch number formatting writes it: NBSP / narrow NBSP between the groups.
+            Assert.True(TableLayout.IsNumericColumn(new[] { "12\u00A0345 mm", "1\u202F000" }));
+            Assert.True(VibeModel.Services.Helpers.RevitUnitHelper.IsBareNumber("12\u00A0345"));
+        }
+
+        [Fact]
         public void Tsv_HasHeaderAndRows_WithTabsAndNoStrayWhitespace()
         {
             var tsv = TableLayout.ToTsv(new List<string> { "Naam", "Lengte (mm)" },

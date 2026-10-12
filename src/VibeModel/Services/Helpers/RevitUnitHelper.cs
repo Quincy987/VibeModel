@@ -112,7 +112,7 @@ namespace VibeModel.Services.Helpers
             if (string.IsNullOrWhiteSpace(text)) return false;
             var t = text.Trim();
             if (!t.Any(char.IsDigit)) return false;
-            return t.All(c => char.IsDigit(c) || c == '.' || c == ',' || c == '-' || c == '+' || c == ' ' || c == ' ');
+            return t.All(c => char.IsDigit(c) || c == '.' || c == ',' || c == '-' || c == '+' || c == ' ' || c == '\u00A0');
         }
     }
 }
