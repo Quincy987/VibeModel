@@ -416,10 +416,40 @@ JSON and the model-bound history keep the raw markers.
 
 **Welcome card.** An empty chat starts with `ChatPane.BuildWelcomeCard()`: backend + model
 (`ChatBackendBase.DisplayName` / `ModelName` — for Claude Code the model of the last turn's init
-event, else `ANTHROPIC_MODEL` / `~/.claude/settings.json`), the open model + project folder, four
-example chips. It rebuilds in place after Settings closes and when the active document changes
-(`ActiveDocumentTracker.Changed`). The header's `?` shows the longer list (`Strings.ExamplesList`).
-All its texts are `Strings` keys (nl/en) composed by `UiText`.
+event, else `ANTHROPIC_MODEL` / `~/.claude/settings.json`), the open model + project folder, and
+up to four **starter chips** (`Services/Chat/Starters.cs`, no model call): "Wat heb ik geselecteerd?"
+when something is selected, "Zet deze views passend op dit blad" on a sheet, "Controleer dit model
+tegen de kantoorstandaard" with an active office pack, "Welke documenten zitten in de projectmap?"
+when the folder has documents, then the fixed examples. The facts come from `ActiveDocumentTracker`
+(active view, sheet flag and selection size — sampled on Idling at most every 400 ms, on view
+activation and in every command's stamp) and a cached off-thread project-folder listing. The card
+rebuilds in place after Settings closes and whenever a tracked fact changes
+(`ActiveDocumentTracker.Changed`). Tapping a starter fills the input. The header's `?` shows the
+longer list (`Strings.ExamplesList`). All texts are `Strings` keys (nl/en) composed by `UiText`.
+
+**Quick replies** (`Services/Chat/QuickReplies/`, transferred from DegenAI's quick replies). After a
+completed answer the pane makes a separate cheap call — never on the token stream — for none or two
+to four one-tap chips above the input. Pre-filter (`QuickReplyService.ShouldOffer`): no call for an
+answer under 40 characters, a cancelled turn or an error. Input: the last 6 *stored* messages (500
+characters each, the current turn excluded), the question (1000) and the displayed answer (3000);
+the system prompt (`SystemPromptTemplate`, one constant) gets the active view, its phase (from the
+TEMPLATE block), the selection size and the commands this turn ran (`TurnActivity.ToolNames`).
+Model per backend (`SuggestionModels.For`): Anthropic API → `claude-haiku-5-5` with the schema as a
+forced tool; Claude Code → `claude -p --model haiku --output-format json --json-schema … --tools ""
+--no-session-persistence --effort low --strict-mcp-config --system-prompt …` (input on stdin, run
+from `%LOCALAPPDATA%\VibeModel\quickreplies`; a CLI that rejects `--json-schema`/`--tools` is skipped
+for the session, unknown speed-up flags are dropped one by one); local LLM → JSON mode with the schema
+in the prompt. Timeout 8 s, 12 s for the CLI (its startup alone is 3–5 s; live calls took 3–7 s).
+`ParseAndSanitize` never trusts the model: `offer:false` → none; a label over 44 or a prompt over
+240 characters is dropped (not cut); decline labels ("Nee bedankt", "Laat maar", "Not now", …,
+`DeclineLabels`, whole normalized label) are dropped and logged — a hit means the prompt regressed;
+duplicates out; at most 4; fewer than 2 left → no row. UI: a plain chip sends its prompt at once; a
+chip with `commits` (it changes the model) shows a pencil and fills the input with the hint "Klaar om
+te versturen…"; the row steps aside 1 s after typing starts and returns on an empty box; a set that
+arrives after a newer answer, another chat, a running turn or typing is dropped; New Chat, History,
+a backend switch and sending clear it; chips are never stored in the chat JSON. Chips are Buttons
+with AutomationIds `StarterChip` / `QuickReplyChip` / `QuickReplyChipCommit`. The raw model JSON is
+logged (`Quick replies: … answered in N ms: {…}`, debug log).
 
 ### Successcase logbook (scripts)
 Turn workshop follow-up questions into case files for the follow-up presentation — protocol in

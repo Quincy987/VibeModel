@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added — suggestion chips that follow the context
+- **Starter chips** in an empty chat follow the open model instead of a fixed list: what you have
+  selected, an open sheet, an active office standard and documents in the project folder come
+  first, then the general examples.
+- **Quick replies** after every answer: a separate, cheap model call (Haiku through the API, the
+  Claude Code CLI or the local model) guesses what you were about to type next and offers none, or
+  two to four one-tap chips above the input. A chip that only asks or selects is sent at once; one
+  that changes the model (marked with a pencil) is put in the input box so you check it and press
+  Send. No "no thanks" buttons, no invented numbers, no row at all after a plain fact. The row
+  steps aside while you type and is never stored in the chat. The mechanism is a transfer of
+  DegenAI's quick replies (same prompt structure, schema and sanitizer, Revit domain).
+
 ### Added — tables, units and sources in chat answers; a compact welcome card
 Workshop feedback (werkvoorbereiders, 2026-10-12): tables showed as raw pipes, numbers came
 without units, nobody could read back *why* a choice was made, and the welcome text was English
