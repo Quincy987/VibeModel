@@ -1,192 +1,187 @@
+<div align="center">
+
 # VibeModel
 
-Talk to your Revit model in plain language. VibeModel is a Revit add-in that lets you use AI (Claude) to inspect and modify your model through a chat panel inside Revit. It answers in the language you write in, shows every step it takes, cites the source of what it tells you, and every change is one Ctrl+Z.
+**Talk to your Revit model.**
+
+An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch it work, keep what you like. Every change is one Ctrl+Z.
+
+[![Release](https://img.shields.io/github/v/tag/Quincy987/VibeModel?label=release&color=2ea44f)](https://github.com/Quincy987/VibeModel/releases)
+[![Revit 2022+](https://img.shields.io/badge/Revit-2022%2B-0696D7)](#requirements)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](#license)
+[![Tests](https://img.shields.io/badge/tests-1004%20passing-success)](#building-from-source)
+
+<img src="docs/images/chat-table-sources.png" width="420" alt="The VibeModel chat panel: a question about the longest walls answered as a table with units, element ids on one line, and numbered source markers.">
+
+<sub>A table with units, the ids on one line, and small source numbers you can click.</sub>
+
+</div>
+
+---
+
+## Why
+
+Revit work is full of small questions with slow answers: *why can't I see this element, how many piles have this rake, put these four views on an A0, what does the office manual say about phases.* VibeModel answers them in the model itself, and does the work when you ask it to.
+
+- **It reads before it guesses.** Visibility settings, DWG linework, point-cloud ground levels, the project's PDFs, the office standards pack.
+- **It shows its work.** Every step appears live while it runs. Every fact taken from a document or the standards carries a source marker. Every change lands in a project journal.
+- **It stays reversible.** One request is one Revit undo step, even when it took twenty commands.
+- **It speaks your language.** Dutch by default, English or whatever you type in.
+
+## Quick start
+
+1. **Download** the [latest release](https://github.com/Quincy987/VibeModel/releases) and unzip it.
+2. **Run `install.ps1`** (right-click → *Run with PowerShell*). It finds your Revit versions and copies the files.
+3. **Open Revit**, click **VibeModel → Chat**, and type.
+
+Connect it to Claude in one of two ways: a **Claude Code** subscription (recommended, auto-detected) or an **Anthropic API key** pasted into *Settings*. A local LLM works too. Details under [Installation](#installation).
+
+<div align="center">
+<img src="docs/images/chat-welcome.png" width="380" alt="An empty chat: backend and model, the open project and its folder, and four starter prompts as chips.">
+<br><sub>An empty chat shows the open model, its project folder and four starter prompts.</sub>
+</div>
+
+## What you can say
+
+```
+Wat zit er in dit model?
+Why can't I see element 348122 in this view?
+Give me a table of the 5 longest walls with length, height and phase
+Zet 6 palen langs deze detail line, om de 2,8 m, gedraaid naar de lijn
+Make a section across this wall and put it on sheet 0001 at 1:50
+Maak een palenstaat met aantal en lengte en exporteer het blad als PDF
+Remember that new sections get phase 2
+```
 
 ## What it can do
 
-Nine kinds of work, with an honest status (v1.2.8). ✅ works through the chat · 🟡 works with conditions or a detour · ❌ not built. Each topic gets a short demo video; see [docs/demos](docs/demos/README.md) for the scripts and links.
+Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short demo video; the scripts and links live in [docs/demos](docs/demos/README.md).
 
-**1. Questions – "How do I do X in Revit?"**
-✅ General Revit questions, your office manual per chapter (standards pack), and the documents in the project folder (specification, memos, drawings).
-Tip: don't ask "how", ask "do" — it can carry out the answer in your model.
+| | Topic | Status |
+|---|---|---|
+| 1 | **Questions** — *"How do I do X in Revit?"* | ✅ General Revit, your office manual per chapter, the project's own documents. Tip: don't ask *how*, ask *do*. |
+| 2 | **Information** — *"How many piles with this rake?"* | ✅ Count, filter, measure, real Revit schedules; DWG layers and point-cloud ground read directly. 🟡 Only if the data is in the model. |
+| 3 | **Diagnosis** — *"Where did it go? Why won't Revit let me?"* | ✅ The strongest part. `whyhidden` walks every visibility gate and names the fix; `join` explains refusals; `check` audits the office rules; `sheetinfo` finds overlaps and empty stamp fields. |
+| 4 | **Modelling** — *"Draw a wall along this line, cut a section"* | ✅ Walls, floors, families with type, rotation, parameters, placed along a line; sections, crops, aimed 3D views, callouts; one batch = one Ctrl+Z. ❌ Composite profiles, sweeps, in-place families. |
+| 5 | **Sheets** — *"Put these views on an A0 so they fit"* | ✅ Sheet, stamp, grid or band layout, scale advice, move between sheets. 🟡 You decide the layout. ❌ Legends (the API can't create them). |
+| 6 | **Annotating** — *"Add the level string and the sheet-pile length"* | ✅ Dimensions, level strings, text with leaders, tags, filled regions, detail items. 🟡 From a specification: a first pass. ❌ Keynotes, dimensions in 3D. |
+| 7 | **Checking against a document** — *"Does the bolt count match the spec?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
+| 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
+| 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
 
-**2. Information – "How many piles with this rake?"**
-✅ Count, filter, measure, read parameters; create real Revit schedules with filters and totals; read DWG layers and point-cloud ground levels instead of guessing from a picture. Answers come as tables with units and a source marker.
-🟡 Only if the data is in the model (a parameter that doesn't exist can't be counted; it says so).
+## How it works
 
-**3. Diagnosis – "Where did my element go? Why won't Revit let me?"**
-✅ The strongest part: `whyhidden` walks every visibility gate and names the setting and the fix; `join` explains Revit's refusals and what works instead; `check` audits against the office rules; `sheetinfo` finds overlapping or off-paper views and empty stamp fields.
+```
+ You, in the chat panel                 Revit
+ ──────────────────────                 ─────────────────────────────────
+ "cut a section through this wall"  →   Claude reads the model state
+                                         calls VibeModel's local HTTP API
+                                         section · crop · viewport · screenshot
+                                    ←   one answer, one undo step, one journal line
+```
 
-**4. Modelling – "Draw a wall along this line, cut a section through it"**
-✅ Walls, floors, families (type, rotation, parameters, placed along a drawn line or arc), grids, levels, rooms; sections across a wall or along a line; crop to the elements; 3D views aimed from a compass direction; callouts. A multi-step job is one batch and one Ctrl+Z.
-❌ Composite profiles (an L-wall with a sloped foot), sweeps, in-place families.
+VibeModel runs a small HTTP server inside Revit on `127.0.0.1:18884`. The chat backend (Claude Code, the Anthropic API or a local model) calls it with plain commands; each command runs on Revit's main thread inside a transaction and returns text or JSON. The same API works from any terminal:
 
-**5. Sheets – "Put these views on an A0 so they fit"**
-✅ Sheet with title block and stamp, views in a grid or a band, scale advice when a view doesn't fit, move views between sheets, check the result.
-🟡 You still decide the layout ("plan top, sections below"); it reads an example sheet but doesn't copy taste.
-❌ Legends (the Revit API can't create them).
+```bash
+curl -s http://localhost:18884/health                       # is it running?
+curl -s http://localhost:18884/help                         # every command
+curl -s "http://localhost:18884/whyhidden?args=348122"      # why is this element invisible?
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"  # a wall, in mm
+```
 
-**6. Annotating – "Add the level string and the sheet-pile length from the spec"**
-✅ Dimensions through elements, level strings, text with leaders, tags, filled regions, detail items.
-🟡 From a specification: a first pass, not a draughtsman.
-❌ Keynotes, dimensions in 3D views.
-
-**7. Checking against a document – "Does the bolt count match the specification?"**
-🟡 It can read the PDF, count in the model and compare, and since v1.2.8 every answer cites its sources and every change lands in a project journal. Still dependent on the PDF text and on naming ("M24" vs "M24 8.8"): a signal, not proof.
-❌ Automatic drawing-vs-model comparison.
-
-**8. Context – what it knows about your project and office**
-✅ Project folder (by default the folder the model lives in), office standards pack (phases, view templates, library, checks, manual), project memory across chats ("remember that new sections get phase 2"), and a journal of what changed and why.
-
-**9. Exchange**
-✅ Screenshots of any view or sheet without opening it; PDF, DWG and IFC export to the project folder.
-
-## What You Need
-
-- **Autodesk Revit** (2022+)
-- **One of the two options below** to connect to Claude:
-
-### Option A: Claude Code subscription (recommended)
-
-A [Claude Pro/Team subscription](https://claude.ai) includes Claude Code — a full AI coding agent with context management, token tracking, file access, and bash execution. Best experience, flat monthly fee.
-
-1. Install [Node.js](https://nodejs.org/) (LTS version)
-2. Open a terminal and run:
-   ```
-   npm install -g @anthropic-ai/claude-code
-   ```
-3. Run `claude` once in a terminal and follow the login prompts to connect your subscription
-
-VibeModel automatically detects Claude Code when Revit starts.
-
-### Option B: Anthropic API key (pay-per-use)
-
-If you prefer pay-per-use billing or don't want to install Node.js, you can use the built-in direct API mode. You only pay for what you use — no subscription needed.
-
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com/)
-2. In Revit, click **Settings** in the VibeModel chat panel and paste your key
-
-This works well but has some limitations compared to Claude Code (no context window management, no cost tracking, no file access).
+Close to eighty commands cover reading, diagnosing, modelling, sheets, annotation, office standards, project documents, memory and export. The full reference, with every flag, is in [CLAUDE.md](CLAUDE.md).
 
 ## Installation
 
-### Easy way (recommended)
+### Requirements
 
-1. **Download** the latest release from [GitHub Releases](https://github.com/Quincy987/VibeModel/releases)
-2. **Unzip** the downloaded file
-3. **Run `install.ps1`** (right-click → "Run with PowerShell", or from a terminal: `.\install.ps1`)
-   - It auto-detects your Revit version(s) and copies the files
-   - If using Option B (API key), it can save your key during install
-4. **Open Revit** — you should see a new **VibeModel** tab in the ribbon
+- Autodesk Revit 2022 or newer (Windows)
+- One way to reach Claude: a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subscription, an [Anthropic API key](https://console.anthropic.com/), or a local LLM server ([setup notes](docs/LOCAL_LLM_SETUP.md))
 
-### Manual installation
+<details>
+<summary><b>Option A — Claude Code (recommended)</b></summary>
 
-1. **Download** the latest release and unzip — you should see three files:
-   - `VibeModel.dll`
-   - `VibeModel.addin`
-   - `Markdig.dll`
-2. **Copy all three files** into your Revit add-ins folder:
+1. Install Node.js, then `npm install -g @anthropic-ai/claude-code`
+2. Run `claude` once in a terminal and log in
+3. Start Revit. VibeModel detects Claude Code automatically.
+
+This gives the chat file access to the project folder, cost tracking and the longest context.
+</details>
+
+<details>
+<summary><b>Option B — Anthropic API key (pay-per-use)</b></summary>
+
+1. Get a key from [console.anthropic.com](https://console.anthropic.com/)
+2. In Revit, open the chat panel → **Settings** → paste the key
+
+No Node.js needed. Some extras (project-folder file access, cost tracking) are Claude Code only.
+</details>
+
+<details>
+<summary><b>Manual installation</b></summary>
+
+1. Download and unzip the release. Copy `VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` and the `VibeModel.PdfText` folder into
    ```
    %APPDATA%\Autodesk\Revit\Addins\{year}\
    ```
-   Replace `{year}` with your Revit version number (e.g., `2023`, `2024`, or `2025`).
+   with `{year}` your Revit version (`2023`, `2024`, …). Create the folder if it doesn't exist.
+2. **Unblock the DLLs.** Windows blocks files downloaded from the internet. Right-click each `.dll` → *Properties* → *Unblock*, or in PowerShell:
+   ```powershell
+   Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll" -Recurse | Unblock-File
+   ```
+3. Restart Revit. A **VibeModel** tab appears in the ribbon.
+</details>
 
-   **How to find this folder:** Open File Explorer, click the address bar at the top, paste the path above (with your year), and press Enter. If the folder doesn't exist, create it.
+<details>
+<summary><b>Settings worth knowing</b></summary>
 
-3. **Unblock the DLL files:** Right-click each `.dll` file → **Properties** → check **"Unblock"** at the bottom → **OK**. (Windows blocks DLLs downloaded from the internet; without this, Revit will fail to load the add-in.)
+All in the chat panel's **Settings**:
 
-4. **Restart Revit** — you should see a new **VibeModel** tab in the ribbon
+- **Taal / Language** — the fallback reply language and the panel's own texts (Dutch default).
+- **Project folder** — where the model's documents live; defaults to the folder of the open `.rvt`.
+- **Standards pack folder** — an office standards pack (phases, view templates, library, checks, manual). See [standards/README.md](standards/README.md) and the sample pack in `standards/example-office/`.
+- **Project memory & journal** — on by default; writes `VibeModel\memory.md` and `VibeModel\journal.md` next to the project documents.
+- Optional: set `VIBEMODEL_TOKEN` before starting Revit to require a token on every API call.
+</details>
 
-## Usage
+## Building from source
 
-1. Open a Revit project
-2. Click the **Chat** button on the **VibeModel** tab in the ribbon
-3. A chat panel opens on the side — type a message and Claude will respond
-
-### Things you can say
-
-- "What's in this model?"
-- "Why can't I see element 348122 in this view?"
-- "Give me a table of the 5 longest walls with length, height and phase"
-- "Place 6 piles along this detail line, 2.8 m apart, turned to the line"
-- "Make a section across this wall and put it on sheet 0001 at 1:50"
-- "Make a pile schedule with count and length and export the sheet as PDF"
-- "Remember that new sections get phase 2"
-
-It replies in the language you write in (Dutch by default, set in Settings), shows each step while it works, and marks facts it took from a document or the office standards with a small source number you can click.
-
-### Using from the command line
-
-VibeModel also works from any terminal. You can send commands directly:
-
-```bash
-curl -s http://localhost:18884/health          # Check connection
-curl -s http://localhost:18884/help            # List all commands
-curl -s http://localhost:18884/selected        # Inspect selected elements
-curl -s http://localhost:18884/info            # Document info
+```powershell
+git clone https://github.com/Quincy987/VibeModel.git
+cd VibeModel
+.\build.ps1                      # Revit 2023: closes Revit, builds, deploys, restarts
+.\build.ps1 -RevitVersion 2024   # another version
+dotnet test VibeModel.sln -p:RevitVersion=2023   # the unit tests, no Revit needed
 ```
 
-## Available Commands
-
-| Command | What it does | Example |
-|---------|-------------|---------|
-| `health` | Check if VibeModel is running | `curl -s http://localhost:18884/health` |
-| `help` | List all available commands | `curl -s http://localhost:18884/help` |
-| `info` | Show document info | `curl -s http://localhost:18884/info` |
-| `selected` | Show details of selected elements | `curl -s http://localhost:18884/selected` |
-| `list` | List elements by category | `curl -s "http://localhost:18884/list?args=walls"` |
-| `get` | Get element by ID | `curl -s "http://localhost:18884/get?args=12345"` |
-| `wall` | Create a wall (mm) | `curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"` |
-| `floor` | Create a floor from points (mm) | `curl -s "http://localhost:18884/floor?args=0,0 5000,0 5000,5000 0,5000"` |
-| `delete` | Delete elements | `curl -s "http://localhost:18884/delete?args=12345"` |
-| `set` | Set a parameter value | `curl -s "http://localhost:18884/set?args=12345 Comments Hello"` |
-| `color` | Color an element (RGB) | `curl -s "http://localhost:18884/color?args=12345 255 0 0"` |
-| `place` | Place a family instance | `curl -s "http://localhost:18884/place?args=Door Single-Flush 5000 2500"` |
-| `params` | Show parameters of selected element | `curl -s http://localhost:18884/params` |
-| `views` | List all views | `curl -s http://localhost:18884/views` |
-| `levels` | List all levels | `curl -s http://localhost:18884/levels` |
-
-For the full list of commands, run `curl -s http://localhost:18884/help` or see [CLAUDE.md](CLAUDE.md).
-
-## Building from Source
-
-This section is for developers who want to modify VibeModel.
-
-1. Clone the repository
-2. Run the build script:
-   ```powershell
-   .\build.ps1                      # Default: Revit 2023
-   .\build.ps1 -RevitVersion 2024   # Target a specific version
-   .\build.ps1 -Debug               # Enable debug logging
-   ```
-   The script will close Revit, build, copy the files to the right folder, and restart Revit automatically.
+Adding a command is one file: implement `IClaudeCommand` in `src/VibeModel/Services/Claude/Commands/` and build; it is discovered by reflection and shows up in `help`, in the chat's tool list and in the step labels. The developer reference is [CLAUDE.md](CLAUDE.md); design notes per feature are in [docs/plans](docs/plans/).
 
 ## Troubleshooting
 
-**VibeModel tab doesn't appear in Revit**
-- Make sure all three files (`VibeModel.dll`, `VibeModel.addin`, `Markdig.dll`) are in the correct folder
-- Double-check the year in the folder path matches your Revit version
-- Try restarting Revit
+<details>
+<summary><b>The VibeModel tab doesn't appear</b></summary>
 
-**"External Tool Failure" / FileLoadException / HRESULT: 0x80131515**
-- This means Windows blocked the DLL because it was downloaded from the internet
-- **If you used `install.ps1`:** Update to the latest installer (this is now handled automatically)
-- **If you installed manually:** Right-click each `.dll` file in the Addins folder → **Properties** → check **"Unblock"** → **OK**, then restart Revit
-- **Alternative:** Open PowerShell and run: `Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll" | Unblock-File`
+All files must be in the add-ins folder for *your* Revit year, and the DLLs must be unblocked (see manual installation). Then restart Revit. If Revit shows *External Tool Failure* / `0x80131515`, the DLLs are still blocked.
+</details>
 
-**Chat not connected**
-- **Option A (Claude Code):** Make sure Claude Code is installed (`npm install -g @anthropic-ai/claude-code`) and logged in. Try running `claude --version` in a terminal to verify.
-- **Option B (API key):** Click **Settings** in the chat panel header and enter your Anthropic API key. Get a key from [console.anthropic.com](https://console.anthropic.com/).
+<details>
+<summary><b>The chat says it is not connected</b></summary>
 
-**Connection refused / port blocked**
-- VibeModel uses port 18884; if it's busy (e.g. a second Revit instance), it falls back to 18885–18888
-- Live servers advertise their port in `%LOCALAPPDATA%\VibeModel\servers\<port>.json` — check there (or probe `/health` on 18884–18888) to find the right one
-- If no port is available at all, VibeModel falls back to file-based mode (slower but still works)
-- Check the logs at `%LOCALAPPDATA%\VibeModel\logs\` for details
+Claude Code: run `claude --version` in a terminal; if it fails, reinstall and log in. API key: open **Settings** and check the key. Logs are in `%LOCALAPPDATA%\VibeModel\logs\`.
+</details>
 
-**Commands return errors**
-- Make sure you have a Revit project open (not just the start screen)
-- Check that the element IDs you're referencing actually exist in your model
+<details>
+<summary><b>Connection refused or the wrong port</b></summary>
+
+Port 18884 is the default; a second Revit instance falls back to 18885–18888. Each live server writes its port to `%LOCALAPPDATA%\VibeModel\servers\<port>.json`. From scripts, use `127.0.0.1` rather than `localhost`. If no port is free at all, VibeModel falls back to a file-based mode (slower, still works).
+</details>
+
+<details>
+<summary><b>Commands return errors</b></summary>
+
+Open a project first (not the start screen), and check that the element ids exist. Every error names the cause and, where there is one, the fix.
+</details>
 
 ## License
-Mozilla Public License v2
+
+[Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)
