@@ -73,6 +73,21 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void LoneBacktick_DoesNotSwallowTheNextParagraphs()
+        {
+            var r = CitationParser.Parse("Een ` los teken.\n\nFase 2 [bron: leidraad 4.2].\n\nEn ` nog een.");
+            Assert.Single(r.Citations);
+            Assert.Contains("Fase 2" + P(1) + ".", r.Text);
+        }
+
+        [Fact]
+        public void MarkerAsAListItem_KeepsTheBulletSpace()
+        {
+            var r = CitationParser.Parse("Bronnen:\n- [bron: leidraad 4.2]\n1. [bron: standaard phasing]\nTekst [bron: revit-api]");
+            Assert.Equal("Bronnen:\n- " + P(1) + "\n1. " + P(2) + "\nTekst" + P(3), r.Text);
+        }
+
+        [Fact]
         public void TildeFence_AndUnclosedBacktick_AreHandled()
         {
             var r = CitationParser.Parse("~~~\n[bron: a]\n~~~\nEen ` los [bron: leidraad 5]");
@@ -191,6 +206,14 @@ namespace VibeModel.Tests
         public void NumericColumns(string[] cells, bool expected)
         {
             Assert.Equal(expected, TableLayout.IsNumericColumn(cells));
+        }
+
+        [Fact]
+        public void NumbersGroupedWithNonBreakingSpaces_AreNumeric()
+        {
+            // "12 345" as Dutch number formatting writes it: NBSP / narrow NBSP between the groups.
+            Assert.True(TableLayout.IsNumericColumn(new[] { "12\u00A0345 mm", "1\u202F000" }));
+            Assert.True(VibeModel.Services.Helpers.RevitUnitHelper.IsBareNumber("12\u00A0345"));
         }
 
         [Fact]

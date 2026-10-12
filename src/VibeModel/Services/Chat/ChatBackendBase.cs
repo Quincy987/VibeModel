@@ -50,11 +50,17 @@ namespace VibeModel.Services.Chat
         /// A WebClient for the local Revit server, UTF-8 and carrying the auth token header when
         /// one is configured. Centralizes the header so every in-app call stays authenticated.
         /// </summary>
-        protected WebClient CreateRevitClient()
+        protected WebClient CreateRevitClient() => NewRevitClient(_authToken);
+
+        /// <summary>The same client for code outside a backend (the pane's source popup); token from the environment.</summary>
+        internal static WebClient NewRevitClient() =>
+            NewRevitClient(Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar));
+
+        private static WebClient NewRevitClient(string token)
         {
             var client = new WebClient { Encoding = Encoding.UTF8 };
-            if (_authToken != null)
-                client.Headers[RevitHttpServer.TokenHeader] = _authToken;
+            if (!string.IsNullOrWhiteSpace(token))
+                client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
             return client;
         }
 

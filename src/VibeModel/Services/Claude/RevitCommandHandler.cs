@@ -308,6 +308,9 @@ namespace VibeModel.Services.Claude
                 try { selectedCount = uidoc.Selection.GetElementIds().Count; }
                 catch { /* selection unavailable — 0 is a safe default */ }
 
+                // The chat pane's starter chips read the same facts.
+                ActiveDocumentTracker.UpdateView(viewName, uidoc.ActiveView is ViewSheet, selectedCount);
+
                 return ModelChangeTracker.TakeStamp(
                     ModelChangeTracker.DocKey(doc.PathName, doc.Title), viewName, selectedCount);
             }

@@ -14,6 +14,7 @@ using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
 using VibeModel.Markdown;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Chat.QuickReplies;
 using VibeModel.Services.Claude;
 using TextBox = System.Windows.Controls.TextBox;
 
@@ -43,6 +44,21 @@ namespace VibeModel.UI
         private Border _welcomeCard;
         // The one in-pane popup (a source, or the examples list).
         private Popup _popup;
+
+        // Quick replies: the chip row above the input, made by a cheap model call after an answer.
+        private Border _suggestionBar;
+        private WrapPanel _suggestionPanel;
+        private IReadOnlyList<QuickReply> _quickReplies;      // the set on show (null: none)
+        private QuickReplyRequest _quickReplyRequest;         // the answer the next set must belong to
+        private System.Windows.Threading.DispatcherTimer _typingTimer;
+        // "Klaar om te versturen" under the input after a chip that changes the model filled it.
+        private TextBlock _readyHint;
+        private string _readyHintText;
+        // Starter chips: documents in the project folder, listed off the UI thread and cached.
+        private string _docCountFolder;
+        private int _docCount;
+        private DateTime _docCountAtUtc;
+        private bool _docCountPending;
 
         // The turn in flight. Direct references avoid O(n) visual tree search.
         private sealed class TurnUi
@@ -121,6 +137,7 @@ namespace VibeModel.UI
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
 
             var header = CreateHeader();
             Grid.SetRow(header, 0);
@@ -145,12 +162,16 @@ namespace VibeModel.UI
             Grid.SetRow(_scrollViewer, 1);
             mainGrid.Children.Add(_scrollViewer);
 
+            _suggestionBar = CreateSuggestionBar();
+            Grid.SetRow(_suggestionBar, 2);
+            mainGrid.Children.Add(_suggestionBar);
+
             _attachmentBar = CreateAttachmentBar();
-            Grid.SetRow(_attachmentBar, 2);
+            Grid.SetRow(_attachmentBar, 3);
             mainGrid.Children.Add(_attachmentBar);
 
             var inputArea = CreateInputArea();
-            Grid.SetRow(inputArea, 3);
+            Grid.SetRow(inputArea, 4);
             mainGrid.Children.Add(inputArea);
 
             Content = mainGrid;
@@ -319,6 +340,7 @@ namespace VibeModel.UI
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             _inputBox.PreviewKeyDown += OnInputPreviewKeyDown;
+            _inputBox.TextChanged += OnInputTextChanged;
             // Intercept paste: files / clipboard images become attachments; text pastes normally.
             DataObject.AddPastingHandler(_inputBox, OnInputPasting);
             Grid.SetColumn(_inputBox, 1);
@@ -363,13 +385,25 @@ namespace VibeModel.UI
             Grid.SetColumn(buttonPanel, 2);
             inputGrid.Children.Add(buttonPanel);
 
+            _readyHint = new TextBlock
+            {
+                Foreground = AccentBlue,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(34, 4, 0, 0),
+                Visibility = Visibility.Collapsed
+            };
+            var inputStack = new StackPanel();
+            inputStack.Children.Add(inputGrid);
+            inputStack.Children.Add(_readyHint);
+
             return new Border
             {
                 Background = BgPanel,
                 BorderBrush = BorderColor,
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 Padding = new Thickness(8),
-                Child = inputGrid
+                Child = inputStack
             };
         }
 
@@ -383,6 +417,7 @@ namespace VibeModel.UI
 
             _backend = backend;
             ClosePopup();
+            ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -420,9 +455,14 @@ namespace VibeModel.UI
             _messagePanel.Children.Insert(index, _welcomeCard);
         }
 
+        // Selection, view and document changes re-pick the starters — but only while the chat is
+        // empty: mid-conversation a card that grows or shrinks would shift the messages under it.
         private void OnActiveDocumentChanged(object sender, EventArgs e)
         {
-            Dispatcher.BeginInvoke(new Action(RefreshWelcomeCard));
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_userTurnCount == 0) RefreshWelcomeCard();
+            }));
         }
 
         /// <summary>
@@ -462,8 +502,9 @@ namespace VibeModel.UI
                     TextTrimming = TextTrimming.CharacterEllipsis
                 });
 
+                // Starters follow the live context (selection, sheet, office pack, project documents).
                 var chips = new WrapPanel();
-                foreach (var example in UiText.WelcomeExamples(language))
+                foreach (var example in Starters.Pick(BuildStarterContext(), language))
                     chips.Children.Add(CreateExampleChip(example, Strings.For(language, Strings.WelcomeChipTip)));
                 panel.Children.Add(chips);
             }
@@ -510,24 +551,98 @@ namespace VibeModel.UI
         }
 
         // A rounded chip; a click puts its text in the input box (the "…" selected, to type over).
-        private Border CreateExampleChip(string text, string tooltip)
+        private Button CreateExampleChip(string text, string tooltip)
         {
-            var chip = new Border
+            var chip = CreateChip(text, tooltip);
+            chip.Click += (s, e) => UseExample(text);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(chip, "StarterChip");
+            return chip;
+        }
+
+        private static ControlTemplate _chipTemplate;
+
+        // A chip is a Button (keyboard and UI Automation can invoke it) drawn as a rounded pill.
+        private Button CreateChip(string text, string tooltip)
+        {
+            if (_chipTemplate == null)
             {
+                var border = new FrameworkElementFactory(typeof(Border));
+                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+                border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+                border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+                border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+                border.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+                border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+                _chipTemplate = new ControlTemplate(typeof(Button)) { VisualTree = border };
+            }
+
+            var chip = new Button
+            {
+                Template = _chipTemplate,
                 Background = BgInput,
                 BorderBrush = BgInput,
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(8, 2, 8, 3),
                 Margin = new Thickness(0, 0, 6, 4),
                 Cursor = Cursors.Hand,
                 ToolTip = tooltip,
-                Child = new TextBlock { Text = text, Foreground = FgPrimary, FontSize = 11 }
+                MaxWidth = 280,
+                Content = new TextBlock
+                {
+                    Text = text,
+                    Foreground = FgPrimary,
+                    FontSize = 11,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                }
             };
+            System.Windows.Automation.AutomationProperties.SetName(chip, text);
             chip.MouseEnter += (s, e) => chip.BorderBrush = AccentBlue;
             chip.MouseLeave += (s, e) => chip.BorderBrush = BgInput;
-            chip.MouseLeftButtonUp += (s, e) => UseExample(text);
             return chip;
+        }
+
+        // What the starter chips are picked from; the project-folder count comes from a cached,
+        // off-thread listing (a network folder must never stall the pane).
+        private StarterContext BuildStarterContext()
+        {
+            var ctx = new StarterContext
+            {
+                SelectedCount = ActiveDocumentTracker.SelectedCount,
+                ActiveViewIsSheet = ActiveDocumentTracker.ActiveViewIsSheet,
+                PackActive = !string.IsNullOrWhiteSpace(Services.Standards.StandardsPrompt.StandardsBlock)
+            };
+
+            var title = ActiveDocumentTracker.Title;
+            var folder = string.IsNullOrWhiteSpace(title)
+                ? null
+                : ProjectDocs.ResolveForDocument(title, ActiveDocumentTracker.PathName).Path;
+            if (string.IsNullOrWhiteSpace(folder)) return ctx;
+
+            var fresh = string.Equals(folder, _docCountFolder, StringComparison.OrdinalIgnoreCase) &&
+                        DateTime.UtcNow - _docCountAtUtc < TimeSpan.FromMinutes(2);
+            if (string.Equals(folder, _docCountFolder, StringComparison.OrdinalIgnoreCase))
+                ctx.ProjectDocCount = _docCount;
+            if (!fresh && !_docCountPending)
+            {
+                _docCountPending = true;
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    var count = 0;
+                    try { count = ProjectDocs.TryList(folder, null, out string listError)?.TotalFiles ?? 0; }
+                    catch (Exception ex) { Logger.Info("Starter chips: project folder not listed - " + ex.Message); }
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        var changed = count != _docCount ||
+                                      !string.Equals(folder, _docCountFolder, StringComparison.OrdinalIgnoreCase);
+                        _docCountFolder = folder;
+                        _docCount = count;
+                        _docCountAtUtc = DateTime.UtcNow;
+                        _docCountPending = false;
+                        if (changed && _userTurnCount == 0) RefreshWelcomeCard();
+                    }));
+                });
+            }
+            return ctx;
         }
 
         private void UseExample(string text)
@@ -890,6 +1005,7 @@ namespace VibeModel.UI
                 return;
             }
 
+            ClearQuickReplies();
             _inputBox.Text = "";
             if (text == null) text = "";
 
@@ -1014,6 +1130,9 @@ namespace VibeModel.UI
                             ChatHistory.Add("Claude", content);
                             sessionForTurn.Append(ChatSession.RoleAssistant, content);
                             ChatSessionStore.Default.SaveSession(sessionForTurn);
+                            // Quick replies: a separate cheap call, never on the token stream.
+                            if (ReferenceEquals(sessionForTurn, _session))
+                                RequestQuickReplies(sessionForTurn, text, answer, cancelled, turn.Model.ToolNames);
                             ClearStreamingState();
                         }
                         SetGenerating(false);
@@ -1168,6 +1287,7 @@ namespace VibeModel.UI
             _session = null;
 
             ClosePopup();
+            ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1214,6 +1334,7 @@ namespace VibeModel.UI
             }
 
             ClosePopup();
+            ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1461,6 +1582,166 @@ namespace VibeModel.UI
             return rtb;
         }
 
+        // --- Quick replies (the chip row above the input) ---
+
+        private Border CreateSuggestionBar()
+        {
+            _suggestionPanel = new WrapPanel { Orientation = Orientation.Horizontal };
+            _typingTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _typingTimer.Tick += (s, e) =>
+            {
+                // One second after typing started (not restarted per key): the row steps aside.
+                _typingTimer.Stop();
+                if (!string.IsNullOrEmpty(_inputBox.Text)) _suggestionBar.Visibility = Visibility.Collapsed;
+            };
+            return new Border
+            {
+                Background = BgDark,
+                Padding = new Thickness(8, 4, 8, 0),
+                Visibility = Visibility.Collapsed,
+                RenderTransform = new TranslateTransform(),
+                Child = _suggestionPanel
+            };
+        }
+
+        // After a completed answer: ask the cheap model (off the UI thread) what the user was
+        // about to type. Every rule of the row lives in QuickReplyService; this only wires it.
+        private void RequestQuickReplies(ChatSession session, string question, string answer, bool cancelled,
+            IReadOnlyList<string> toolsCalled)
+        {
+            ClearQuickReplies();
+            if (session == null || !QuickReplyService.ShouldOffer(answer, cancelled, false)) return;
+            var model = SuggestionModels.For(_backend);
+            if (model == null) return;
+
+            var context = new QuickReplyContext
+            {
+                ActiveView = ActiveDocumentTracker.ActiveViewName,
+                Phase = ActiveViewPhase(),
+                Selection = ActiveDocumentTracker.SelectedCount == 0
+                    ? "nothing selected"
+                    : ActiveDocumentTracker.SelectedCount + " element(s) selected",
+                ToolsCalled = toolsCalled
+            };
+            var request = new QuickReplyRequest
+            {
+                SessionId = session.Id,
+                MessageIndex = session.Messages.Count,
+                SystemPrompt = QuickReplyService.BuildSystemPrompt(context),
+                UserInput = QuickReplyService.BuildUserInput(session.Messages.ToList(), question, answer)
+            };
+            _quickReplyRequest = request;
+            QuickReplyService.GenerateAsync(model, request,
+                (r, replies) => Dispatcher.BeginInvoke(new Action(() => ApplyQuickReplies(r, replies))));
+        }
+
+        // The active view's phase as the TEMPLATE block states it ("… on phase '2. Bouwfase'").
+        private static string ActiveViewPhase()
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(
+                Services.Standards.StandardsPrompt.TemplateBlock ?? "", @"- active view: .*? on phase '([^']+)'");
+            return m.Success ? m.Groups[1].Value : null;
+        }
+
+        // A set that arrives late is dropped: a newer answer, another chat, a turn running, or
+        // the user already typing.
+        private void ApplyQuickReplies(QuickReplyRequest request, IReadOnlyList<QuickReply> replies)
+        {
+            if (!ReferenceEquals(request, _quickReplyRequest)) return;
+            _quickReplyRequest = null;
+            if (_session == null || _session.Id != request.SessionId || _session.Messages.Count != request.MessageIndex ||
+                _isGenerating)
+                return;
+            if (!string.IsNullOrEmpty(_inputBox.Text))
+            {
+                Logger.Info("Quick replies: dropped - the user is already typing");
+                return;
+            }
+            if (replies == null || replies.Count == 0) return;
+            _quickReplies = replies;
+            RenderQuickReplies();
+        }
+
+        private void RenderQuickReplies()
+        {
+            _suggestionPanel.Children.Clear();
+            var language = Strings.Current;
+            foreach (var reply in _quickReplies)
+            {
+                var captured = reply;
+                // A chip that changes the model carries a pencil: it fills the box, you press Send.
+                var chip = CreateChip((reply.Commits ? "✎ " : "") + reply.Label,
+                    Strings.For(language, reply.Commits ? Strings.QuickReplyFillsTip : Strings.QuickReplySendsTip, reply.Prompt));
+                chip.Click += (s, e) => OnQuickReplyChosen(captured);
+                System.Windows.Automation.AutomationProperties.SetAutomationId(chip, reply.Commits ? "QuickReplyChipCommit" : "QuickReplyChip");
+                _suggestionPanel.Children.Add(chip);
+            }
+            ShowSuggestionBar();
+        }
+
+        private void ShowSuggestionBar()
+        {
+            if (_quickReplies == null || _quickReplies.Count == 0 || _isGenerating) return;
+            var wasVisible = _suggestionBar.Visibility == Visibility.Visible;
+            _suggestionBar.Visibility = Visibility.Visible;
+            if (wasVisible) return;
+            // Slide in: a short fade with a small upward move.
+            var duration = TimeSpan.FromMilliseconds(120);
+            _suggestionBar.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, duration));
+            ((TranslateTransform)_suggestionBar.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(6, 0, duration));
+            ScrollToBottomIfNeeded();
+        }
+
+        // The row and the "ready to send" hint go (send, New Chat, History, backend switch, a chip).
+        private void ClearQuickReplies()
+        {
+            if (_readyHint != null) _readyHint.Visibility = Visibility.Collapsed;
+            _quickReplies = null;
+            _quickReplyRequest = null;
+            _typingTimer?.Stop();
+            _suggestionPanel?.Children.Clear();
+            if (_suggestionBar != null) _suggestionBar.Visibility = Visibility.Collapsed;
+        }
+
+        // Tap: a plain reply is sent at once; one that changes the model is typed into the box
+        // for the user to check and send.
+        private void OnQuickReplyChosen(QuickReply reply)
+        {
+            if (_isGenerating) return;
+            ClearQuickReplies();
+            if (reply.Commits)
+            {
+                _inputBox.Text = reply.Prompt;
+                _inputBox.Focus();
+                _inputBox.CaretIndex = _inputBox.Text.Length;
+                _readyHintText = reply.Prompt;
+                _readyHint.Text = Strings.Get(Strings.QuickReplyReadyHint);
+                _readyHint.Visibility = Visibility.Visible;
+                return;
+            }
+            _inputBox.Text = reply.Prompt;
+            SendCurrentMessage();
+        }
+
+        private void OnInputTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_readyHint.Visibility == Visibility.Visible && _inputBox.Text != _readyHintText)
+                _readyHint.Visibility = Visibility.Collapsed;
+
+            if (_quickReplies == null) return;
+            if (string.IsNullOrEmpty(_inputBox.Text))
+            {
+                // The box is empty again: the row comes back.
+                _typingTimer.Stop();
+                ShowSuggestionBar();
+            }
+            else if (_suggestionBar.Visibility == Visibility.Visible && !_typingTimer.IsEnabled)
+            {
+                _typingTimer.Start();
+            }
+        }
+
         // --- In-pane popup (a source, the examples list) ---
 
         // One popup at a time over the message area: at most ~60% of the pane high, scrollable
@@ -1608,11 +1889,8 @@ namespace VibeModel.UI
         // GET /<command>?args=… on the local VibeModel server (text output), with the token header.
         private static string GetFromRevit(int port, string command, string args)
         {
-            using (var client = new System.Net.WebClient { Encoding = Encoding.UTF8 })
+            using (var client = ChatBackendBase.NewRevitClient())
             {
-                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
-                if (!string.IsNullOrWhiteSpace(token))
-                    client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
                 var url = RevitHttpServer.BaseUrl(port) + "/" + command +
                           (string.IsNullOrEmpty(args) ? "" : "?args=" + Uri.EscapeDataString(args));
                 return client.DownloadString(url);

@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## v1.2.8 — Chat Tables, Sources, Units & Suggestion Chips (2026-10-12)
+
+### Added — suggestion chips that follow the context
+- **Starter chips** in an empty chat follow the open model instead of a fixed list: what you have
+  selected, an open sheet, an active office standard and documents in the project folder come
+  first, then the general examples.
+- **Quick replies** after every answer: a separate, cheap model call (Haiku through the API, the
+  Claude Code CLI, or the local model when tool use is on) guesses what you were about to type next
+  and offers none, or two to four one-tap chips above the input. A chip that only asks or selects is sent at once; one
+  that changes the model (marked with a pencil) is put in the input box so you check it and press
+  Send. "No thanks"-style buttons are filtered out in code; the prompt also tells the model not to
+  invent numbers and to offer no row after a plain fact (live: a one-line fact got none). The row
+  steps aside while you type and is never stored in the chat. The mechanism is a transfer of
+  DegenAI's quick replies (same prompt structure, schema and sanitizer, Revit domain).
+
 ### Added — tables, units and sources in chat answers; a compact welcome card
 Workshop feedback (werkvoorbereiders, 2026-10-12): tables showed as raw pipes, numbers came
 without units, nobody could read back *why* a choice was made, and the welcome text was English
@@ -19,8 +34,9 @@ and took a third of the pane.
   double parameter by its Revit spec — lengths in mm, areas in m², volumes in m³, angles in ° —
   where areas, volumes, angles and non-"dimension"-named lengths used to print raw internal units;
   `geometry` volume in m³; `section`, `viewport`, `sheetinfo`, `tag --at`, `pcprobe` and the `curves`
-  headers name their mm. **`set` and `filter` read typed values in the same unit `params` prints**
-  (an angle in °, an area in m²; before: radians and ft²).
+  headers name their mm. **`set` and `filter` read a typed length, area, volume or angle in the unit
+  `params` prints** (mm, m², m³, °; before: an angle in radians, an area in ft²). Other measurable
+  kinds (force, slope, …) still take Revit's internal units, as before.
 - **Sources.** The model cites what it took from the office standards, the leidraad, a project
   document or the model with a marker after the sentence — `[bron: leidraad 4.2]`,
   `[bron: standaard phasing]`, `[bron: document memo.pdf p.3]`, `[bron: revit 1543814]`,
@@ -144,7 +160,6 @@ The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as c
   rule in the example pack also covers Revit links.
 - Fixed: after a failed shared-coordinates link, `linkcad` suggested `--first`, which has no effect
   once the model has coordinates; it now suggests `--origin` (and moving, never rotating) there.
-
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its

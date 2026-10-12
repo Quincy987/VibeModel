@@ -76,9 +76,14 @@ namespace VibeModel.Services.Chat
         public const string ExamplesTitle = "ExamplesTitle";
         public const string ExamplesList = "ExamplesList";                     // one example per line
         public const string ExamplesTip = "ExamplesTip";
-        // Settings (plan 08, project part).
-        public const string SettingProjectMemory = "SettingProjectMemory";
-        public const string SettingProjectMemoryHint = "SettingProjectMemoryHint";
+        // Starter chips (empty chat; Starters.Pick) and quick replies (after an answer).
+        public const string StarterSelection = "StarterSelection";
+        public const string StarterSheet = "StarterSheet";
+        public const string StarterCheck = "StarterCheck";
+        public const string StarterDocs = "StarterDocs";
+        public const string QuickReplyReadyHint = "QuickReplyReadyHint";
+        public const string QuickReplyFillsTip = "QuickReplyFillsTip";       // {0} = prompt
+        public const string QuickReplySendsTip = "QuickReplySendsTip";       // {0} = prompt
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -137,8 +142,13 @@ namespace VibeModel.Services.Chat
                 { ExamplesTitle, "Examples" },
                 { ExamplesList, "What is in this model?\nList the 5 longest walls in a table with length, height and phase\nWhy can't I see element 12345 in this view?\nMake a section across this wall\nFit these views onto an A0 sheet\nWhich phase should a new section get according to the leidraad?\nWhich documents are in the project folder?\nCheck this model against the office standard\nCreate 4 walls forming a 5 x 5 m room\nColour the selected elements red" },
                 { ExamplesTip, "Every change the chat makes is one Ctrl+Z. Click an example to use it." },
-                { SettingProjectMemory, "Keep project memory and journal" },
-                { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
+                { StarterSelection, "What have I selected?" },
+                { StarterSheet, "Fit these views onto this sheet" },
+                { StarterCheck, "Check this model against the office standard" },
+                { StarterDocs, "Which documents are in the project folder?" },
+                { QuickReplyReadyHint, "Ready to send. Check it, then press Send." },
+                { QuickReplyFillsTip, "{0}\n(fills the input box - this changes the model, so you press Send)" },
+                { QuickReplySendsTip, "{0}\n(sends right away)" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -198,8 +208,13 @@ namespace VibeModel.Services.Chat
                 { ExamplesTitle, "Voorbeelden" },
                 { ExamplesList, "Wat zit er in dit model?\nGeef een tabel van de 5 langste wanden met lengte, hoogte en fase\nWaarom zie ik element 12345 niet in deze view?\nMaak een doorsnede dwars op deze wand\nZet deze views passend op een A0\nWelke fase hoort een nieuwe doorsnede te krijgen volgens de leidraad?\nWelke documenten zitten in de projectmap?\nControleer dit model tegen de kantoorstandaard\nMaak 4 wanden die een ruimte van 5 x 5 m vormen\nKleur de geselecteerde elementen rood" },
                 { ExamplesTip, "Elke wijziging van de chat is één keer Ctrl+Z. Klik op een voorbeeld om het te gebruiken." },
-                { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
-                { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
+                { StarterSelection, "Wat heb ik geselecteerd?" },
+                { StarterSheet, "Zet deze views passend op dit blad" },
+                { StarterCheck, "Controleer dit model tegen de kantoorstandaard" },
+                { StarterDocs, "Welke documenten zitten in de projectmap?" },
+                { QuickReplyReadyHint, "Klaar om te versturen. Controleer en druk op Send." },
+                { QuickReplyFillsTip, "{0}\n(vult het invoerveld - dit wijzigt het model, dus jij drukt op Send)" },
+                { QuickReplySendsTip, "{0}\n(wordt meteen verstuurd)" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

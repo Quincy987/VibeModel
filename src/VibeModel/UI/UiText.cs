@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using VibeModel.Services.Chat;
 
 namespace VibeModel.UI
@@ -95,13 +96,7 @@ namespace VibeModel.UI
         }
 
         /// <summary>The four example chips.</summary>
-        public static string[] WelcomeExamples(string language) => new[]
-        {
-            Strings.For(language, Strings.WelcomeExample1),
-            Strings.For(language, Strings.WelcomeExample2),
-            Strings.For(language, Strings.WelcomeExample3),
-            Strings.For(language, Strings.WelcomeExample4),
-        };
+        public static string[] WelcomeExamples(string language) => Starters.Defaults(language).ToArray();
 
         /// <summary>The not-configured card: a heading line and three install hints.</summary>
         public static string[] WelcomeSetupLines(string language) => new[]
