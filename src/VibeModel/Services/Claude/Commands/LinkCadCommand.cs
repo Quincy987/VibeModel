@@ -71,7 +71,7 @@ namespace VibeModel.Services.Claude.Commands
             ImportPlacement placement;
             string placementWhy;
             if (origin) { placement = ImportPlacement.Origin; placementWhy = "origin-to-origin (--origin)"; }
-            else if (coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates (coordinates set up: " + CoordinatesSetUpText(coords) + ")"; }
+            else if (coords.SharedCoordinates) { placement = ImportPlacement.Shared; placementWhy = LinkArgs.SharedPlacementWhy(coords); }
             else if (!isFirst) { placement = ImportPlacement.Shared; placementWhy = "Auto – By Shared Coordinates (" + existingLinks + " underlay(s) already linked)"; }
             else { placement = ImportPlacement.Centered; placementWhy = "centre-to-centre (first underlay — no shared coordinates yet)"; }
 
@@ -117,7 +117,10 @@ namespace VibeModel.Services.Claude.Commands
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error, "LINK_FAILED",
-                    placement == ImportPlacement.Shared ? "If the file has no usable coordinates, retry with --first (centre-to-centre)." : null);
+                    placement != ImportPlacement.Shared ? null
+                    : coords.SharedCoordinates
+                        ? "If the file has no usable coordinates, retry with --origin (origin-to-origin) and move it into place — never rotate it."
+                        : "If the file has no usable coordinates, retry with --first (centre-to-centre).");
 
             var sb = new StringBuilder();
             sb.AppendLine("CAD LINKED");
@@ -142,13 +145,5 @@ namespace VibeModel.Services.Claude.Commands
             });
         }
 
-        /// <summary>The "coordinates are set up" criterion in words: what the base point reads.</summary>
-        internal static string CoordinatesSetUpText(CoordinateFacts c)
-        {
-            if (Math.Abs(c.BaseNorthMm) < 0.5 && Math.Abs(c.BaseEastMm) < 0.5)
-                return "shared coordinates acquired (site '" + c.SiteName + "')";
-            return "base point N/S " + Math.Round(c.BaseNorthMm).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                   ", E/W " + Math.Round(c.BaseEastMm).ToString(System.Globalization.CultureInfo.InvariantCulture) + " mm ≠ 0";
-        }
     }
 }

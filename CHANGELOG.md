@@ -24,6 +24,8 @@
 - `linkcad` names the criterion it placed by ("coordinates set up: base point N/S … E/W … ≠ 0")
   and its first-link hint says "do not rotate — Project North stays True North". The `pinned`
   rule in the example pack also covers Revit links.
+- Fixed: after a failed shared-coordinates link, `linkcad` suggested `--first`, which has no effect
+  once the model has coordinates; it now suggests `--origin` (and moving, never rotating) there.
 
 ### Fixed — chat refused deletes the user had approved
 - **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**

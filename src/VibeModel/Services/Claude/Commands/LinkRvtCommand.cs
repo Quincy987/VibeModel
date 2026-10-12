@@ -52,7 +52,7 @@ namespace VibeModel.Services.Claude.Commands
             else if (coords.SharedCoordinates)
             {
                 placement = ImportPlacement.Shared;
-                placementWhy = "Auto – By Shared Coordinates (coordinates set up: " + LinkCadCommand.CoordinatesSetUpText(coords) + ")";
+                placementWhy = LinkArgs.SharedPlacementWhy(coords);
             }
             else if (force) { placement = ImportPlacement.Origin; placementWhy = "origin-to-origin (--force; this model has no shared coordinates yet)"; }
             else
@@ -79,7 +79,9 @@ namespace VibeModel.Services.Claude.Commands
                     var convError = ConvertIfc(uiApp, path, ifcRvt, overwrite: stale);
                     if (convError != null)
                         return CommandResult.Error("LINK_FAILED", "Revit could not convert " + Path.GetFileName(path) + " for linking: " + convError,
-                            "Link it once through Insert → Link IFC in Revit (that writes " + Path.GetFileName(ifcRvt) + "), then run linkrvt again.");
+                            stale
+                                ? "The old copy " + Path.GetFileName(ifcRvt) + " may be in use: if this IFC is already linked, Manage Links → Reload From… updates it instead."
+                                : "Link it once through Insert → Link IFC in Revit (that writes " + Path.GetFileName(ifcRvt) + "), then run linkrvt again.");
                     converted = true;
                 }
             }
@@ -157,14 +159,17 @@ namespace VibeModel.Services.Claude.Commands
         private static string ConvertIfc(UIApplication uiApp, string ifcPath, string rvtPath, bool overwrite)
         {
             Document ifcDoc = null;
-            var started = DateTime.UtcNow.AddSeconds(-2);
+            // "Did the importer write the copy itself?" is judged by the file changing, not by
+            // comparing clocks — a network share's clock need not match this machine's.
+            bool existedBefore = File.Exists(rvtPath);
+            var before = existedBefore ? File.GetLastWriteTimeUtc(rvtPath) : DateTime.MinValue;
             try
             {
                 var o = new IFCImportOptions { Intent = IFCImportIntent.Reference, Action = IFCImportAction.Link };
                 ifcDoc = uiApp.Application.OpenIFCDocument(ifcPath, o);
                 if (ifcDoc == null) return "the IFC importer returned nothing";
                 // The importer may already have written the copy itself; otherwise save it there.
-                bool written = File.Exists(rvtPath) && File.GetLastWriteTimeUtc(rvtPath) >= started;
+                bool written = File.Exists(rvtPath) && (!existedBefore || File.GetLastWriteTimeUtc(rvtPath) != before);
                 if (!written)
                     ifcDoc.SaveAs(rvtPath, new SaveAsOptions { OverwriteExistingFile = overwrite });
                 return File.Exists(rvtPath) ? null : "the converted copy was not written to " + rvtPath;

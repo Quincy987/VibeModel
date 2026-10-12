@@ -29,6 +29,17 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void SharedPlacementWhy_NamesTheCriterion()
+        {
+            var rd = new VibeModel.Services.Standards.CoordinateFacts { BaseNorthMm = 487000000, BaseEastMm = 123000000.4, SiteName = "Internal" };
+            Assert.Equal("Auto – By Shared Coordinates (coordinates set up: base point N/S 487000000, E/W 123000000 mm ≠ 0)",
+                LinkArgs.SharedPlacementWhy(rd));
+            var atZero = new VibeModel.Services.Standards.CoordinateFacts { SiteName = "RD" };
+            Assert.Equal("Auto – By Shared Coordinates (coordinates set up: shared coordinates acquired (site 'RD'))",
+                LinkArgs.SharedPlacementWhy(atZero));
+        }
+
+        [Fact]
         public void ProbeFile_MissingIsFileNotFound_ExistingIsNull()
         {
             var missing = Path.Combine(Path.GetTempPath(), "vibemodel-nope-" + System.Guid.NewGuid() + ".rvt");
