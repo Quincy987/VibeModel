@@ -58,7 +58,7 @@ x0 = px + pw + 60 * S
 x1 = W - 30 * S
 bw = x1 - x0
 steps = [
-    ("You", 'type what you want:  "give me a table of the 5 longest walls"', None, TXT),
+    ("You", 'type what you want:  "which walls are the longest?"', None, TXT),
     ("Claude", "reads the model state, decides which commands answer it", None, BLUE),
     ("VibeModel  ·  HTTP API inside Revit", "127.0.0.1:18884, one command per call, each on Revit's main thread in a transaction",
      "list walls   params 1728711   schedule walls --fields Type,Length", ACCENT),

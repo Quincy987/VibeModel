@@ -13,7 +13,7 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 
 <img src="docs/images/chat-table-sources.png" width="420" alt="The VibeModel chat panel: a question about the longest walls answered as a table with units, element ids on one line, and numbered source markers.">
 
-<sub>A table with units, the ids on one line, and small source numbers you can click.</sub>
+<sub>Ask about your walls, get a table with units, element numbers kept out of the way, and small source numbers you can click.</sub>
 
 </div>
 
@@ -21,7 +21,7 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 
 ## Why
 
-Revit work is full of small questions with slow answers: *why can't I see this element, how many piles have this rake, put these four views on an A0, what does the office manual say about phases.* VibeModel answers them in the model itself, and does the work when you ask it to.
+Revit work is full of small questions with slow answers: *why can't I see this beam, how many piles have this rake, put these four views on an A0, what does the office manual say about phases.* VibeModel answers them in the model itself, and does the work when you ask it to.
 
 - **It reads before it guesses.** Visibility settings, DWG linework, point-cloud ground levels, the project's PDFs, the office standards pack.
 - **It shows its work.** Every step appears live while it runs. Every fact taken from a document or the standards carries a source marker. Every change lands in a project journal.
@@ -41,12 +41,12 @@ Connect it to Claude in one of two ways: a **Claude Code** subscription (recomme
 
 ```
 What's in this model?
-Why can't I see element 348122 in this view?
-Give me a table of the 5 longest walls with length, height and phase
-Place 6 piles along this detail line, 2.8 m apart, turned to the line
-Make a section across this wall and put it on sheet 0001 at 1:50
-Make a pile schedule with count and length and export the sheet as PDF
-Remember that new sections get phase 2
+Why can't I see this beam in my project?
+Which walls are the longest? Put them in a table with lengths and phases
+Put piles along this line, every 2.8 m, turned with the line
+Cut a section through this wall and put it on the sheet at 1:50
+Make me a pile schedule and export the sheet as a PDF
+Remember: new sections get phase 2
 ```
 
 ## What it can do
@@ -55,13 +55,13 @@ Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short 
 
 | | Topic | Status |
 |---|---|---|
-| 1 | **Questions** — *"How do I do X in Revit?"* | ✅ General Revit, your office manual per chapter, the project's own documents. Tip: don't ask *how*, ask *do*. |
-| 2 | **Information** — *"How many piles with this rake?"* | ✅ Count, filter, measure, real Revit schedules; DWG layers and point-cloud ground read directly. 🟡 Only if the data is in the model. |
-| 3 | **Diagnosis** — *"Where did it go? Why won't Revit let me?"* | ✅ The strongest part. `whyhidden` walks every visibility gate and names the fix; `join` explains refusals; `check` audits the office rules; `sheetinfo` finds overlaps and empty stamp fields. |
-| 4 | **Modelling** — *"Draw a wall along this line, cut a section"* | ✅ Walls, floors, families with type, rotation, parameters, placed along a line; sections, crops, aimed 3D views, callouts; one batch = one Ctrl+Z. ❌ Composite profiles, sweeps, in-place families. |
+| 1 | **Questions** — *"How do I set the view range so I can see the foundations?"* | ✅ General Revit, your office manual per chapter, the project's own documents. Tip: don't ask *how*, ask *do*. |
+| 2 | **Information** — *"How many piles have this rake?"* | ✅ Count, filter, measure, real Revit schedules; DWG layers and point-cloud ground read directly. 🟡 Only if the data is in the model. |
+| 3 | **Diagnosis** — *"Where did my capstone go? Why won't it join?"* | ✅ The strongest part. `whyhidden` walks every visibility gate and names the fix; `join` explains refusals; `check` audits the office rules; `sheetinfo` finds overlaps and empty stamp fields. |
+| 4 | **Modelling** — *"Draw a wall along this line and cut a section through it"* | ✅ Walls, floors, families with type, rotation, parameters, placed along a line; sections, crops, aimed 3D views, callouts; one batch = one Ctrl+Z. ❌ Composite profiles, sweeps, in-place families. |
 | 5 | **Sheets** — *"Put these views on an A0 so they fit"* | ✅ Sheet, stamp, grid or band layout, scale advice, move between sheets. 🟡 You decide the layout. ❌ Legends (the API can't create them). |
-| 6 | **Annotating** — *"Add the level string and the sheet-pile length"* | ✅ Dimensions, level strings, text with leaders, tags, filled regions, detail items. 🟡 From a specification: a first pass. ❌ Keynotes, dimensions in 3D. |
-| 7 | **Checking against a document** — *"Does the bolt count match the spec?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
+| 6 | **Annotating** — *"Add the levels and the sheet-pile length from the spec"* | ✅ Dimensions, level strings, text with leaders, tags, filled regions, detail items. 🟡 From a specification: a first pass. ❌ Keynotes, dimensions in 3D. |
+| 7 | **Checking against a document** — *"Does the number of bolts match the specification?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
 | 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
 | 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
 
@@ -74,7 +74,7 @@ VibeModel runs a small HTTP server inside Revit on `127.0.0.1:18884`. The chat b
 ```bash
 curl -s http://localhost:18884/health                       # is it running?
 curl -s http://localhost:18884/help                         # every command
-curl -s "http://localhost:18884/whyhidden?args=348122"      # why is this element invisible?
+curl -s "http://localhost:18884/whyhidden?args=348122"      # why can't I see this one?
 curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"  # a wall, in mm
 ```
 
@@ -168,7 +168,7 @@ Port 18884 is the default; a second Revit instance falls back to 18885–18888. 
 <details>
 <summary><b>Commands return errors</b></summary>
 
-Open a project first (not the start screen), and check that the element ids exist. Every error names the cause and, where there is one, the fix.
+Open a project first (not the start screen), and check that the element you name still exists. Every error names the cause and, where there is one, the fix.
 </details>
 
 ## License
