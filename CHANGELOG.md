@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.8 — Chat Tables, Sources, Units & Suggestion Chips (2026-10-12)
+
 ### Added — suggestion chips that follow the context
 - **Starter chips** in an empty chat follow the open model instead of a fixed list: what you have
   selected, an open sheet, an active office standard and documents in the project folder come
