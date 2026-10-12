@@ -455,9 +455,14 @@ namespace VibeModel.UI
             _messagePanel.Children.Insert(index, _welcomeCard);
         }
 
+        // Selection, view and document changes re-pick the starters — but only while the chat is
+        // empty: mid-conversation a card that grows or shrinks would shift the messages under it.
         private void OnActiveDocumentChanged(object sender, EventArgs e)
         {
-            Dispatcher.BeginInvoke(new Action(RefreshWelcomeCard));
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_userTurnCount == 0) RefreshWelcomeCard();
+            }));
         }
 
         /// <summary>
@@ -633,7 +638,7 @@ namespace VibeModel.UI
                         _docCount = count;
                         _docCountAtUtc = DateTime.UtcNow;
                         _docCountPending = false;
-                        if (changed) RefreshWelcomeCard();
+                        if (changed && _userTurnCount == 0) RefreshWelcomeCard();
                     }));
                 });
             }
@@ -1884,11 +1889,8 @@ namespace VibeModel.UI
         // GET /<command>?args=… on the local VibeModel server (text output), with the token header.
         private static string GetFromRevit(int port, string command, string args)
         {
-            using (var client = new System.Net.WebClient { Encoding = Encoding.UTF8 })
+            using (var client = ChatBackendBase.NewRevitClient())
             {
-                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
-                if (!string.IsNullOrWhiteSpace(token))
-                    client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
                 var url = RevitHttpServer.BaseUrl(port) + "/" + command +
                           (string.IsNullOrEmpty(args) ? "" : "?args=" + Uri.EscapeDataString(args));
                 return client.DownloadString(url);

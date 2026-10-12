@@ -35,6 +35,29 @@ namespace VibeModel.Services.Chat.QuickReplies
 
         public const string HaikuModel = "claude-haiku-5-5";
 
+        private static readonly HttpClient Http = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+
+        /// <summary>
+        /// POST a JSON body (the caller's token sets the deadline); the response text, or null on an
+        /// HTTP error — logged once here for every transport.
+        /// </summary>
+        internal static string PostJson(string url, string body, IDictionary<string, string> headers, string label,
+            CancellationToken ct, out int status)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            if (headers != null)
+                foreach (var h in headers) request.Headers.Add(h.Key, h.Value);
+            var response = Http.SendAsync(request, ct).GetAwaiter().GetResult();
+            status = (int)response.StatusCode;
+            var text = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (response.IsSuccessStatusCode) return text;
+            Logger.Info("Quick replies: " + label + " HTTP " + status + " - " + (text.Length > 300 ? text.Substring(0, 300) : text));
+            return null;
+        }
+
         public static ISuggestionModel For(IChatBackend backend)
         {
             switch (backend)
@@ -46,7 +69,8 @@ namespace VibeModel.Services.Chat.QuickReplies
                         ? null
                         : new ClaudeCliSuggestionModel(cli.CliPath);
                 case LocalLlmBackend _:
-                    return new LocalSuggestionModel();
+                    // Chat-only (no tool use): the model cannot act in Revit, so no chip could keep its promise.
+                    return SettingsManager.GetLocalLlmToolUse() ? new LocalSuggestionModel() : null;
                 default:
                     return null;
             }
@@ -57,7 +81,6 @@ namespace VibeModel.Services.Chat.QuickReplies
     public sealed class AnthropicSuggestionModel : ISuggestionModel
     {
         private const string ToolName = "quick_replies";
-        private static readonly HttpClient Http = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
 
         public string Name => "Anthropic API (" + SuggestionModels.HaikuModel + ")";
         public TimeSpan Timeout => SuggestionModels.DefaultTimeout;
@@ -68,23 +91,11 @@ namespace VibeModel.Services.Chat.QuickReplies
             if (string.IsNullOrWhiteSpace(apiKey)) return null;
 
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            var body = json.Serialize(BuildRequest(systemPrompt, userInput, json));
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
-            request.Headers.Add("x-api-key", apiKey);
-            request.Headers.Add("anthropic-version", "2023-06-01");
-
-            var response = Http.SendAsync(request, ct).GetAwaiter().GetResult();
-            var text = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            if (!response.IsSuccessStatusCode)
-            {
-                Logger.Info("Quick replies: Anthropic API HTTP " + (int)response.StatusCode + " - " +
-                            (text.Length > 300 ? text.Substring(0, 300) : text));
-                return null;
-            }
-            return ToolInput(text, json);
+            var text = SuggestionModels.PostJson("https://api.anthropic.com/v1/messages",
+                json.Serialize(BuildRequest(systemPrompt, userInput, json)),
+                new Dictionary<string, string> { { "x-api-key", apiKey }, { "anthropic-version", "2023-06-01" } },
+                "Anthropic API", ct, out _);
+            return text == null ? null : ToolInput(text, json);
         }
 
         internal static Dictionary<string, object> BuildRequest(string systemPrompt, string userInput, JavaScriptSerializer json)
@@ -255,7 +266,6 @@ namespace VibeModel.Services.Chat.QuickReplies
     /// <summary>The local OpenAI-compatible server: JSON mode, the schema spelled out in the prompt.</summary>
     public sealed class LocalSuggestionModel : ISuggestionModel
     {
-        private static readonly HttpClient Http = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         // A server that rejected response_format is asked without it from then on.
         private static bool _noJsonMode;
 
@@ -269,13 +279,15 @@ namespace VibeModel.Services.Chat.QuickReplies
             var url = endpoint.TrimEnd('/') + "/v1/chat/completions";
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
-            var text = Post(url, BuildRequest(systemPrompt, userInput, !_noJsonMode), json, ct, out var status);
+            var text = SuggestionModels.PostJson(url, json.Serialize(BuildRequest(systemPrompt, userInput, !_noJsonMode)),
+                null, "local LLM", ct, out var status);
             // A server that does not know response_format answers 400 or 422.
             if (text == null && (status == 400 || status == 422) && !_noJsonMode)
             {
                 _noJsonMode = true;
                 Logger.Info("Quick replies: local server rejected response_format - retrying without JSON mode");
-                text = Post(url, BuildRequest(systemPrompt, userInput, false), json, ct, out status);
+                text = SuggestionModels.PostJson(url, json.Serialize(BuildRequest(systemPrompt, userInput, false)),
+                    null, "local LLM", ct, out status);
             }
             if (text == null) return null;
 
@@ -313,21 +325,6 @@ namespace VibeModel.Services.Chat.QuickReplies
             };
             if (jsonMode) body["response_format"] = new Dictionary<string, object> { { "type", "json_object" } };
             return body;
-        }
-
-        private static string Post(string url, Dictionary<string, object> body, JavaScriptSerializer json,
-            CancellationToken ct, out int status)
-        {
-            var request = new HttpRequestMessage(HttpMethod.Post, url)
-            {
-                Content = new StringContent(json.Serialize(body), Encoding.UTF8, "application/json")
-            };
-            var response = Http.SendAsync(request, ct).GetAwaiter().GetResult();
-            status = (int)response.StatusCode;
-            var text = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            if (response.IsSuccessStatusCode) return text;
-            Logger.Info("Quick replies: local LLM HTTP " + status + " - " + (text.Length > 300 ? text.Substring(0, 300) : text));
-            return null;
         }
     }
 }

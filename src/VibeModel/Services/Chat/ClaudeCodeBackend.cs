@@ -62,8 +62,20 @@ namespace VibeModel.Services.Chat
         /// <summary>The model of the last turn, else the CLI's configured model, else null (its default).</summary>
         public override string ModelName => _lastSeenModel ?? ConfiguredCliModel();
 
+        private static string _configuredModel;
+        private static DateTime _configuredModelReadUtc;
+
         // ANTHROPIC_MODEL, then "model" in ~/.claude/settings.json — what the CLI itself reads.
+        // Cached for a minute: the welcome card asks on the UI thread each time it rebuilds.
         private static string ConfiguredCliModel()
+        {
+            if (DateTime.UtcNow - _configuredModelReadUtc < TimeSpan.FromMinutes(1)) return _configuredModel;
+            _configuredModel = ReadConfiguredCliModel();
+            _configuredModelReadUtc = DateTime.UtcNow;
+            return _configuredModel;
+        }
+
+        private static string ReadConfiguredCliModel()
         {
             try
             {
@@ -84,6 +96,7 @@ namespace VibeModel.Services.Chat
                 return null;
             }
         }
+
         public override string StatusMessage => _statusMessage;
 
         public ClaudeCodeBackend(IReadOnlyDictionary<string, IClaudeCommand> commands, int httpPort)
