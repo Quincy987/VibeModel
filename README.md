@@ -11,9 +11,9 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](#license)
 [![Tests](https://img.shields.io/badge/tests-1004%20passing-success)](#building-from-source)
 
-<img src="docs/images/chat-table-sources.png" width="420" alt="The VibeModel chat panel: a question about the longest walls answered as a table with units, element ids on one line, and numbered source markers.">
+<img src="docs/images/vibe-quay-wall.gif" width="880" alt="Revit with the VibeModel chat docked on the right: a request to build a quay wall on the drawing's quay line, the plan zooming in, the wall appearing along the line, then a follow-up about the capstone.">
 
-<sub>Ask about your walls, get a table with units, element numbers kept out of the way, and small source numbers you can click.</sub>
+<sub>A quay wall asked for in the chat, drawn on the imported drawing's quay line, then a capstone question. Seven seconds, time-lapsed.</sub>
 
 </div>
 
@@ -64,6 +64,11 @@ Nine kinds of work, with an honest status as of v1.2.8. Each topic gets a short 
 | 7 | **Checking against a document** — *"Does the number of bolts match the specification?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
 | 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
 | 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
+
+<div align="center">
+<img src="docs/images/vibe-3d-check.gif" width="880" alt="The same model in 3D: the chat selects the quay wall, colours it, explains a stray graphic override and removes it, then answers why the view suddenly looks coarse.">
+<br><sub>Diagnosis in the same chat: a stray colour override found and removed, then a question about a view that suddenly looks coarse.</sub>
+</div>
 
 ## How it works
 
