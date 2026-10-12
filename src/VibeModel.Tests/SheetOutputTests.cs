@@ -252,6 +252,27 @@ namespace VibeModel.Tests
         {
             Assert.Equal("Length (mm)", ScheduleText.Header("Length", "mm"));
             Assert.Equal("Count", ScheduleText.Header("Count", null));
+            // Office schedules often put the unit in the heading already.
+            Assert.Equal("P.P.N. (m) t.o.v. NAP", ScheduleText.Header("P.P.N. (m) t.o.v. NAP", "m"));
+            Assert.Equal("Lengte [mm]", ScheduleText.Header("Lengte [mm]", "mm"));
+        }
+
+        [Theory]
+        [InlineData(0, 12)]
+        [InlineData(10, 24)]
+        [InlineData(61, 90)]
+        public void ColumnWidth_FollowsTheLongestCell(int chars, double mm) => Assert.Equal(mm, ScheduleText.ColumnWidthMm(chars));
+
+        [Fact]
+        public void FieldHelp_CloseMatchesFirst_LongListsCapped()
+        {
+            var names = new List<string> { "Count", "Length", "Pile Length", "afgeronde paallengte", "Comments" };
+            var help = ScheduleText.FieldHelp(names, new[] { "Paallengte" });
+            Assert.StartsWith("Close matches: afgeronde paallengte. Schedulable fields: afgeronde paallengte, Comments, Count, Length, Pile Length.", help);
+            var many = Enumerable.Range(0, 300).Select(i => "P" + i.ToString("000")).ToList();
+            var capped = ScheduleText.FieldHelp(many, new[] { "zzz" });
+            Assert.Contains("(first 60 of 300)", capped);
+            Assert.DoesNotContain("P299", capped);
         }
 
         [Fact]
@@ -286,8 +307,8 @@ namespace VibeModel.Tests
         [Fact]
         public void Table_ShortensLongCells_AndSaysWhenEmpty()
         {
-            var lines = ScheduleText.Table(new[] { "Comments" }, new List<List<string>> { new List<string> { new string('x', 60) } }, 20);
-            Assert.Equal(40, lines[2].Length);
+            var lines = ScheduleText.Table(new[] { "Comments" }, new List<List<string>> { new List<string> { new string('x', 80) } }, 20);
+            Assert.Equal(60, lines[2].Length);
             Assert.EndsWith("…", lines[2]);
             Assert.Contains("no rows", ScheduleText.Table(new[] { "A" }, new List<List<string>>(), 20).Last());
         }

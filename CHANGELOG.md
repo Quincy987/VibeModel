@@ -11,7 +11,9 @@ The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as c
   URL-friendly `eq ne gt ge lt le`; numbers are in the project's display unit), `--group <field>`
   gives one row per value with the quantities summed, `--total` a grand total, `--name`. The
   response prints the first 20 rows as a text table with the units in the headers;
-  `schedule <name|id> --rows [n]` reads any schedule back (and says which sheets it is on).
+  `schedule <name|id> --rows [n]` reads any schedule back (and says which sheets it is on; an
+  empty one names its filter count and phase). Columns are widened to their longest cell so type
+  names do not wrap on the sheet; an unknown field shows close matches first.
 - **`callout <parent view> --box x1 y1 x2 y2`** — a plan callout (or `--section`: a detail view)
   over a rectangle in the parent's frame, the convention of `crop --box`. The pack's `callout`
   view defaults apply (else those of `plan`/`section`); `--name`, `--scale`, `--template`/

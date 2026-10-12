@@ -50,8 +50,10 @@ namespace VibeModel.Services.Claude.Commands
                 if (!(v is ViewSchedule) && !Viewport.CanAddViewToSheet(doc, sheet.Id, v.Id))
                 {
                     var on = SheetHelper.SheetOf(doc, v);
+                    var placedVp = on == null ? null : new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>().FirstOrDefault(x => x.ViewId == v.Id);
                     problems.Add("'" + v.Name + "' (" + v.Id.IntegerValue + ") " + (on != null
-                        ? "is already on sheet " + SheetHelper.Label(on) + " — a view can be on one sheet only; duplicate it ('exec' Duplicate(ViewDuplicateOption.WithDetailing)) or 'viewport --remove' it there"
+                        ? "is already on sheet " + SheetHelper.Label(on) + " — a view can be on one sheet only; move it here with 'viewport --move " +
+                          placedVp?.Id.IntegerValue + " --to " + sheet.SheetNumber + "', or duplicate it ('exec' Duplicate(ViewDuplicateOption.WithDetailing))"
                         : "cannot be placed on a sheet (" + v.ViewType + ")"));
                     continue;
                 }
@@ -285,7 +287,11 @@ namespace VibeModel.Services.Claude.Commands
                     "Refused: sheet " + SheetHelper.Label(to) + " is " + Mm.F(toPaper.W) + "×" + Mm.F(toPaper.H) + " mm" + (pn != null ? " (" + pn + ")" : "") +
                     ", a different size than " + SheetHelper.Label(from) + ", and '" + view.Name + "' (" + Mm.F(box.W) + "×" + Mm.F(box.H) +
                     " mm on paper) does not fit its free area " + Mm.F(usable.W) + "×" + Mm.F(usable.H) + " mm. Nothing was moved.",
-                    fitWarn + (scale > 0 ? "; then run the move again" : ""));
+                    scale > 0
+                        ? "It fits at 1:" + SheetLayout.SuggestScale(box.W * scale, box.H * scale, usable) + ": crop it ('crop " + view.Id.IntegerValue +
+                          " --fit' or '--box') and move again, or place it at that scale ('viewport --remove " + a.MoveId + "' then 'viewport " + to.SheetNumber +
+                          " " + view.Id.IntegerValue + " --scale " + SheetLayout.SuggestScale(box.W * scale, box.H * scale, usable) + "'), or pick a sheet of the same size."
+                        : "Filter or group the schedule so it gets shorter, or pick a sheet of the same size.");
             }
 
             // Default position: where it was on the old paper when that lies in the new free area, else that area's centre.

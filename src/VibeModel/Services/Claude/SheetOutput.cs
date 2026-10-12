@@ -52,7 +52,7 @@ namespace VibeModel.Services.Claude
     /// </summary>
     internal static class ScheduleText
     {
-        private const int MaxCell = 40;
+        private const int MaxCell = 60;
 
         /// <summary>
         /// A short unit symbol for a Revit unit type id ("autodesk.unit.unit:millimeters-1.0.1"
@@ -107,7 +107,44 @@ namespace VibeModel.Services.Claude
             return sb.Length == 0 ? null : sb.ToString();
         }
 
-        public static string Header(string name, string unit) => string.IsNullOrEmpty(unit) ? name : name + " (" + unit + ")";
+        /// <summary>"Length (mm)"; a heading that already names its unit ("P.P.N. (m) t.o.v. NAP") is left alone.</summary>
+        public static string Header(string name, string unit)
+        {
+            if (string.IsNullOrEmpty(unit)) return name;
+            if ((name ?? "").IndexOf("(" + unit + ")", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (name ?? "").IndexOf("[" + unit + "]", StringComparison.OrdinalIgnoreCase) >= 0) return name;
+            return name + " (" + unit + ")";
+        }
+
+        /// <summary>Column width on the sheet for a longest cell of n characters (2.5 mm text ≈ 2 mm a character), 12–90 mm.</summary>
+        public static double ColumnWidthMm(int longestChars) => Math.Max(12, Math.Min(90, longestChars * 2.0 + 4));
+
+        /// <summary>
+        /// The field list for an unknown field name: close matches first, then all names — or,
+        /// for categories with hundreds of (shared) parameters, the first 60 and the total.
+        /// </summary>
+        public static string FieldHelp(IList<string> names, IEnumerable<string> unknown)
+        {
+            var all = names.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+            var close = new List<string>();
+            foreach (var u in unknown)
+            {
+                var words = (u ?? "").Split(new[] { ' ', '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4).ToList();
+                foreach (var n in all)
+                {
+                    bool hit = n.IndexOf(u, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                               (n.Length >= 3 && u.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                               words.Any(w => n.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (hit && !close.Contains(n)) close.Add(n);
+                }
+            }
+            var sb = new StringBuilder();
+            if (close.Count > 0) sb.Append("Close matches: " + string.Join(", ", close.Take(15)) + (close.Count > 15 ? " …" : "") + ". ");
+            const int max = 60;
+            sb.Append(all.Count <= max ? "Schedulable fields: " + string.Join(", ", all) + "."
+                                       : "Schedulable fields (first " + max + " of " + all.Count + "): " + string.Join(", ", all.Take(max)) + ", …");
+            return sb.ToString();
+        }
 
         /// <summary>
         /// Data rows of a schedule body: Revit's body section repeats the column headings in its

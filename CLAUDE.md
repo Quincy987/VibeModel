@@ -286,6 +286,7 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per
   value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
   sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
+  New schedules get their columns widened to the longest cell, so type names do not wrap on the sheet.
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
@@ -295,7 +296,8 @@ curl -s "http://localhost:18884/export?args=ifc"                                
 - **`export`** never runs inside a transaction (an atomic batch is refused); names collide →
   " (2)". PDF uses the sheet's own paper size, crop/scope boxes/reference planes hidden. DWG
   without a setup merges views into the sheet (no xref files). IFC runs in a rolled-back
-  transaction, so it never changes the model. Default folder: `<project folder>\export\`.
+  transaction, so it never changes the model. Default folder: `<project folder>\export\`; a `--to`
+  folder that does not exist is created (relative paths are under the project folder).
 - **Out of scope:** legend views cannot be created through the Revit API (duplicate an existing one via
   `exec`); annotating from a specification is chat work on top of `text` (plan 10/11 documents).
 

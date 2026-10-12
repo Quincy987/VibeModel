@@ -70,8 +70,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (unknown.Count > 0)
                 {
                     refused = CommandResult.Error("BAD_ARGS", "Unknown field(s) for " + catName + ": " + string.Join(", ", unknown.Select(u => "'" + u + "'")) +
-                        ". Schedulable fields: " + string.Join(", ", names.Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)) + ".",
-                        "Use the names exactly as listed (case does not matter).");
+                        ". " + ScheduleText.FieldHelp(names, unknown), "Use the names exactly as listed (case does not matter).");
                     throw new OperationCanceledException();
                 }
 
@@ -81,8 +80,8 @@ namespace VibeModel.Services.Claude.Commands
                     int fi = MatchField(names, a.Filter.Field);
                     if (fi < 0)
                     {
-                        refused = CommandResult.Error("BAD_ARGS", "--filter field '" + a.Filter.Field + "' is not schedulable for " + catName + ". Schedulable fields: " +
-                            string.Join(", ", names.Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)) + ".", ScheduleFilterSpec.Help);
+                        refused = CommandResult.Error("BAD_ARGS", "--filter field '" + a.Filter.Field + "' is not schedulable for " + catName + ". " +
+                            ScheduleText.FieldHelp(names, new[] { a.Filter.Field }), ScheduleFilterSpec.Help);
                         throw new OperationCanceledException();
                     }
                     var ff = added.FirstOrDefault(x => x.GetName().Equals(names[fi], StringComparison.OrdinalIgnoreCase));
@@ -116,7 +115,11 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     def.ShowGrandTotal = true;
                     def.ShowGrandTotalTitle = true;
+                    def.ShowGrandTotalCount = true;
                 }
+                // Revit's default columns are narrow: a type name wraps over five lines on the sheet.
+                doc.Regenerate();
+                FitColumns(vs);
             });
             if (refused != null) return refused;
             if (error != null) return CommandResult.FromTransactionError(error);
@@ -139,6 +142,28 @@ namespace VibeModel.Services.Claude.Commands
             data["group"] = a.Group;
             data["grandTotal"] = a.Total;
             return CommandResult.Ok(sb.ToString(), data);
+        }
+
+        /// <summary>Widen each visible column to its longest cell (paper mm, see ScheduleText.ColumnWidthMm).</summary>
+        private static void FitColumns(ViewSchedule vs)
+        {
+            var def = vs.Definition;
+            var visible = Enumerable.Range(0, def.GetFieldCount()).Select(i => def.GetField(i)).Where(f => !f.IsHidden).ToList();
+            var body = vs.GetTableData().GetSectionData(SectionType.Body);
+            for (int c = 0; c < visible.Count; c++)
+            {
+                int longest = 0;
+                for (int r = body.FirstRowNumber; r <= body.LastRowNumber; r++)
+                {
+                    int col = body.FirstColumnNumber + c;
+                    if (col > body.LastColumnNumber) break;
+                    // The heading row may wrap, so it only counts up to its longest word.
+                    var text = vs.GetCellText(SectionType.Body, r, col) ?? "";
+                    longest = Math.Max(longest, r == body.FirstRowNumber ? text.Split(' ').Max(w => w.Length) : text.Length);
+                }
+                try { visible[c].GridColumnWidth = RevitUnitHelper.MmToFeet(ScheduleText.ColumnWidthMm(longest)); }
+                catch { /* a template-controlled width stays */ }
+            }
         }
 
         /// <summary>Exact (case-insensitive) name first, then a unique substring; -1 when none or ambiguous.</summary>
@@ -294,6 +319,13 @@ namespace VibeModel.Services.Claude.Commands
             }
             var rows = ScheduleText.DataRows(raw, headings);
             totalRows = rows.Count;
+            if (rows.Count == 0)
+            {
+                // An empty schedule is usually its filter or phase, not a missing category.
+                var phase = vs.get_Parameter(BuiltInParameter.VIEW_PHASE)?.AsValueString();
+                sb.AppendLine("Empty: " + def.GetFilterCount() + " filter(s)" + (phase != null ? ", phase '" + phase + "'" : "") +
+                              " — elements outside the phase or the filter are not listed.");
+            }
             sb.AppendLine("Columns: " + string.Join(", ", headers));
             sb.AppendLine("Rows: " + rows.Count + (rows.Count > maxRows ? " (first " + maxRows + " shown)" : ""));
             sb.AppendLine();
