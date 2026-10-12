@@ -157,7 +157,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("=".PadRight(40, '='));
             string pn = SheetLayout.PaperName(paper.W, paper.H);
             sb.AppendLine("Paper: " + Mm.F(paper.W) + "×" + Mm.F(paper.H) + " mm" + (pn != null ? " (" + pn + ")" : "") + " from the " + paperSource);
-            sb.AppendLine("Layout area: " + area + (a.Area != null ? " (--area)" : " (margin " + Mm.F(a.Margin) + ", " + Mm.F(reserve) +
+            sb.AppendLine("Layout area: " + area + (a.Area != null ? " (--area)" : " (margin " + Mm.F(a.Margin) + " mm, " + Mm.F(reserve) +
                           " mm kept free on the right for the stamp; --reserve/--area to change)"));
             if (a.At == null || views.Count > 1) sb.AppendLine("Grid: " + cols + "×" + rows + " (left-to-right, top-to-bottom)");
             if (titleNote != null) sb.AppendLine("Titles: " + titleNote);

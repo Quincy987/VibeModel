@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -36,7 +37,12 @@ namespace VibeModel.UI
         private Button _historyButton;
         private Button _settingsButton;
         private TextBlock _statusText;
+        private Button _examplesButton;
         private Border _infoBanner;
+        // The compact card at the top of an empty chat (backend, model, project folder, chips).
+        private Border _welcomeCard;
+        // The one in-pane popup (a source, or the examples list).
+        private Popup _popup;
 
         // The turn in flight. Direct references avoid O(n) visual tree search.
         private sealed class TurnUi
@@ -154,12 +160,25 @@ namespace VibeModel.UI
             AllowDrop = true;
             PreviewDragOver += OnPreviewDragOver;
             PreviewDrop += OnPreviewDrop;
+
+            // Esc closes the popup wherever the focus is in the pane.
+            PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Escape && _popup != null && _popup.IsOpen)
+                {
+                    ClosePopup();
+                    e.Handled = true;
+                }
+            };
+            // A model opened or switched: the welcome card names it.
+            ActiveDocumentTracker.Changed += OnActiveDocumentChanged;
         }
 
         private Border CreateHeader()
         {
             var headerGrid = new Grid();
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
@@ -171,6 +190,7 @@ namespace VibeModel.UI
                 Foreground = FgPrimary,
                 FontSize = 14,
                 FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0)
             };
@@ -188,19 +208,29 @@ namespace VibeModel.UI
             Grid.SetColumn(_statusText, 1);
             headerGrid.Children.Add(_statusText);
 
+            // "?" - the longer example list (the welcome card only has four chips).
+            _examplesButton = CreateHeaderButton("?");
+            _examplesButton.FontWeight = FontWeights.SemiBold;
+            _examplesButton.Padding = new Thickness(5, 2, 5, 2);
+            _examplesButton.Margin = new Thickness(0, 0, 2, 0);
+            _examplesButton.ToolTip = Strings.Get(Strings.ExamplesTitle);
+            _examplesButton.Click += (s, e) => ShowExamplesPopup();
+            Grid.SetColumn(_examplesButton, 2);
+            headerGrid.Children.Add(_examplesButton);
+
             _newChatButton = CreateHeaderButton("New Chat");
             _newChatButton.Click += OnNewChatClick;
-            Grid.SetColumn(_newChatButton, 2);
+            Grid.SetColumn(_newChatButton, 3);
             headerGrid.Children.Add(_newChatButton);
 
             _historyButton = CreateHeaderButton("History");
             _historyButton.Click += OnHistoryClick;
-            Grid.SetColumn(_historyButton, 3);
+            Grid.SetColumn(_historyButton, 4);
             headerGrid.Children.Add(_historyButton);
 
             _settingsButton = CreateHeaderButton("Settings");
             _settingsButton.Click += OnSettingsClick;
-            Grid.SetColumn(_settingsButton, 4);
+            Grid.SetColumn(_settingsButton, 5);
             headerGrid.Children.Add(_settingsButton);
 
             return new Border
@@ -352,6 +382,7 @@ namespace VibeModel.UI
             _session = null;
 
             _backend = backend;
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -374,32 +405,173 @@ namespace VibeModel.UI
         private void ShowWelcomeMessage()
         {
             if (_backend == null) return;
+            _welcomeCard = BuildWelcomeCard();
+            _messagePanel.Children.Add(_welcomeCard);
+        }
 
-            string statusLine;
+        // Rebuilds the card in place (language switch, model opened) while it is still shown.
+        private void RefreshWelcomeCard()
+        {
+            if (_welcomeCard == null || _backend == null) return;
+            var index = _messagePanel.Children.IndexOf(_welcomeCard);
+            if (index < 0) { _welcomeCard = null; return; }
+            _messagePanel.Children.RemoveAt(index);
+            _welcomeCard = BuildWelcomeCard();
+            _messagePanel.Children.Insert(index, _welcomeCard);
+        }
+
+        private void OnActiveDocumentChanged(object sender, EventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(RefreshWelcomeCard));
+        }
+
+        /// <summary>
+        /// The welcome card: backend + model, open model + project folder, four example chips
+        /// that fill the input box. Not configured: the three ways to set a backend up.
+        /// Texts from <see cref="UiText"/> in the Settings language.
+        /// </summary>
+        private Border BuildWelcomeCard()
+        {
+            var language = Strings.Current;
+            var panel = new StackPanel();
+            var chatBackend = _backend as ChatBackendBase;
+
             if (_backend.IsAvailable)
             {
-                if (_backend is LocalLlmBackend)
-                    statusLine = "Connected to local LLM. You can now chat directly inside Revit.\n\n";
-                else
-                    statusLine = "Connected to Claude. You can now talk to Claude directly inside Revit.\n\n";
+                panel.Children.Add(new TextBlock
+                {
+                    Text = UiText.WelcomeBackendLine(chatBackend?.DisplayName ?? "Chat", chatBackend?.ModelName, language),
+                    Foreground = AccentBlue,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+
+                var title = ActiveDocumentTracker.Title;
+                var folder = string.IsNullOrWhiteSpace(title)
+                    ? null
+                    : ProjectDocs.ResolveForDocument(title, ActiveDocumentTracker.PathName).Path;
+                var modelLine = UiText.WelcomeModelLine(title, folder, language);
+                panel.Children.Add(new TextBlock
+                {
+                    Text = modelLine,
+                    ToolTip = modelLine,
+                    Foreground = FgSecondary,
+                    FontSize = 11,
+                    Margin = new Thickness(0, 2, 0, 6),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+
+                var chips = new WrapPanel();
+                foreach (var example in UiText.WelcomeExamples(language))
+                    chips.Children.Add(CreateExampleChip(example, Strings.For(language, Strings.WelcomeChipTip)));
+                panel.Children.Add(chips);
             }
             else
             {
-                statusLine = "To get started, either:\n" +
-                    "- **Recommended:** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and set your `ANTHROPIC_API_KEY` environment variable\n" +
-                    "- **Lightweight:** Click **Settings** to enter your Anthropic API key directly\n" +
-                    "- **Local:** Connect a local LLM server (llama.cpp, Ollama, LM Studio) via **Settings**\n\n";
+                var lines = UiText.WelcomeSetupLines(language);
+                panel.Children.Add(new TextBlock
+                {
+                    Text = lines[0],
+                    Foreground = FgPrimary,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 4)
+                });
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    // Selectable, so the npm line can be copied.
+                    panel.Children.Add(new TextBox
+                    {
+                        Text = "• " + lines[i],
+                        IsReadOnly = true,
+                        BorderThickness = new Thickness(0),
+                        Background = Brushes.Transparent,
+                        Foreground = FgSecondary,
+                        FontSize = 11,
+                        TextWrapping = TextWrapping.Wrap,
+                        Padding = new Thickness(0),
+                        Margin = new Thickness(0, 1, 0, 1)
+                    });
+                }
             }
 
-            var welcome = new ChatMessage(ChatRole.System,
-                "Welcome to VibeModel Chat!\n\n" +
-                statusLine +
-                "Examples:\n" +
-                "  - \"What document is open?\"\n" +
-                "  - \"List all walls\"\n" +
-                "  - \"Create 4 walls forming a 5x5m room\"\n" +
-                "  - \"Select element 12345 and change its color to red\"");
-            AddMessage(welcome);
+            return new Border
+            {
+                Background = BgPanel,
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 6),
+                Margin = new Thickness(0, 4, 0, 4),
+                Child = panel
+            };
+        }
+
+        // A rounded chip; a click puts its text in the input box (the "…" selected, to type over).
+        private Border CreateExampleChip(string text, string tooltip)
+        {
+            var chip = new Border
+            {
+                Background = BgInput,
+                BorderBrush = BgInput,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(8, 2, 8, 3),
+                Margin = new Thickness(0, 0, 6, 4),
+                Cursor = Cursors.Hand,
+                ToolTip = tooltip,
+                Child = new TextBlock { Text = text, Foreground = FgPrimary, FontSize = 11 }
+            };
+            chip.MouseEnter += (s, e) => chip.BorderBrush = AccentBlue;
+            chip.MouseLeave += (s, e) => chip.BorderBrush = BgInput;
+            chip.MouseLeftButtonUp += (s, e) => UseExample(text);
+            return chip;
+        }
+
+        private void UseExample(string text)
+        {
+            if (_isGenerating) return;
+            ClosePopup();
+            _inputBox.Text = text;
+            _inputBox.Focus();
+            var gap = text.IndexOf('…');
+            if (gap >= 0) _inputBox.Select(gap, 1);
+            else _inputBox.CaretIndex = text.Length;
+        }
+
+        private void ShowExamplesPopup()
+        {
+            var language = Strings.Current;
+            var list = new StackPanel();
+            foreach (var example in UiText.ExampleList(language))
+            {
+                var line = new TextBlock
+                {
+                    Text = "• " + example,
+                    Foreground = FgPrimary,
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 2, 0, 2),
+                    Cursor = Cursors.Hand
+                };
+                var captured = example;
+                line.MouseEnter += (s, e) => line.Foreground = AccentBlue;
+                line.MouseLeave += (s, e) => line.Foreground = FgPrimary;
+                line.MouseLeftButtonUp += (s, e) => UseExample(captured);
+                list.Children.Add(line);
+            }
+            list.Children.Add(new TextBlock
+            {
+                Text = Strings.For(language, Strings.ExamplesTip),
+                Foreground = FgSecondary,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0)
+            });
+            ShowPopup(Strings.For(language, Strings.ExamplesTitle),
+                new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = list });
         }
 
         private void ShowInfoBanner()
@@ -995,6 +1167,7 @@ namespace VibeModel.UI
             ChatSessionStore.Default.SaveSession(_session);
             _session = null;
 
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1040,6 +1213,7 @@ namespace VibeModel.UI
                 return;
             }
 
+            ClosePopup();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
             ClearStreamingState();
@@ -1081,6 +1255,8 @@ namespace VibeModel.UI
             var hasDocument = !string.IsNullOrWhiteSpace(ActiveDocumentTracker.Title);
             var dialog = new SettingsDialog(hasDocument ? title : null, documentPath);
             var result = dialog.ShowDialog();
+            // Language or project folder may have changed.
+            RefreshWelcomeCard();
 
             if (result == true && dialog.BackendChanged)
             {
@@ -1253,9 +1429,12 @@ namespace VibeModel.UI
             panel.Children.Add(rtb);
         }
 
+        // A RichTextBox lays its document out a few px narrower than itself.
+        private const double RichTextBoxInset = 12;
+
         private RichTextBox CreateMarkdownRichTextBox(string markdown)
         {
-            var doc = MarkdownHelper.ToFlowDocument(markdown);
+            var doc = MarkdownHelper.ToFlowDocument(markdown, new MarkdownRenderOptions { OnCitationClick = OpenCitation });
 
             var rtb = new RichTextBox
             {
@@ -1272,7 +1451,172 @@ namespace VibeModel.UI
             // Disable built-in context menu
             rtb.ContextMenu = null;
 
+            // Tables size their columns to the width the answer really gets.
+            rtb.SizeChanged += (s, e) =>
+            {
+                if (e.WidthChanged)
+                    Markdown.Renderers.TableRenderer.FitTables(doc, rtb.ActualWidth - RichTextBoxInset);
+            };
+
             return rtb;
+        }
+
+        // --- In-pane popup (a source, the examples list) ---
+
+        // One popup at a time over the message area: at most ~60% of the pane high, scrollable
+        // body; Esc, the × or a click outside closes it.
+        private void ShowPopup(string title, FrameworkElement body)
+        {
+            ClosePopup();
+            var maxHeight = Math.Max(160, ActualHeight * 0.6);
+
+            var header = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.Children.Add(new TextBlock
+            {
+                Text = title,
+                ToolTip = title,
+                Foreground = AccentBlue,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var close = CreateHeaderButton("×");
+            close.FontSize = 14;
+            close.Padding = new Thickness(6, 0, 2, 0);
+            close.Margin = new Thickness(4, 0, 0, 0);
+            close.ToolTip = Strings.Get(Strings.SourceClose);
+            close.Click += (s, e) => ClosePopup();
+            Grid.SetColumn(close, 1);
+            header.Children.Add(close);
+
+            var dock = new DockPanel { LastChildFill = true };
+            DockPanel.SetDock(header, Dock.Top);
+            dock.Children.Add(header);
+            body.MaxHeight = maxHeight - 40;
+            dock.Children.Add(body);
+
+            var border = new Border
+            {
+                Background = BgPanel,
+                BorderBrush = AccentBlue,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 6, 10, 8),
+                Width = Math.Max(220, _scrollViewer.ActualWidth - 16),
+                MaxHeight = maxHeight,
+                Focusable = true,
+                Child = dock
+            };
+            border.PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Escape) { ClosePopup(); e.Handled = true; }
+            };
+
+            var popup = new Popup
+            {
+                Child = border,
+                PlacementTarget = _scrollViewer,
+                Placement = PlacementMode.Relative,
+                HorizontalOffset = 8,
+                VerticalOffset = 8,
+                StaysOpen = false,
+                AllowsTransparency = true
+            };
+            popup.Closed += (s, e) => { if (_popup == popup) _popup = null; };
+            _popup = popup;
+            popup.IsOpen = true;
+            border.Focus();
+        }
+
+        private void ClosePopup()
+        {
+            var popup = _popup;
+            _popup = null;
+            if (popup != null) popup.IsOpen = false;
+        }
+
+        // A [bron: …] marker was clicked: leidraad/standaard → the standards text, document →
+        // readdoc (scrolled to the page/section), revit <id> → select + zoom in Revit.
+        // The HTTP calls run off the UI thread: the server's ExternalEvent needs this thread.
+        private void OpenCitation(Citation citation)
+        {
+            if (!citation.TryGetLookup(out var command, out var args)) return;
+            var language = Strings.Current;
+            var port = (_backend as ChatBackendBase)?.HttpPort ?? 0;
+
+            var text = new TextBox
+            {
+                Text = Strings.For(language, Strings.SourceLoading),
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                Background = Brushes.Transparent,
+                Foreground = FgPrimary,
+                CaretBrush = FgPrimary,
+                BorderThickness = new Thickness(0),
+                FontSize = 12,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            ShowPopup(citation.Source, text);
+            var popup = _popup;
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string shown;
+                try
+                {
+                    if (port == 0) throw new InvalidOperationException(Strings.For(language, Strings.BackendNotInitialized));
+                    var response = CitationSourceText.Clean(GetFromRevit(port, command, args));
+                    if (citation.Kind == CitationKind.Revit && !response.StartsWith("ERROR", StringComparison.Ordinal))
+                    {
+                        GetFromRevit(port, "zoomto", args);
+                        shown = Strings.For(language, Strings.SourceSelected, args);
+                    }
+                    else
+                    {
+                        shown = response;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    shown = Strings.For(language, Strings.SourceFailed, ex.Message);
+                }
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (_popup != popup) return;
+                    var index = CitationSourceText.FindLocation(shown, citation, out var length);
+                    var note = index < 0 && (citation.Page != null || citation.Section != null)
+                        ? Strings.For(language, Strings.SourceMatchNotFound,
+                            citation.Page != null ? "p." + citation.Page : "§" + citation.Section) + "\n\n"
+                        : "";
+                    text.Text = note + shown;
+                    if (index < 0) return;
+                    text.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+                    {
+                        // To the end first, then back: the matched line lands at the top.
+                        text.ScrollToEnd();
+                        text.ScrollToLine(Math.Max(0, text.GetLineIndexFromCharacterIndex(index)));
+                        text.Select(index, length);
+                    }));
+                }));
+            });
+        }
+
+        // GET /<command>?args=… on the local VibeModel server (text output), with the token header.
+        private static string GetFromRevit(int port, string command, string args)
+        {
+            using (var client = new System.Net.WebClient { Encoding = Encoding.UTF8 })
+            {
+                var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
+                if (!string.IsNullOrWhiteSpace(token))
+                    client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
+                var url = RevitHttpServer.BaseUrl(port) + "/" + command +
+                          (string.IsNullOrEmpty(args) ? "" : "?args=" + Uri.EscapeDataString(args));
+                return client.DownloadString(url);
+            }
         }
 
         // --- Scrolling ---
@@ -1303,6 +1647,7 @@ namespace VibeModel.UI
 
         public void Cleanup()
         {
+            ActiveDocumentTracker.Changed -= OnActiveDocumentChanged;
             _cts?.Cancel();
             _backend?.Cancel();
             // Persist whatever conversation is open when Revit shuts down.

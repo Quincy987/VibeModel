@@ -118,7 +118,7 @@ namespace VibeModel.Services.Claude.Commands
                     return PageError(chained.Loops.Count, LoopsPerPage, parsed.Page, "loops");
 
                 sb.AppendLine("Closed loops: " + chained.Loops.Count +
-                              "  (open chains: " + chained.OpenChains.Count + ")");
+                              "  (open chains: " + chained.OpenChains.Count + "; points x,y in mm)");
                 sb.AppendLine();
                 var loopData = new List<object>();
                 for (int i = from; i < to; i++)
@@ -148,7 +148,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (page == null)
                     return PageError(chains.Count, CurvesPerPage, parsed.Page, "curves");
 
-                sb.AppendLine("Curves: " + chains.Count);
+                sb.AppendLine("Curves: " + chains.Count + "  (points x,y in mm)");
                 sb.AppendLine();
                 var curveData = new List<object>();
                 for (int i = from; i < to; i++)

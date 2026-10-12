@@ -27,6 +27,12 @@ namespace VibeModel.Markdown
 
         public FlowDocument Document { get; private set; }
 
+        /// <summary>The message's source markers (placeholders in the parsed text → numbered sources).</summary>
+        public CitationParseResult Citations { get; set; }
+
+        /// <summary>Click handlers and language for the interactive bits (tables, source markers).</summary>
+        public MarkdownRenderOptions Options { get; set; } = new MarkdownRenderOptions();
+
         public WpfRenderer(FlowDocument document)
         {
             _buffer = new char[1024];
@@ -145,6 +151,7 @@ namespace VibeModel.Markdown
             ObjectRenderers.Add(new ParagraphRenderer());
             ObjectRenderers.Add(new QuoteBlockRenderer());
             ObjectRenderers.Add(new ThematicBreakRenderer());
+            ObjectRenderers.Add(new TableRenderer());
 
             // Inline renderers
             ObjectRenderers.Add(new AutolinkInlineRenderer());

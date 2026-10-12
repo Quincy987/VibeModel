@@ -131,12 +131,12 @@ namespace VibeModel.Services.Claude.Commands
                           (asIntended ? ", i.e. to the left of the line direction" : " — NOT the intended left side; swap x1,y1 and x2,y2 to flip"));
             sb.AppendLine("Depth: " + Mm.F(depthMm) + " mm beyond the cut plane");
             sb.AppendLine("Vertical range: " + Mm.F(bottomMm) + " .. " + Mm.F(topMm) + " mm" +
-                          (a.Top.HasValue || a.Bottom.HasValue ? "" : " (from the model elements it cuts, ±" + Mm.F(VerticalMarginMm) + ")"));
+                          (a.Top.HasValue || a.Bottom.HasValue ? "" : " (from the model elements it cuts, ±" + Mm.F(VerticalMarginMm) + " mm)"));
             // The annotation commands' x for this view (SheetHelper.Along): stable when the view is cropped later.
             double ax1 = RevitUnitHelper.FeetToMm(SheetHelper.Along(view, Mm2Ft(frame.Ox - frame.Dx * frame.Length / 2, frame.Oy - frame.Dy * frame.Length / 2)));
             double ax2 = RevitUnitHelper.FeetToMm(SheetHelper.Along(view, Mm2Ft(frame.Ox + frame.Dx * frame.Length / 2, frame.Oy + frame.Dy * frame.Length / 2)));
             sb.AppendLine("In-view coordinates (text/tag --at/dimension --levels/crop --box): x runs " + Mm.F(Math.Min(ax1, ax2)) + " .. " +
-                          Mm.F(Math.Max(ax1, ax2)) + " along the line (project x,y projected on the view), y = elevation mm");
+                          Mm.F(Math.Max(ax1, ax2)) + " mm along the line (project x,y projected on the view), y = elevation mm");
             setup?.AppendReport(sb);
 
             var data = new Dictionary<string, object>

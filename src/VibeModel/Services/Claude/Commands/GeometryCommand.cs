@@ -66,7 +66,7 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     if (solid.Volume > 0)
                     {
-                        sb.AppendLine(prefix + "Solid: Volume=" + solid.Volume.ToString("F4") + " ft3, Faces=" + solid.Faces.Size + ", Edges=" + solid.Edges.Size);
+                        sb.AppendLine(prefix + "Solid: Volume=" + RevitUnitHelper.Format(QuantityKind.Volume, solid.Volume) + ", Faces=" + solid.Faces.Size + ", Edges=" + solid.Edges.Size);
                     }
                 }
                 else if (obj is Curve curve)

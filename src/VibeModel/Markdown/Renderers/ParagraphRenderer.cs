@@ -11,14 +11,16 @@ namespace VibeModel.Markdown.Renderers
     {
         protected override void Write(WpfRenderer renderer, ParagraphBlock obj)
         {
-            // Inside a list item, paragraphs sit tight; elsewhere they get a full gap.
+            // Inside a list item, paragraphs sit tight; in a table cell they have no gap and the
+            // table's smaller type; elsewhere they get a full gap.
             var inList = obj.Parent is ListItemBlock;
+            var inTable = obj.Parent is Markdig.Extensions.Tables.TableCell;
             var paragraph = new Paragraph
             {
                 Foreground = MarkdownStyles.FgPrimary,
-                FontSize = MarkdownStyles.FontSizeNormal,
-                LineHeight = MarkdownStyles.LineHeight,
-                Margin = new Thickness(0, 0, 0, inList ? 2 : MarkdownStyles.ParagraphSpacing)
+                FontSize = inTable ? MarkdownStyles.FontSizeTable : MarkdownStyles.FontSizeNormal,
+                LineHeight = inTable ? MarkdownStyles.LineHeightTable : MarkdownStyles.LineHeight,
+                Margin = new Thickness(0, 0, 0, inTable ? 0 : inList ? 2 : MarkdownStyles.ParagraphSpacing)
             };
 
             renderer.Push(paragraph);
