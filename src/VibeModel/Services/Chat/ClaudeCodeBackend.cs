@@ -52,6 +52,9 @@ namespace VibeModel.Services.Chat
 
         public override string DisplayName => "Claude Code";
 
+        /// <summary>The CLI executable found at startup (null when none) — also used for the quick replies.</summary>
+        internal string CliPath => _claudePath;
+
         // The CLI picks its own model; its stream's init event names it. Static: a New Chat (or a
         // backend switch back) still knows which model the last turn ran on.
         private static string _lastSeenModel;
@@ -887,7 +890,7 @@ namespace VibeModel.Services.Chat
             catch { }
         }
 
-        private static string EscapeArg(string arg)
+        internal static string EscapeArg(string arg)
         {
             if (string.IsNullOrEmpty(arg))
                 return "\"\"";

@@ -238,6 +238,7 @@ namespace VibeModel
             try
             {
                 ActiveDocumentTracker.Update(e.Document?.Title, e.Document?.PathName);
+                if (sender is UIApplication viewApp) TrackViewAndSelection(viewApp.ActiveUIDocument);
                 // The TEMPLATE prompt block names the active view and its phase.
                 Services.Standards.StandardsContext.MarkPromptDirty();
             }
@@ -268,11 +269,44 @@ namespace VibeModel
             try
             {
                 if (sender is UIApplication uiApp)
+                {
                     Services.Standards.StandardsContext.RefreshPromptIfDirty(uiApp);
+                    SampleViewAndSelection(uiApp);
+                }
             }
             catch (Exception ex)
             {
                 Logger.Warn("Standards idling refresh failed: " + ex.Message);
+            }
+        }
+
+        // The chat pane's starter chips follow the selection and the active view. Revit has no
+        // selection event in every supported version, so a cheap sample on Idling (at most every
+        // 400 ms) keeps the tracker current; the tracker raises Changed only on a real change.
+        private int _lastViewSampleTick;
+
+        private void SampleViewAndSelection(UIApplication uiApp)
+        {
+            var now = Environment.TickCount;
+            if (unchecked(now - _lastViewSampleTick) < 400) return;
+            _lastViewSampleTick = now;
+            TrackViewAndSelection(uiApp.ActiveUIDocument);
+        }
+
+        /// <summary>Active view name, sheet flag and selection size → <see cref="ActiveDocumentTracker"/>.</summary>
+        internal static void TrackViewAndSelection(UIDocument uidoc)
+        {
+            try
+            {
+                if (uidoc?.Document == null) return;
+                var view = uidoc.ActiveView;
+                int selected = 0;
+                try { selected = uidoc.Selection.GetElementIds().Count; } catch { }
+                ActiveDocumentTracker.UpdateView(view?.Name, view is Autodesk.Revit.DB.ViewSheet, selected);
+            }
+            catch
+            {
+                // Best-effort: a view mid-switch just waits for the next sample.
             }
         }
 

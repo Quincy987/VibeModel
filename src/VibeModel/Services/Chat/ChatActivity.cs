@@ -353,6 +353,10 @@ namespace VibeModel.Services.Chat
 
         public IReadOnlyList<Item> Items => _items;
         public IEnumerable<Step> Steps => _items.Where(i => i.IsStep).Select(i => i.Step);
+
+        /// <summary>The commands this turn ran, in order, without repeats (the quick replies' context).</summary>
+        public IReadOnlyList<string> ToolNames =>
+            Steps.Select(s => s.Command).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
         public int StepCount => _items.Count(i => i.IsStep);
         public int FailedCount => Steps.Count(s => s.State == StepState.Failed);
         public bool HasSteps => _items.Any(i => i.IsStep);
