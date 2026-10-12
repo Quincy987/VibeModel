@@ -3,13 +3,14 @@
 ## [Unreleased]
 
 ### Fixed — chat refused deletes the user had approved
-- **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read`.**
+- **The Claude Code backend now runs the CLI with `--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob`.**
   Without an explicit mode the CLI inherited the user's own `defaultMode`; with `"auto"` its
   safety classifier overrode the `Bash` allow and refused `curl …/delete` — and then even
   `select` — as *Irreversible Local Destruction*, although the user had said yes (workshop
   2026-10-12). Reproduced headless by replaying that session against a dead port: two classifier
   denials with the old flags, none with `dontAsk`; `delete`, `batch delete`, `exec` and `select`
-  all run, while Write/Edit/WebFetch stay denied. A CLI too old to know `dontAsk` now gets a clear
+  all run, while Write/Edit/WebFetch stay denied. The read-only Grep and Glob are allowed too: the
+  model sometimes searches the command file with Grep, and a denial showed as a failed step. A CLI too old to know `dontAsk` now gets a clear
   "update with `claude update`" message instead of a silent stale-session reset.
 - The prompt states that every VibeModel modification is one Revit undo step (Ctrl+Z), so a
   delete or edit the user asked for is executed — never refused or handed back as manual steps.

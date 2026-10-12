@@ -354,10 +354,10 @@ curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefi
 
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:
-`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,Read [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
+`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
 `--permission-mode dontAsk` is deliberate: without it the CLI inherits the user's `defaultMode`,
 and in `auto` mode the safety classifier refused approved `delete`/`select` curls as
-"Irreversible Local Destruction". `dontAsk` makes `--allowedTools` the whole policy (Bash + Read
+"Irreversible Local Destruction". `dontAsk` makes `--allowedTools` the whole policy (Bash, Read and the read-only Grep/Glob
 run, every other tool is denied, never prompted) — narrower than `bypassPermissions`, and unlike
 `Bash(curl:*)` it keeps the `cat > /tmp/q.cs` + `exec --data-binary` pattern working. Every
 VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with

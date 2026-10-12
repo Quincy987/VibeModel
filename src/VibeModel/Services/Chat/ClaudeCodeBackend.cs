@@ -18,10 +18,10 @@ namespace VibeModel.Services.Chat
         // the CLI inherits the user's own defaultMode, and in "auto" mode its safety classifier
         // ignores the broad Bash allow and refused `curl …/delete` (and then even `select`) as
         // "Irreversible Local Destruction" — workshop 2026-10-12. "dontAsk" makes --allowedTools
-        // the whole policy: Bash and Read run without a prompt, every other tool (Write, Edit,
+        // the whole policy: Bash, Read and the read-only Grep/Glob run without a prompt, every other tool (Write, Edit,
         // WebFetch, …) is denied outright. Nothing the CLI does through VibeModel is irreversible:
         // every command is one Revit undo step.
-        internal const string PermissionArgs = "--permission-mode dontAsk --allowedTools Bash,Read";
+        internal const string PermissionArgs = "--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob";
 
         private const int DetectTimeoutMs = 2000;
         // Pre-flight /health probe before spawning the CLI: fail fast with a clear

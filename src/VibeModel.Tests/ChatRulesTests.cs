@@ -148,7 +148,7 @@ namespace VibeModel.Tests
         [Fact]
         public void ClaudeCode_RunsInDontAskMode_WithOnlyBashAndRead()
         {
-            Assert.Equal("--permission-mode dontAsk --allowedTools Bash,Read", ClaudeCodeBackend.PermissionArgs);
+            Assert.Equal("--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob", ClaudeCodeBackend.PermissionArgs);
         }
 
         [Theory]
