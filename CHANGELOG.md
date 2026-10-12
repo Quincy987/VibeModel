@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed — "the IFC has no piles"
+- **`export ifc` reads its own file back.** The piles were there: Revit 2023's default IFC class
+  table (`exportlayers-ifc-IAI.txt`) maps Structural Foundations to `IfcSlab BASESLAB`, so 510 piles
+  arrived as slabs and a search for `IFCPILE`/`IFCFOOTING` found nothing. The response now lists per
+  category how many Revit elements went in and as which IFC class, which model elements in scope are
+  missing (with the usual causes: a category mapped to Not Exported, `Export to IFC` = Don't Export,
+  the export phase), and names the foundation mapping with the fix (`Export Type to IFC As`).
+
+### Changed — shorter chat answers
+- Answers ran to 6–8 lines: a closing list of 2–3 next steps (asked for by two older prompt lines)
+  and, in nearly every answer, the reminder that the work view is on the existing phase. The rules
+  now count notes, warnings and offers in the 5 lines, allow ONE closing offer line (the quick-reply
+  chips turn it into buttons), mention the view's phase only when this turn's work is hidden by it,
+  and drop the "converted to m" and "one Ctrl+Z" restatements.
+
+### Docs
+- CLAUDE.md: examples for `filter`, `measure`, `whereused`, `zoomto`, `isolate`/`unisolate`,
+  `hide`/`show`, `colorsplash` and `chatlog` (the only commands without one).
+- `chatlog` gets its step label in both languages; a test now checks every registered command has one.
+
+
 ## v1.2.8 — Chat Tables, Sources, Units & Suggestion Chips (2026-10-12)
 
 ### Added — suggestion chips that follow the context

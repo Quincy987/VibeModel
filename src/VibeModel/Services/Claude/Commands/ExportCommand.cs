@@ -161,7 +161,9 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 ok++;
                 lines.Add("OK    " + label + " → " + Path.GetFileName(file));
-                results.Add(new Dictionary<string, object> { { "file", file }, { "ok", true }, { "views", job.Value.Select(v => (object)v.Id.IntegerValue).ToList() } });
+                var result = new Dictionary<string, object> { { "file", file }, { "ok", true }, { "views", job.Value.Select(v => (object)v.Id.IntegerValue).ToList() } };
+                if (a.Format == ExportFormat.Ifc) lines.AddRange(DescribeIfc(doc, file, job.Value.FirstOrDefault(), result));
+                results.Add(result);
             }
 
             // Every file the export wrote or rewrote (DWG xrefs and IFC side files included).
@@ -222,6 +224,89 @@ namespace VibeModel.Services.Claude.Commands
                         try { return doc.Export(folder, name, ifc); }
                         finally { if (t.HasStarted() && !t.HasEnded()) t.RollBack(); }
                     }
+            }
+        }
+
+        // Model categories the IFC exporter never writes as elements of their own (or that are
+        // not building parts at all); leaving them out of the scope keeps "Not in the file" honest.
+        // Built on first use: a static initializer touching RevitAPI types breaks the type for the
+        // Revit-less unit tests (and command discovery) that only construct the command.
+        private static HashSet<int> _notIfcElements;
+        private static HashSet<int> NotIfcElements => _notIfcElements ?? (_notIfcElements = new HashSet<int>(new[]
+        {
+            BuiltInCategory.OST_Lines, BuiltInCategory.OST_Cameras, BuiltInCategory.OST_RvtLinks, BuiltInCategory.OST_PointClouds,
+            BuiltInCategory.OST_Rooms, BuiltInCategory.OST_Areas, BuiltInCategory.OST_MEPSpaces, BuiltInCategory.OST_Topography,
+            BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_IOSModelGroups, BuiltInCategory.OST_Assemblies,
+            BuiltInCategory.OST_Viewers, BuiltInCategory.OST_DetailComponents, BuiltInCategory.OST_ProjectBasePoint,
+            BuiltInCategory.OST_SharedBasePoint, BuiltInCategory.OST_VolumeOfInterest, BuiltInCategory.OST_Levels,
+            BuiltInCategory.OST_Grids, BuiltInCategory.OST_CLines, BuiltInCategory.OST_Matchline,
+            BuiltInCategory.OST_SketchLines, BuiltInCategory.OST_Sheets, BuiltInCategory.OST_Reveals,
+            // openings are cut into their host, never exported on their own
+            BuiltInCategory.OST_ShaftOpening, BuiltInCategory.OST_SWallRectOpening, BuiltInCategory.OST_ArcWallRectOpening,
+            BuiltInCategory.OST_FloorOpening, BuiltInCategory.OST_RoofOpening, BuiltInCategory.OST_ColumnOpening,
+            BuiltInCategory.OST_StructuralFramingOpening
+        }.Select(c => (int)c)));
+
+        /// <summary>
+        /// Reads the IFC back: per category how many elements went in and as which IFC class, and
+        /// which categories in scope (the view's visible model elements, or every non-demolished
+        /// model element) are missing — so "the piles are not in it" can be told apart from
+        /// "the piles are in it as IfcSlab".
+        /// </summary>
+        private static List<string> DescribeIfc(Document doc, string file, View view, Dictionary<string, object> result)
+        {
+            try
+            {
+                var contents = IfcContents.Read(file);
+                var collector = view != null ? new FilteredElementCollector(doc, view.Id) : new FilteredElementCollector(doc);
+                var scope = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var e in collector.WhereElementIsNotElementType())
+                {
+                    var cat = e.Category;
+                    if (cat == null || cat.CategoryType != CategoryType.Model || e.ViewSpecific) continue;
+                    if (e is ImportInstance || e is RevitLinkInstance || e is View || e is BasePoint || e is InternalOrigin
+                        || NotIfcElements.Contains(cat.Id.IntegerValue)) continue;
+                    if (e.get_BoundingBox(null) == null) continue;
+                    if (view == null)
+                    {
+                        var demolished = e.get_Parameter(BuiltInParameter.PHASE_DEMOLISHED)?.AsElementId();
+                        if (demolished != null && demolished != ElementId.InvalidElementId) continue;
+                    }
+                    if (!scope.TryGetValue(cat.Name, out var ids)) scope[cat.Name] = ids = new List<int>();
+                    ids.Add(e.Id.IntegerValue);
+                }
+                Func<int, string> categoryOf = id => doc.GetElement(new ElementId(id))?.Category?.Name;
+                var exported = new HashSet<int>(contents.Items.Select(x => x.RevitId));
+                result["ifc"] = new Dictionary<string, object>
+                {
+                    { "elements", contents.Items.Count },
+                    { "byCategory", contents.Items.GroupBy(x => categoryOf(x.RevitId) ?? "(unknown)").OrderByDescending(g => g.Count())
+                        .Select(g => (object)new Dictionary<string, object>
+                        {
+                            { "category", g.Key },
+                            { "count", g.Count() },
+                            { "classes", g.GroupBy(x => x.IfcClass + (x.Predefined != null ? "." + x.Predefined : ""))
+                                .ToDictionary(h => h.Key, h => (object)h.Count()) }
+                        }).ToList() },
+                    { "inScope", scope.Sum(kv => kv.Value.Count) },
+                    { "missing", scope.Where(kv => kv.Value.Any(id => !exported.Contains(id)))
+                        .ToDictionary(kv => kv.Key, kv => (object)kv.Value.Count(id => !exported.Contains(id))) }
+                };
+                var lines = contents.Describe(categoryOf, scope);
+                // Revit's default class table (exportlayers-ifc-IAI.txt) maps Structural Foundations
+                // to IfcSlab BASESLAB, so pile families arrive as slabs unless their type says otherwise.
+                int foundationSlabs = contents.Items.GroupBy(x => x.RevitId).Select(g => g.First()).Count(x => x.IfcClass == "IfcSlab" &&
+                    doc.GetElement(new ElementId(x.RevitId)) is FamilyInstance fi &&
+                    fi.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFoundation);
+                if (foundationSlabs > 0)
+                    lines.Add("  Note: " + foundationSlabs + " Structural Foundation family instance" + (foundationSlabs == 1 ? " was" : "s were") +
+                              " exported as IfcSlab (Revit's default IFC class for that category) — piles are in the file, but not as IfcPile/IfcFooting. " +
+                              "To change that, set the type parameter 'Export Type to IFC As' (e.g. IfcPile, predefined DRIVEN) or remap the category in the IFC export classes.");
+                return lines;
+            }
+            catch (Exception ex)
+            {
+                return new List<string> { "IFC contents: could not read the file back (" + ex.Message + ")" };
             }
         }
 

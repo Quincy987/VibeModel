@@ -832,8 +832,7 @@ namespace VibeModel.Services.Chat
                 sb.AppendLine();
                 sb.AppendLine(context);
                 sb.AppendLine();
-                sb.Append("Use the context above to answer. If the user has elements selected, take them into account. " +
-                    "When it helps, end with at most 2 specific suggestions, one short line each.");
+                sb.Append("Use the context above to answer. If the user has elements selected, take them into account.");
             }
 
             sb.AppendLine();

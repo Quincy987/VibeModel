@@ -505,7 +505,7 @@ namespace VibeModel.Tests
             var rules = ChatBackendBase.BuildBehaviourRules(language);
             Assert.Contains("When you present more than 3 items with 2+ attributes, use a markdown table; first column = name/id, units in the header cell (`Lengte (mm)`), never in every cell.", rules);
             Assert.Contains("Always name the unit with every quantity (mm, m, m², m³, kg, kN, °, s); never give a bare number.", rules);
-            Assert.Contains("VibeModel commands return mm unless stated; convert to m / m² / m³ when values exceed 10 000 mm and say so once.", rules);
+            Assert.Contains("VibeModel commands return mm unless stated; convert to m / m² / m³ when values exceed 10 000 mm — the unit in the value or the header cell says so, no extra sentence about it.", rules);
             Assert.Contains("with one [bron: …] marker directly after the sentence; do not cite general Revit knowledge; never invent a source", rules);
             Assert.Contains("[bron: leidraad <chapter>]", rules);
             Assert.Contains("[bron: document <file> p.N]", rules);

@@ -71,7 +71,7 @@ namespace VibeModel.Services.Standards
                 lines.Add(l);
                 var existing = active?.PhaseTable?.ExistingPhase;
                 if (existing != null && string.Equals(existing, av.Phase, StringComparison.OrdinalIgnoreCase))
-                    lines.Add("  ! this view is on the EXISTING phase: elements drawn here by hand become 'existing'; VibeModel commands set the phase explicitly, but new work will not show in this view.");
+                    lines.Add("  ! this view is on the EXISTING phase: elements drawn here by hand become 'existing'; VibeModel commands set the phase explicitly, but new work will not show in this view. Tell the user only when this turn's new work is hidden by it, in one sentence.");
             }
 
             if (f.IsFull)

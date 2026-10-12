@@ -344,6 +344,97 @@ namespace VibeModel.Tests
         }
     }
 
+    public class IfcContentsTests
+    {
+        // Lines as Revit 2023's IFC2x3 exporter writes them (from a real PRG1002 export).
+        private const string Sample =
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n" +
+            "#18=IFCOWNERHISTORY(#17,#2,$,.NOCHANGE.,$,$,$,1791822376);\n" +
+            "#154=IFCSLAB('3vajPq_yT46OJEh_TNj2bk',#18,'Floor:HOUT_200:1575028',$,'Floor:HOUT_200',#139,#153,'1575028',.FLOOR.);\n" +
+            "#155=IFCSLABTYPE('3vajPq_yT46OJEh_TNj3d5',#18,'Floor:HOUT_200',$,$,(#226,#227),$,'1579231',$,.FLOOR.);\n" +
+            "#251=IFCWALLSTANDARDCASE('2JSwxjfBX8Fhvw8_JL11$8',#18,'Basic Wall:hout_200:1607501',$,'Basic Wall:hout_200',#2,#3,'1607501');\n" +
+            "#463541=IFCSLAB('2JSwxjfBX8Fhvw8_JL10wI',#18,'NLI_Funderingspaal hout:Houten paal \\X\\D8200 lood:1611287',$,'x',#463524,#463540,'1611287',.BASESLAB.);\n" +
+            "#463665=IFCSLAB('2JSwxjfBX8Fhvw8_JL10wS',#18,'Paal, ''rond'' (a,b):1611289',$,'x',#463648,\n#463664,'1611289',.BASESLAB.);\n" +
+            "#463493=IFCBUILDINGELEMENTPROXY('2JSwxjfBX8Fhvw8_JL11CI',#18,'K&L1:K&L:1608599',$,'K&L1:K&L',#463492,#463489,'1608599',$);\n" +
+            "#30=IFCBUILDINGSTOREY('x',#18,'N.A.P.',$,$,#29,$,'1234',.ELEMENT.,0.);\n" +
+            "#31=IFCOPENINGELEMENT('y',#18,'opening',$,$,#29,#28,'1607501');\n" +
+            "#32=IFCRELCONTAINEDINSPATIALSTRUCTURE('z',#18,$,$,(#154,#251),#30);\n" +
+            "ENDSEC;\nEND-ISO-10303-21;\n";
+
+        private static IfcContents Read() => IfcContents.Read(new System.IO.StringReader(Sample));
+
+        [Fact]
+        public void Read_KeepsElementsOnly_WithClassPredefinedAndRevitId()
+        {
+            var items = Read().Items;
+            Assert.Equal(new[] { 1575028, 1607501, 1611287, 1611289, 1608599 }, items.Select(x => x.RevitId).ToArray());
+            Assert.Equal("IfcSlab", items[0].IfcClass);
+            Assert.Equal("FLOOR", items[0].Predefined);
+            Assert.Equal("IfcWallStandardCase", items[1].IfcClass);
+            Assert.Null(items[1].Predefined);
+            Assert.Equal("BASESLAB", items[2].Predefined);
+            Assert.Equal("IfcBuildingElementProxy", items[4].IfcClass);
+        }
+
+        [Fact]
+        public void SplitAttributes_RespectsQuotesEscapesAndLists()
+        {
+            const string e = "#1=IFCX('a,b',#2,'it''s (x)',(#3,#4),$);";
+            var a = IfcContents.SplitAttributes(e, e.IndexOf('('));
+            Assert.Equal(new[] { "'a,b'", "#2", "'it''s (x)'", "(#3,#4)", "$" }, a.ToArray());
+        }
+
+        [Fact]
+        public void Describe_NamesTheClassPerCategory_AndWhatIsMissing()
+        {
+            var cats = new Dictionary<int, string>
+            {
+                { 1575028, "Floors" }, { 1607501, "Walls" }, { 1611287, "Structural Foundations" },
+                { 1611289, "Structural Foundations" }, { 1608599, "Generic Models" }
+            };
+            var scope = new Dictionary<string, List<int>>
+            {
+                { "Structural Foundations", new List<int> { 1611287, 1611289 } },
+                { "Walls", new List<int> { 1607501, 99 } },
+                { "Structural Columns", new List<int> { 7, 8, 9 } }
+            };
+            var lines = Read().Describe(id => cats.TryGetValue(id, out var c) ? c : null, scope);
+            Assert.StartsWith("IFC contents (read back from the file): 5 Revit elements — 3 of the 7 model elements in scope", lines[0]);
+            Assert.Contains(lines, l => l.Contains("Structural Foundations") && l.Contains("2 → IfcSlab.BASESLAB"));
+            Assert.Contains(lines, l => l.Contains("Floors") && l.Contains("→ IfcSlab.FLOOR"));
+            var missing = lines.Single(l => l.StartsWith("Not in the file:"));
+            Assert.Equal("Not in the file: Structural Columns — none of 3, Walls 1 of 2", missing);
+            Assert.Contains(lines, l => l.Contains("'Not Exported'"));
+        }
+
+        [Fact]
+        public void Describe_NothingMissing_NoHint()
+        {
+            var lines = Read().Describe(id => "Floors", new Dictionary<string, List<int>> { { "Floors", new List<int> { 1575028 } } });
+            Assert.DoesNotContain(lines, l => l.StartsWith("Not in the file"));
+            Assert.Contains(lines, l => l.Contains("Floors") && l.Contains("5 → IfcSlab.BASESLAB ×2"));
+        }
+
+        [Fact]
+        public void Describe_CountsRevitElements_NotIfcPieces()
+        {
+            var c = IfcContents.Read(new System.IO.StringReader(
+                "#1=IFCSLAB('a',#18,'f',$,$,#2,#3,'42',.FLOOR.);\n#4=IFCSLAB('b',#18,'f',$,$,#5,#6,'42',.FLOOR.);\n#7=IFCSLAB('c',#18,'f',$,$,#8,#9,'42',.FLOOR.);\n"));
+            var lines = c.Describe(id => "Floors", null);
+            Assert.Equal("IFC contents (read back from the file): 1 Revit element (3 IFC entities)", lines[0]);
+            Assert.Contains(lines, l => l.Contains("Floors") && l.Contains("1 → IfcSlab.FLOOR"));
+        }
+
+        [Theory]
+        [InlineData("IFCWALLSTANDARDCASE", "IfcWallStandardCase")]
+        [InlineData("IFCBUILDINGELEMENTPROXY", "IfcBuildingElementProxy")]
+        [InlineData("IFCPILE", "IfcPile")]
+        [InlineData("IFCFOOTING", "IfcFooting")]
+        [InlineData("IFCSTAIRFLIGHT", "IfcStairFlight")]
+        [InlineData("IFCXYZ", "Ifcxyz")]
+        public void PrettyClass(string upper, string expected) => Assert.Equal(expected, IfcContents.PrettyClass(upper));
+    }
+
     public class PolygonTests
     {
         [Fact]
