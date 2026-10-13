@@ -115,6 +115,16 @@ curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"  # a wall, in mm
 
 Close to eighty commands cover reading, diagnosing, modelling, sheets, annotation, office standards, project documents, memory and export. The full reference, with every flag, is in [CLAUDE.md](CLAUDE.md).
 
+## Your own standards
+
+VibeModel does not know how your office models. You tell it with a **standards pack**: a folder of plain markdown and JSON that the person who owns your Revit standard maintains, no code involved.
+
+1. **Copy the sample.** `standards/example-office/` is a complete, fictional pack: `pack.json` (phases, view templates, title block, library paths, link settings), `core.md` (the rules every chat turn gets), topic sheets (`topics/phasing.md`, `sheets.md`, …) and `checks.json` (what `check` audits).
+2. **Fill in your office.** Your phase names, your view templates, where your family library lives, which parameters must be filled. Drop your modelling manual (PDF) next to it and run `standards --index` once: the chat can then quote it by chapter and cite it.
+3. **Point VibeModel at it.** Settings → *Standards pack folder* → your office share. Every modeller gets the same pack without a new add-in release; the add-in mirrors it to the local machine, so a missing VPN only means yesterday's pack stays in force.
+
+A pack only switches on for models that match its **fingerprint** (your phases and a shared parameter), so a stranger's model is never judged by your rules. And your pack stays yours: it lives on your share and your machines, never in this repository. The full format is in [standards/README.md](standards/README.md).
+
 ## Installation
 
 ### Requirements
