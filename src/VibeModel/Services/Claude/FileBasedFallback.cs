@@ -65,7 +65,17 @@ namespace VibeModel.Services.Claude
 
                 Logger.Info("[Fallback] Executing: " + commandText);
 
-                var output = _registry.Execute(cmd, args, uiApp);
+                // Same failure handling as the HTTP path: the application-level safety net only
+                // acts while a command runs, and exec turns a collected rollback into an error.
+                string output;
+                RevitCommandHandler.IsProcessingCommand = true;
+                Helpers.FailureCollector.Arm();
+                try { output = _registry.Execute(cmd, args, uiApp); }
+                finally
+                {
+                    Helpers.FailureCollector.Disarm();
+                    RevitCommandHandler.IsProcessingCommand = false;
+                }
 
                 WriteOutput(commandText, output);
             }

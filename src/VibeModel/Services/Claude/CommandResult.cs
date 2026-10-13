@@ -15,7 +15,9 @@ namespace VibeModel.Services.Claude
     ///  - Error(code, msg, sugg) — a NATIVE structured error: text renders "ERROR: msg" plus an
     ///                             additive "Hint: sugg" line; code appears only in JSON.
     ///  - Legacy(rawText)        — an unmigrated command: rawText is rendered VERBATIM in text
-    ///                             mode (byte-identical to pre-Plan-03), wrapped for JSON.
+    ///                             mode (byte-identical to pre-Plan-03), wrapped for JSON. One
+    ///                             addition: a Revit rollback error without a "Hint:" line gets
+    ///                             the generic one (see LegacyRollback).
     /// </summary>
     public sealed class CommandResult
     {

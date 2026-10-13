@@ -96,8 +96,9 @@ itself. The user's own work in Revit is never touched.
 - **Any other error** → the transaction is rolled back and the command fails with Revit's own reason:
   `ERROR: Revit rolled the change back: <reason>` + a `Hint:` line (JSON code `REVIT_FAILURE`; `join`
   keeps its own report, with that reason in it). A commit Revit rolled back is never reported as success.
-  When one failure in a pass forces a rollback, nothing else of that pass is applied or reported as kept. `exec` fails as soon as any of its transactions was
-  rolled back (the hint says other transactions of the snippet were kept).
+  When one failure in a pass forces a rollback, nothing else of that pass is applied or reported as
+  kept. `exec` fails as soon as any of its transactions was rolled back (the hint says other
+  transactions of the snippet were kept).
 
 Lines go after a successful text response (before the stamp); JSON adds an additive `revit` object
 `{warnings:[{message,count}], resolved:[{message,deleted:[{id,category}]}], rolledBack}` on the
