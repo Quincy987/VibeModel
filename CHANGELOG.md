@@ -25,6 +25,9 @@
   status used to be ignored). Live example: `set <wall> "Unconnected Height" 1` reported success while
   Revit silently undid it; it now says `Revit rolled the change back: Revit gave no reason …`.
 - Any dialog that still opens during a command is logged with its id.
+- A failure Revit keeps re-posting after it was resolved is rolled back after 10 rounds instead of
+  looping (`FailureLoopGuard`); a snippet whose many transactions each resolve a different
+  annotation is not mistaken for such a loop.
 
 ### Fixed — "the IFC has no piles"
 - **`export ifc` reads its own file back.** The piles were there: Revit 2023's default IFC class
