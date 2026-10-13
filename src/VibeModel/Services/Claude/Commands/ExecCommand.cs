@@ -141,7 +141,7 @@ public static class DynamicCommand
         }
 
         // A snippet can commit several transactions; only the one Revit refused is gone.
-        internal const string RollbackHint = "Revit refused the transaction it names and rolled it back; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";
+        internal const string RollbackHint = "Revit rolled back the transaction that failed; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";
 
         internal static string RollbackError(string reason, string output)
         {

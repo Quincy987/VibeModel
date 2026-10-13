@@ -233,14 +233,12 @@ namespace VibeModel.Services.Claude
             CommandResult cr;
             FailureReport revit;
             if (modifying) CreatedElementsRecorder.Arm();
-            FailureCollector.Arm();
             try
             {
-                cr = _registry.ExecuteCore(request.Command, request.Args, app);
+                cr = FailureCollector.Collect(() => _registry.ExecuteCore(request.Command, request.Args, app), out revit);
             }
             finally
             {
-                revit = FailureCollector.Disarm();
                 if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
             }
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
@@ -370,13 +368,9 @@ namespace VibeModel.Services.Claude
                     foreach (var item in req.Batch)
                     {
                         // ExecuteCore returns the structured result; decide on .Success, not a
-                        // string prefix. Text output stays byte-identical via RenderText().
-                        // Revit failures are reported per command.
-                        FailureCollector.Arm();
-                        CommandResult cr;
-                        FailureReport revit;
-                        try { cr = _registry.ExecuteCore(item.Command, item.Args, app); }
-                        finally { revit = FailureCollector.Disarm(); }
+                        // string prefix. Text output stays byte-identical via RenderText(), plus
+                        // "-- revit" lines only when Revit's failure processing did something.
+                        var cr = FailureCollector.Collect(() => _registry.ExecuteCore(item.Command, item.Args, app), out var revit);
 
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));

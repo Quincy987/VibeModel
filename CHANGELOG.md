@@ -18,8 +18,8 @@
   with a `Hint:` line (`join` keeps its own refusal report, with that reason in it). When one
   failure forces a rollback, nothing else of that pass is applied. JSON gets an additive `revit` object, also per batch command. This covers
   VibeModel's own transactions (preprocessor) and transactions an `exec` snippet opens itself
-  (`Application.FailuresProcessing`, only while a command runs — your own work in Revit keeps the
-  normal dialogs).
+  (`Application.FailuresProcessing`, only while a command runs — over HTTP or the file-based
+  fallback; your own work in Revit keeps the normal dialogs).
 - A transaction Revit rolled back during commit is now an error instead of a success (the commit
   status used to be ignored).
 - Any dialog that still opens during a command is logged with its id.

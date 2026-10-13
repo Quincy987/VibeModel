@@ -291,5 +291,13 @@ namespace VibeModel.Services.Helpers
             Current = null;
             return report;
         }
+
+        /// <summary>Runs one command with the collector armed; <paramref name="report"/> is what Revit's failure processing did.</summary>
+        public static T Collect<T>(Func<T> run, out FailureReport report)
+        {
+            Arm();
+            try { return run(); }
+            finally { report = Disarm(); }
+        }
     }
 }

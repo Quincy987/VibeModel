@@ -69,13 +69,8 @@ namespace VibeModel.Services.Claude
                 // acts while a command runs, and exec turns a collected rollback into an error.
                 string output;
                 RevitCommandHandler.IsProcessingCommand = true;
-                Helpers.FailureCollector.Arm();
-                try { output = _registry.Execute(cmd, args, uiApp); }
-                finally
-                {
-                    Helpers.FailureCollector.Disarm();
-                    RevitCommandHandler.IsProcessingCommand = false;
-                }
+                try { output = Helpers.FailureCollector.Collect(() => _registry.Execute(cmd, args, uiApp), out _); }
+                finally { RevitCommandHandler.IsProcessingCommand = false; }
 
                 WriteOutput(commandText, output);
             }
