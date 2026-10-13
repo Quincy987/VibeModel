@@ -47,6 +47,18 @@
   chips turn it into buttons), mention the view's phase only when this turn's work is hidden by it,
   and drop the "converted to m" and "one Ctrl+Z" restatements.
 
+### Fixed — installer that could not be read ("I ran install.ps1 and see no tab")
+- A colleague downloaded GitHub's *Source code (zip)* — the only zip on the releases page, since no
+  release since v1.2.1 had an add-in zip attached — ran `install.ps1`, and the window closed on
+  the "Cannot find VibeModel.dll" error before it could be read. The installer now stays open at the
+  end and after every error, recognizes the source-code zip and names the right download, asks to
+  close a running Revit (it keeps the DLL locked), and verifies afterwards that every file is in
+  place and unblocked. The API-key prompt says Claude Code users just press Enter, and saving a key
+  no longer overwrites the other settings or pins an old model id.
+- `scripts/package-release.ps1` builds and packs `release/VibeModel-v<version>-Revit<year>.zip`
+  (add-in, PdfText helper, install.cmd/.ps1, README.txt with the three steps) — the asset every
+  release gets from now on. README: download that zip under *Assets*, double-click `install.cmd`.
+
 ### Docs
 - CLAUDE.md: examples for `filter`, `measure`, `whereused`, `zoomto`, `isolate`/`unisolate`,
   `hide`/`show`, `colorsplash` and `chatlog` (the only commands without one).

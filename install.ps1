@@ -3,22 +3,45 @@
     Installs VibeModel add-in for Autodesk Revit.
 
 .DESCRIPTION
-    Copies VibeModel.dll, VibeModel.addin, and Markdig.dll to detected Revit
-    add-in folders and optionally saves your Anthropic API key.
+    Copies VibeModel.dll, VibeModel.addin, Markdig.dll and the VibeModel.PdfText helper
+    to every detected Revit add-in folder, unblocks them, and optionally saves your
+    Anthropic API key. Double-click install.cmd, or run this script with PowerShell.
+
+    The window stays open at the end (and after an error) so the result can be read.
 
 .PARAMETER SkipApiKey
     Skip the API key prompt.
 
+.PARAMETER NoPause
+    Do not wait for Enter at the end (for scripted use).
+
 .EXAMPLE
     .\install.ps1
-    .\install.ps1 -SkipApiKey
+    .\install.ps1 -SkipApiKey -NoPause
 #>
 
 param(
-    [switch]$SkipApiKey
+    [switch]$SkipApiKey,
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Finish([int]$code) {
+    if (-not $NoPause) {
+        Write-Host ""
+        Read-Host "  Press Enter to close this window" | Out-Null
+    }
+    exit $code
+}
+
+function Fail([string[]]$lines) {
+    Write-Host ""
+    foreach ($line in $lines) { Write-Host "  $line" -ForegroundColor Red }
+    Finish 1
+}
+
+try {
 
 Write-Host ""
 Write-Host "  VibeModel Installer" -ForegroundColor Cyan
@@ -54,16 +77,41 @@ foreach ($file in $sourceFiles) {
 }
 
 if (-not $resolvedFiles.ContainsKey("VibeModel.dll")) {
-    Write-Host "  ERROR: Cannot find VibeModel.dll" -ForegroundColor Red
-    Write-Host "  Run this script from the release/build output directory," -ForegroundColor Red
-    Write-Host "  or run 'build.ps1' first." -ForegroundColor Red
-    Write-Host ""
-    exit 1
+    if (Test-Path (Join-Path $scriptDir "src\VibeModel\VibeModel.csproj")) {
+        # GitHub's automatic "Source code (zip)" — no compiled add-in in it.
+        Fail @(
+            "This folder is the SOURCE CODE of VibeModel, not the add-in.",
+            "The add-in (VibeModel.dll) is not in it.",
+            "",
+            "Download the file named  VibeModel-v<version>-Revit<year>.zip  under 'Assets' at",
+            "https://github.com/Quincy987/VibeModel/releases/latest",
+            "(not 'Source code (zip)'), unzip it and run install.cmd from there.",
+            "",
+            "Or build it yourself: run build.ps1 in this folder."
+        )
+    }
+    Fail @(
+        "Cannot find VibeModel.dll next to this script.",
+        "Unzip the whole release zip first, then run install.cmd from the unzipped folder."
+    )
 }
 
 Write-Host "  Found $($resolvedFiles.Count)/$($sourceFiles.Count) files:" -ForegroundColor Gray
 foreach ($entry in $resolvedFiles.GetEnumerator()) {
     Write-Host "    $($entry.Key) -> $($entry.Value)" -ForegroundColor Gray
+}
+
+# --- Revit must be closed: it keeps VibeModel.dll locked, so the copy would fail ---
+
+$revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
+if ($revitProcs.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Revit is running ($($revitProcs.Count) window(s)). Close Revit first - it keeps the add-in files locked." -ForegroundColor Yellow
+    Read-Host "  Close Revit, then press Enter here to continue" | Out-Null
+    $revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
+    if ($revitProcs.Count -gt 0) {
+        Fail @("Revit is still running. Close it and run the installer again.")
+    }
 }
 
 # --- Detect Revit versions ---
@@ -91,8 +139,7 @@ if ($revitVersions.Count -eq 0) {
     if ($manualYear -match '^\d{4}$') {
         $revitVersions = @($manualYear)
     } else {
-        Write-Host "  Invalid input. Exiting." -ForegroundColor Red
-        exit 1
+        Fail @("Invalid input. Exiting.")
     }
 }
 
@@ -138,6 +185,24 @@ foreach ($version in $revitVersions) {
     }
 }
 
+# --- Verify: every installed file must be there and unblocked ---
+
+$problems = @()
+foreach ($version in $revitVersions) {
+    $targetDir = Join-Path $addinsBase $version
+    foreach ($file in $sourceFiles) {
+        $installed = Join-Path $targetDir $file
+        if (-not (Test-Path $installed)) {
+            $problems += "$installed is missing"
+        } elseif (Get-Item $installed -Stream Zone.Identifier -ErrorAction SilentlyContinue) {
+            $problems += "$installed is still blocked by Windows (right-click > Properties > Unblock)"
+        }
+    }
+}
+if ($problems.Count -gt 0) {
+    Fail (@("Installed, but with problems:") + $problems)
+}
+
 Write-Host ""
 Write-Host "  Files installed and unblocked successfully!" -ForegroundColor Green
 
@@ -160,36 +225,47 @@ if (-not $SkipApiKey) {
         } catch { }
     }
 
+    $askKey = $true
     if ($existingKey) {
         $masked = $existingKey.Substring(0, [Math]::Min(10, $existingKey.Length)) + "..."
         Write-Host "  API key already configured: $masked" -ForegroundColor Green
         $changeKey = Read-Host "  Change it? (y/N)"
-        if ($changeKey -ne 'y' -and $changeKey -ne 'Y') {
-            Write-Host ""
-            Write-Host "  Done! Open Revit to start using VibeModel." -ForegroundColor Cyan
-            Write-Host ""
-            exit 0
-        }
+        if ($changeKey -ne 'y' -and $changeKey -ne 'Y') { $askKey = $false }
     }
 
-    Write-Host "  Enter your Anthropic API key (from console.anthropic.com):" -ForegroundColor White
-    Write-Host "  (Press Enter to skip)" -ForegroundColor Gray
-    $apiKey = Read-Host "  API Key"
+    if ($askKey) {
+        Write-Host "  Using Claude Code (logged in with 'claude')? Just press Enter." -ForegroundColor White
+        Write-Host "  Otherwise enter your Anthropic API key (from console.anthropic.com):" -ForegroundColor White
+        $apiKey = Read-Host "  API Key (Enter to skip)"
 
-    if ($apiKey) {
-        if (-not (Test-Path $settingsDir)) {
-            New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
+        if ($apiKey) {
+            if (-not (Test-Path $settingsDir)) {
+                New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
+            }
+
+            # Keep whatever else is in settings.json; only the key and backend change. The model
+            # is left to the add-in's default.
+            $settingsObj = @{}
+            if (Test-Path $settingsPath) {
+                try {
+                    (Get-Content $settingsPath -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $settingsObj[$_.Name] = $_.Value }
+                } catch { }
+            }
+            $settingsObj["AnthropicApiKey"] = $apiKey
+            $settingsObj["PreferredBackend"] = "direct"
+            $settingsObj | ConvertTo-Json | Set-Content $settingsPath -Encoding UTF8
+
+            Write-Host "  API key saved!" -ForegroundColor Green
+        } else {
+            Write-Host "  Skipped. Claude Code is detected automatically; an API key can be set later via Settings in the chat pane." -ForegroundColor Gray
         }
-
-        $settingsObj = @{ AnthropicApiKey = $apiKey; PreferredBackend = "direct"; Model = "claude-sonnet-4-5-20250929" }
-        $settingsObj | ConvertTo-Json | Set-Content $settingsPath -Encoding UTF8
-
-        Write-Host "  API key saved!" -ForegroundColor Green
-    } else {
-        Write-Host "  Skipped. You can configure it later via Settings in the chat pane." -ForegroundColor Yellow
     }
 }
 
 Write-Host ""
-Write-Host "  Done! Open Revit to start using VibeModel." -ForegroundColor Cyan
-Write-Host ""
+Write-Host "  Done! Start Revit - the VibeModel tab is in the ribbon." -ForegroundColor Cyan
+Finish 0
+
+} catch {
+    Fail @("Installation failed: $($_.Exception.Message)", "", "$($_.ScriptStackTrace)")
+}
