@@ -91,6 +91,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("At: " + Mm.F(a.X) + ", " + Mm.F(a.Y) + " (" + convention + ")" + (a.Leader != null ? ", leader to " + Mm.F(a.Leader[0]) + ", " + Mm.F(a.Leader[1]) : ""));
             sb.AppendLine("Type: " + type.Name + " (" + Mm.F1(SizeMm(type)) + " mm on paper)" + (typeNote != null ? " — " + typeNote : ""));
             sb.AppendLine("Text: " + a.Text.Replace("\n", " ⏎ "));
+            if (a.Leader != null)
+                sb.AppendLine("Leader: free point (attached to nothing — a replacement cannot break it)");
 
             var data = new Dictionary<string, object>
             {

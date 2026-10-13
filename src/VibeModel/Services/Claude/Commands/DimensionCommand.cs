@@ -34,6 +34,8 @@ namespace VibeModel.Services.Claude.Commands
             public int ElementId;
             public string What;
             public double Dist;       // --points only
+            public bool Stable;       // a level, grid or reference plane - survives any element replacement
+            public int FaceOf;        // the element whose face/plane this is (0 for datums)
         }
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -68,7 +70,7 @@ namespace VibeModel.Services.Claude.Commands
                     return CommandResult.Error("BAD_ARGS", "--levels needs a section or elevation as the active view (active: " + view.ViewType + ").", null);
                 d = up;
                 refs = new FilteredElementCollector(doc, view.Id).OfClass(typeof(Level)).Cast<Level>()
-                    .Select(l => new Cand { Ref = l.GetPlaneReference(), Pos = l.ProjectElevation - o.Z, ElementId = l.Id.IntegerValue, What = "level '" + l.Name + "'" })
+                    .Select(l => new Cand { Ref = l.GetPlaneReference(), Pos = l.ProjectElevation - o.Z, ElementId = l.Id.IntegerValue, What = "level '" + l.Name + "'", Stable = true })
                     .Where(c => c.Ref != null).ToList();
                 if (refs.Count < 2)
                     return CommandResult.Error("BAD_ARGS", "Only " + refs.Count + " level(s) are visible in '" + view.Name + "'; a level string needs two.",
@@ -120,7 +122,7 @@ namespace VibeModel.Services.Claude.Commands
                 refs = new List<Cand>();
                 foreach (var e in elems)
                 {
-                    var c = References(view, e, d, vdir, o);
+                    var c = PreferDatums(doc, view, References(view, e, d, vdir, o), d, o);
                     if (c.Count == 0)
                         notes.Add("element " + e.Id.IntegerValue + " (" + (e.Category?.Name ?? e.GetType().Name) + ") has no face/plane perpendicular to the dimension direction in this view — skipped");
                     refs.AddRange(c);
@@ -177,6 +179,13 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Segments (" + values.Count + "): " + DimensionMath.Segments(values));
             sb.AppendLine("References:");
             foreach (var c in refs) sb.AppendLine("  " + c.ElementId + " " + c.What + (a.Points != null ? " (" + Mm.F(RevitUnitHelper.FeetToMm(c.Dist)) + " mm from the point)" : ""));
+            var attached = refs.Select(c => Attached(doc, c)).ToList();
+            sb.AppendLine("Attached to:");
+            foreach (var t in attached) sb.AppendLine("  " + t.Text);
+            var fragile = refs.Where((c, i) => !c.Stable && attached[i].Fragile).Select(c => c.FaceOf != 0 ? c.FaceOf : c.ElementId).Distinct().ToList();
+            if (fragile.Count > 0)
+                notes.Add("references element faces of " + string.Join(", ", fragile) + " — a replacement re-hosts this dimension when the new faces lie within " +
+                          Mm.F1(AnnotationMatch.RehostToleranceMm) + " mm, else removes it (the replacing command's response says so)");
             foreach (var n in notes) sb.AppendLine("Note: " + n);
 
             var data = new Dictionary<string, object>
@@ -184,10 +193,81 @@ namespace VibeModel.Services.Claude.Commands
                 { "created", new List<object> { dim.Id.IntegerValue } },
                 { "view", view.Id.IntegerValue },
                 { "segmentsMm", values.Select(v => (object)Math.Round(v, 1)).ToList() },
-                { "references", refs.Select(c => (object)new Dictionary<string, object> { { "element", c.ElementId }, { "what", c.What } }).ToList() },
+                { "references", refs.Select((c, i) => (object)new Dictionary<string, object>
+                    { { "element", c.ElementId }, { "what", c.What }, { "stable", c.Stable }, { "vibeModelCreated", attached[i].VibeModelCreated } }).ToList() },
                 { "notes", notes.Cast<object>().ToList() }
             };
             return CommandResult.Ok(sb.ToString(), data);
+        }
+
+        // ---------------------------------------------------------------- stable references
+
+        /// <summary>
+        /// An element face that lies on a level (vertical dimension) or on a grid / reference plane
+        /// (horizontal) within 1 mm is dimensioned to that datum instead: same value, and it
+        /// survives the element being replaced. Only datums the view shows are used.
+        /// </summary>
+        private static List<Cand> PreferDatums(Document doc, View view, List<Cand> found, XYZ d, XYZ o)
+        {
+            if (found.Count == 0 || found.All(c => c.Stable)) return found;
+            double tol = RevitUnitHelper.MmToFeet(1);
+            var datums = new List<Cand>();
+            try
+            {
+                foreach (var e in new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElements())
+                {
+                    if (e is Level l && Math.Abs(d.Z) > 0.99 && l.GetPlaneReference() != null)
+                        datums.Add(new Cand { Ref = l.GetPlaneReference(), Pos = (l.ProjectElevation - o.Z) * Math.Sign(d.Z), ElementId = l.Id.IntegerValue, What = "level '" + l.Name + "'", Stable = true });
+                    else if (e is Grid g && g.Curve is Line gl && Math.Abs(gl.Direction.DotProduct(d)) < 0.01 && Math.Abs(d.Z) < 0.01)
+                        datums.Add(new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = g.Id.IntegerValue, What = "grid '" + g.Name + "'", Stable = true });
+                    else if (e is ReferencePlane rp && Math.Abs(rp.Normal.DotProduct(d)) > 0.999)
+                        datums.Add(new Cand { Ref = rp.GetReference(), Pos = (rp.BubbleEnd - o).DotProduct(d), ElementId = rp.Id.IntegerValue, What = "reference plane '" + rp.Name + "'", Stable = true });
+                }
+            }
+            catch { return found; }
+            if (datums.Count == 0) return found;
+            var result = new List<Cand>();
+            foreach (var c in found)
+            {
+                var datum = c.Stable ? null : datums.Where(x => Math.Abs(x.Pos - c.Pos) <= tol).OrderBy(x => Math.Abs(x.Pos - c.Pos)).FirstOrDefault();
+                if (datum == null) { result.Add(c); continue; }
+                int of = c.FaceOf != 0 ? c.FaceOf : c.ElementId;
+                var host = doc.GetElement(new ElementId(of));
+                result.Add(new Cand
+                {
+                    Ref = datum.Ref, Pos = datum.Pos, ElementId = datum.ElementId, Stable = true,
+                    What = datum.What + " (at the " + (host?.Category?.Name ?? "element") + " face of " + of + ")"
+                });
+            }
+            return result;
+        }
+
+        private sealed class AttachedText
+        {
+            public string Text;
+            public bool Fragile;            // a floor / foundation / wall, or created by VibeModel this session
+            public bool VibeModelCreated;
+        }
+
+        private static AttachedText Attached(Document doc, Cand c)
+        {
+            if (c.Stable)
+            {
+                var kind = c.What.StartsWith("level", StringComparison.Ordinal) ? "level"
+                         : c.What.StartsWith("grid", StringComparison.Ordinal) ? "grid" : "reference plane";
+                return new AttachedText { Text = "stable (" + kind + ")" };
+            }
+            int id = c.FaceOf != 0 ? c.FaceOf : c.ElementId;
+            var e = doc.GetElement(new ElementId(id));
+            bool vm = Standards.VibeModelCreated.Contains(doc, new ElementId(id));
+            int bic = e?.Category?.Id.IntegerValue ?? 0;
+            var what = c.What.StartsWith("centre plane", StringComparison.Ordinal) ? "element plane" : "element face";
+            return new AttachedText
+            {
+                Text = what + " of " + id + " (" + (e?.Category?.Name ?? "element") + (vm ? ", created by VibeModel this session" : "") + ")",
+                Fragile = vm || AnnotationText.LikelyReplaced(bic),
+                VibeModelCreated = vm
+            };
         }
 
         // ---------------------------------------------------------------- frame helpers
@@ -281,19 +361,19 @@ namespace VibeModel.Services.Claude.Commands
             if (e is Grid g)
             {
                 if (g.Curve is Line gl && Math.Abs(gl.Direction.DotProduct(d)) < 0.01)
-                    res.Add(new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = id, What = "grid '" + g.Name + "'" });
+                    res.Add(new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = id, What = "grid '" + g.Name + "'", Stable = true });
                 return res;
             }
             if (e is Level l)
             {
                 if (Math.Abs(d.Z) > 0.99 && l.GetPlaneReference() != null)
-                    res.Add(new Cand { Ref = l.GetPlaneReference(), Pos = (l.ProjectElevation - o.Z) * Math.Sign(d.Z), ElementId = id, What = "level '" + l.Name + "'" });
+                    res.Add(new Cand { Ref = l.GetPlaneReference(), Pos = (l.ProjectElevation - o.Z) * Math.Sign(d.Z), ElementId = id, What = "level '" + l.Name + "'", Stable = true });
                 return res;
             }
             if (e is ReferencePlane rp)
             {
                 if (Math.Abs(rp.Normal.DotProduct(d)) > 0.999)
-                    res.Add(new Cand { Ref = rp.GetReference(), Pos = (rp.BubbleEnd - o).DotProduct(d), ElementId = id, What = "reference plane '" + rp.Name + "'" });
+                    res.Add(new Cand { Ref = rp.GetReference(), Pos = (rp.BubbleEnd - o).DotProduct(d), ElementId = id, What = "reference plane '" + rp.Name + "'", Stable = true });
                 return res;
             }
             if (e is FamilyInstance fi)
@@ -308,7 +388,7 @@ namespace VibeModel.Services.Claude.Commands
                     var r = fi.GetReferences(type.Value).FirstOrDefault();
                     if (r != null)
                     {
-                        res.Add(new Cand { Ref = r, Pos = (t.Origin - o).DotProduct(d), ElementId = id, What = "centre plane (" + type.Value + ")" });
+                        res.Add(new Cand { Ref = r, Pos = (t.Origin - o).DotProduct(d), ElementId = id, What = "centre plane (" + type.Value + ")", FaceOf = id });
                         return res;
                     }
                 }
@@ -319,7 +399,7 @@ namespace VibeModel.Services.Claude.Commands
             if (faces.Count == 0) return res;
             var pos = faces.Select(f => (f.Origin - o).DotProduct(d)).ToList();
             foreach (var i in DimensionMath.Extremes(pos, Tol))
-                res.Add(new Cand { Ref = faces[i].Reference, Pos = pos[i], ElementId = id, What = (e.Category?.Name ?? "element") + " face" });
+                res.Add(new Cand { Ref = faces[i].Reference, Pos = pos[i], ElementId = id, What = (e.Category?.Name ?? "element") + " face", FaceOf = id });
             return res;
         }
 
@@ -363,7 +443,7 @@ namespace VibeModel.Services.Claude.Commands
                     var flat = new XYZ(p.X, p.Y, gl.Origin.Z);
                     double dist = gl.Distance(flat);
                     if (dist <= snap && (best == null || dist < best.Dist))
-                        best = new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = "grid '" + g.Name + "'", Dist = dist };
+                        best = new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = "grid '" + g.Name + "'", Dist = dist, Stable = true };
                     continue;
                 }
                 if (!SheetHelper.IsModelContent(e)) continue;
@@ -375,7 +455,7 @@ namespace VibeModel.Services.Claude.Commands
                     var r = f.Project(new XYZ(p.X, p.Y, zMid));
                     if (r == null || r.Distance > snap) continue;
                     if (best == null || r.Distance < best.Dist)
-                        best = new Cand { Ref = f.Reference, Pos = (f.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = (e.Category?.Name ?? "element") + " face", Dist = r.Distance };
+                        best = new Cand { Ref = f.Reference, Pos = (f.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = (e.Category?.Name ?? "element") + " face", Dist = r.Distance, FaceOf = e.Id.IntegerValue };
                 }
             }
             return best;
