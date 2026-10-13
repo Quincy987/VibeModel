@@ -82,6 +82,42 @@ namespace VibeModel.Services.Claude
         }
     }
 
+    /// <summary>
+    /// Loop guard. Revit re-runs failure processing after a resolution; when the failures it
+    /// posts again include ones just resolved, the same transaction is going round. New failures
+    /// (a new transaction) start at pass 1 again, so an exec snippet with many transactions that
+    /// each resolve once is never mistaken for a loop.
+    /// </summary>
+    public sealed class FailureLoopGuard
+    {
+        private int _pass;
+        private HashSet<string> _lastResolved = new HashSet<string>();
+
+        public void Reset()
+        {
+            _pass = 0;
+            _lastResolved = new HashSet<string>();
+        }
+
+        /// <summary>The pass number for this round of failures (1 unless it repeats a resolved one).</summary>
+        public int NextPass(IEnumerable<FailureInfo> current)
+            => current != null && current.Any(f => _lastResolved.Contains(Key(f))) ? _pass + 1 : 1;
+
+        /// <summary>This round resolved these failures and asked Revit to commit again.</summary>
+        public void Resolved(int pass, IEnumerable<FailureInfo> resolved)
+        {
+            _pass = pass;
+            _lastResolved = new HashSet<string>(resolved.Select(Key));
+        }
+
+        // Identity of a failure across passes: its text and failing elements.
+        private static string Key(FailureInfo f)
+        {
+            var ids = f.FailingElements == null ? "" : string.Join(",", f.FailingElements.Select(e => e.Id).OrderBy(id => id));
+            return (f.Description ?? "") + "|" + ids;
+        }
+    }
+
     public sealed class WarningEntry
     {
         public string Message { get; set; }

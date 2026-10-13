@@ -271,10 +271,72 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void FromTransactionError_Rollback_KeepsCallersSuggestion()
+        public void FromTransactionError_Rollback_ReplacesCallersExceptionHint()
         {
-            var r = CommandResult.FromTransactionError("ERROR: Revit rolled the change back: x", suggestion: "Mine.");
-            Assert.Equal("Mine.", r.Suggestion);
+            // e.g. TextCommand's "A text note must lie in the view's plane" would mislead here.
+            var r = CommandResult.FromTransactionError("ERROR: Revit rolled the change back: x", "REVIT_ERROR", "Mine.");
+            Assert.Equal(FailureReport.RollbackErrorCode, r.ErrorCode);
+            Assert.Equal(FailureReport.RollbackHint, r.Suggestion);
+        }
+
+        [Fact]
+        public void Legacy_RawHelperRollback_GetsTheHintLine()
+        {
+            // Legacy commands (wall, floor, place, delete, set, color) return the helper's string as is.
+            var r = CommandResult.Legacy("ERROR: Revit rolled the change back: Can't keep elements joined.");
+            Assert.False(r.Success);
+            Assert.Equal("ERROR: Revit rolled the change back: Can't keep elements joined.\nHint: " + FailureReport.RollbackHint,
+                r.RenderText());
+            Assert.Equal("Revit rolled the change back: Can't keep elements joined.", r.Message);
+            Assert.Equal(FailureReport.RollbackHint, r.Suggestion);
+        }
+
+        // ---- Loop guard -----------------------------------------------------
+
+        private static FailureInfo SpotError(long id) => Error(true, Spot(id));
+
+        [Fact]
+        public void LoopGuard_FreshFailures_StartAtPassOne()
+        {
+            var g = new FailureLoopGuard();
+            Assert.Equal(1, g.NextPass(new[] { SpotError(1) }));
+        }
+
+        [Fact]
+        public void LoopGuard_SameFailureBackAfterResolving_CountsUpToRollback()
+        {
+            var g = new FailureLoopGuard();
+            int pass = 0;
+            for (int i = 0; i <= RevitFailurePolicy.MaxPasses; i++)
+            {
+                pass = g.NextPass(new[] { SpotError(1) });
+                if (RevitFailurePolicy.Decide(SpotError(1), pass) == RevitFailureAction.RollBack) break;
+                g.Resolved(pass, new[] { SpotError(1) });
+            }
+            Assert.Equal(RevitFailurePolicy.MaxPasses + 1, pass);
+        }
+
+        [Fact]
+        public void LoopGuard_ManyTransactionsResolvingDifferentFailures_NeverLoop()
+        {
+            // An exec snippet with 20 transactions that each resolve one spot of its own.
+            var g = new FailureLoopGuard();
+            for (long id = 1; id <= 20; id++)
+            {
+                int pass = g.NextPass(new[] { SpotError(id) });
+                Assert.Equal(1, pass);
+                g.Resolved(pass, new[] { SpotError(id) });
+            }
+        }
+
+        [Fact]
+        public void LoopGuard_Reset_StartsOver()
+        {
+            var g = new FailureLoopGuard();
+            g.Resolved(5, new[] { SpotError(1) });
+            Assert.Equal(6, g.NextPass(new[] { SpotError(1) }));
+            g.Reset();
+            Assert.Equal(1, g.NextPass(new[] { SpotError(1) }));
         }
 
         [Fact]

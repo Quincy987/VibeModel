@@ -103,14 +103,16 @@ namespace VibeModel.Services.Claude
             string suggestion = null)
         {
             // Revit refused the change during commit and rolled it back (see RevitFailurePolicy):
-            // its own reason is the message, with the generic fix as the hint.
+            // its own reason is the message. The caller's suggestion is written for its own
+            // exceptions (geometry, references), not for Revit's reason, so the generic fix wins.
             if (FailureReport.IsRollbackError(error))
-                return Error(FailureReport.RollbackErrorCode, StripErrorPrefix(error), suggestion ?? FailureReport.RollbackHint);
+                return Error(FailureReport.RollbackErrorCode, StripErrorPrefix(error), FailureReport.RollbackHint);
             return Error(code, StripErrorPrefix(error), suggestion);
         }
 
-        // A legacy command's rollback text ("ERROR: Revit rolled the change back: …\nHint: …"):
-        // verbatim in text mode, a clean message + suggestion in JSON.
+        // A legacy command's rollback text ("ERROR: Revit rolled the change back: …" straight from
+        // TransactionHelper, or exec's with its own "Hint:" line): verbatim in text mode, plus the
+        // generic hint line when it has none; a clean message + suggestion in JSON.
         private static CommandResult LegacyRollback(string rawText)
         {
             var lines = rawText.Replace("\r\n", "\n").Split('\n');
@@ -120,7 +122,7 @@ namespace VibeModel.Services.Claude
             return new CommandResult
             {
                 Success = false,
-                _rawText = rawText,
+                _rawText = hint != null ? rawText : rawText.TrimEnd() + "\nHint: " + FailureReport.RollbackHint,
                 _isLegacy = true,
                 ErrorCode = FailureReport.RollbackErrorCode,
                 Message = StripErrorPrefix(lines[0]),

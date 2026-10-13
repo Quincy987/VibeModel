@@ -50,8 +50,10 @@ public static class DynamicCommand
             {
                 " + args + @"
 
+                // A rollback the command handler collected is reported by ExecCommand itself.
                 var __vmCommitError = VibeModel.Services.Helpers.TransactionHelper.CommitOrReport(trans, __vmFailures);
-                if (__vmCommitError != null && VibeModel.Services.Helpers.FailureCollector.Current == null)
+                var __vmCollected = VibeModel.Services.Helpers.FailureCollector.Current;
+                if (__vmCommitError != null && (__vmCollected == null || !__vmCollected.RolledBack))
                     sb.AppendLine(""ERROR in exec: "" + __vmCommitError);
             }
             catch (Exception ex)

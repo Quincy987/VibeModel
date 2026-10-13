@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autodesk.Revit.DB;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Claude;
@@ -68,8 +69,7 @@ namespace VibeModel.Services.Helpers
             var status = trans.Commit();
             if (status == TransactionStatus.Committed) return null;
             if (status == TransactionStatus.RolledBack)
-                return FailureReport.RollbackErrorMessage(preprocessor?.Report.RollbackReason
-                    ?? FailureCollector.Current?.RollbackReason);
+                return FailureReport.RollbackErrorMessage(preprocessor?.Report.RollbackReason);
             return "transaction ended with status " + status;
         }
     }
@@ -107,11 +107,9 @@ namespace VibeModel.Services.Helpers
     /// </summary>
     public static class RevitFailureHandler
     {
-        // Consecutive "resolved, commit again" passes; Revit re-runs failure processing after
-        // a resolution, so a failure that keeps coming back would otherwise loop forever.
-        private static int _pass;
+        private static readonly FailureLoopGuard LoopGuard = new FailureLoopGuard();
 
-        internal static void ResetPasses() => _pass = 0;
+        internal static void ResetPasses() => LoopGuard.Reset();
 
         public static FailureProcessingResult Process(FailuresAccessor fa, out FailureReport seen)
         {
@@ -120,63 +118,71 @@ namespace VibeModel.Services.Helpers
             {
                 var messages = fa.GetFailureMessages();
                 if (messages == null || messages.Count == 0)
-                {
-                    _pass = 0;
                     return FailureProcessingResult.Continue;
-                }
 
                 var doc = fa.GetDocument();
-                bool rollBack = false, resolvedAny = false;
-                int pass = _pass + 1;
-
+                var described = new List<KeyValuePair<FailureMessageAccessor, FailureInfo>>();
                 foreach (FailureMessageAccessor msg in messages)
+                    described.Add(new KeyValuePair<FailureMessageAccessor, FailureInfo>(msg, Describe(doc, msg)));
+                int pass = LoopGuard.NextPass(described.Select(d => d.Value));
+
+                // Decide everything first: when one failure forces a rollback nothing else is
+                // applied or reported as kept — the whole transaction is undone anyway.
+                var actions = described.ConvertAll(d => RevitFailurePolicy.Decide(d.Value, pass));
+                if (actions.Contains(RevitFailureAction.RollBack))
                 {
-                    var info = Describe(doc, msg);
-                    switch (RevitFailurePolicy.Decide(info, pass))
+                    for (int i = 0; i < described.Count; i++)
                     {
-                        case RevitFailureAction.DeleteWarning:
-                            fa.DeleteWarning(msg);
-                            seen.AddWarning(info.Description);
-                            break;
-                        case RevitFailureAction.ResolveByDeletingAnnotations:
-                            msg.SetCurrentResolutionType(FailureResolutionType.DeleteElements);
-                            fa.ResolveFailure(msg);
-                            seen.AddResolved(info.Description, info.FailingElements);
-                            resolvedAny = true;
-                            break;
-                        default:
-                            seen.AddRollback(pass > RevitFailurePolicy.MaxPasses
-                                ? RevitFailurePolicy.LoopReason + ": " + info.Description
-                                : info.Description);
-                            rollBack = true;
-                            break;
+                        if (actions[i] != RevitFailureAction.RollBack) continue;
+                        var description = described[i].Value.Description;
+                        seen.AddRollback(pass > RevitFailurePolicy.MaxPasses
+                            ? RevitFailurePolicy.LoopReason + ": " + description
+                            : description);
                     }
-                }
-
-                Record(seen);
-
-                if (rollBack)
-                {
-                    _pass = 0;
+                    Record(seen);
+                    ResetPasses();
                     try { fa.DeleteAllWarnings(); } catch { /* nothing left to delete */ }
                     ClearAfterRollback(fa);
                     Logger.Info("Revit failure → rollback of '" + SafeName(fa) + "': " + seen.RollbackReason);
                     return FailureProcessingResult.ProceedWithRollBack;
                 }
-                if (resolvedAny)
+
+                var resolved = new List<FailureInfo>();
+                for (int i = 0; i < described.Count; i++)
                 {
-                    _pass = pass;
+                    var msg = described[i].Key;
+                    var info = described[i].Value;
+                    if (actions[i] == RevitFailureAction.DeleteWarning)
+                    {
+                        fa.DeleteWarning(msg);
+                        seen.AddWarning(info.Description);
+                    }
+                    else
+                    {
+                        // Revit's own "Delete Element(s)" — the button the dialog offers.
+                        msg.SetCurrentResolutionType(FailureResolutionType.DeleteElements);
+                        fa.ResolveFailure(msg);
+                        seen.AddResolved(info.Description, info.FailingElements);
+                        resolved.Add(info);
+                    }
+                }
+                Record(seen);
+
+                if (resolved.Count > 0)
+                {
+                    LoopGuard.Resolved(pass, resolved);
                     Logger.Info("Revit failure resolved by deleting annotations in '" + SafeName(fa) + "'");
                     return FailureProcessingResult.ProceedWithCommit;
                 }
-                _pass = 0;
+                ResetPasses();
                 return FailureProcessingResult.Continue;
             }
             catch (Exception ex)
             {
                 // Never fall through to Revit's dialog: an unhandled failure would block the main thread.
                 Logger.Error("Revit failure handling failed — rolling back", ex);
-                _pass = 0;
+                ResetPasses();
+                seen = new FailureReport();
                 seen.AddRollback("VibeModel could not process Revit's failure (" + ex.Message + ")");
                 Record(seen);
                 ClearAfterRollback(fa);
