@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+
+## v1.2.9 — Revit Failures Without Dialogs, IFC Read-Back (2026-10-13)
+
+### Fixed — a Revit failure dialog no longer hangs every command
+- Seen live during the demo recordings: a command or `exec` snippet that made Revit post an error
+  ("Spot Dimension does not lie on its reference", "One or more Spot Dimension references are no
+  longer valid") or a warning in a transaction without a handler ("Highlighted walls overlap" —
+  `wall` already dismissed warnings, so most likely an `exec` snippet's own transaction) opened
+  Revit's modal failure dialog. It was invisible with Revit minimized or driven headless, the
+  request timed out after 30 s, every following command timed out too, and the chat turn ended
+  with "Revit hangt in een dialoog".
+- VibeModel now handles failures itself while a command runs (`RevitFailurePolicy`): warnings are
+  dismissed and reported (`-- revit warning: …`). An error whose only failing elements are
+  view-specific spot dimensions, dimensions or tags is resolved with Revit's "Delete Element(s)",
+  which keeps the change (`-- revit resolved: … → deleted 1 annotation: <id> (Spot Elevations)`).
+  Any other error rolls back and returns `ERROR: Revit rolled the change back: <Revit's reason>`
+  with a `Hint:` line (`join` keeps its own refusal report, with that reason in it). When one
+  failure forces a rollback, nothing else of that pass is applied. JSON gets an additive `revit`
+  object, also per batch command. This covers VibeModel's own transactions (preprocessor) and
+  transactions an `exec` snippet opens itself (`Application.FailuresProcessing`, only while a
+  command runs — over HTTP or the file-based fallback; your own work in Revit keeps the normal
+  dialogs).
+- A transaction Revit rolled back during commit is now an error instead of a success (the commit
+  status used to be ignored). Live example: `set <wall> "Unconnected Height" 1` reported success while
+  Revit silently undid it; it now says `Revit rolled the change back: Revit gave no reason …`.
+- Any dialog that still opens during a command is logged with its id.
+- A failure Revit keeps re-posting after it was resolved is rolled back after 10 rounds instead of
+  looping (`FailureLoopGuard`); a snippet whose many transactions each resolve a different
+  annotation is not mistaken for such a loop.
+
 ### Fixed — "the IFC has no piles"
 - **`export ifc` reads its own file back.** The piles were there: Revit 2023's default IFC class
   table (`exportlayers-ifc-IAI.txt`) maps Structural Foundations to `IfcSlab BASESLAB`, so 510 piles

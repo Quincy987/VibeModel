@@ -42,23 +42,23 @@ public static class DynamicCommand
 
         using (var trans = new Transaction(doc, ""VibeModel: Exec""))
         {
-            // Suppress warnings to prevent modal dialogs blocking the main thread
-            var failOpts = trans.GetFailureHandlingOptions();
-            failOpts.SetFailuresPreprocessor(new VibeModel.Services.Helpers.WarningSwallower());
-            failOpts.SetClearAfterRollback(true);
-            trans.SetFailureHandlingOptions(failOpts);
+            // Revit failures are handled by VibeModel, so no modal failure dialog blocks the main thread
+            var __vmFailures = VibeModel.Services.Helpers.TransactionHelper.Attach(trans);
 
             trans.Start();
             try
             {
                 " + args + @"
 
-                if (trans.HasStarted())
-                    trans.Commit();
+                // A rollback the command handler collected is reported by ExecCommand itself.
+                var __vmCommitError = VibeModel.Services.Helpers.TransactionHelper.CommitOrReport(trans, __vmFailures);
+                var __vmCollected = VibeModel.Services.Helpers.FailureCollector.Current;
+                if (__vmCommitError != null && (__vmCollected == null || !__vmCollected.RolledBack))
+                    sb.AppendLine(""ERROR in exec: "" + __vmCommitError);
             }
             catch (Exception ex)
             {
-                if (trans.HasStarted())
+                if (trans.HasStarted() && !trans.HasEnded())
                     trans.RollBack();
                 sb.AppendLine(""ERROR in exec: "" + ex.Message);
             }
@@ -83,7 +83,7 @@ public static class DynamicCommand
                 compilerParams.ReferencedAssemblies.Add("System.Core.dll");
                 compilerParams.ReferencedAssemblies.Add(typeof(UIApplication).Assembly.Location);  // RevitAPIUI
                 compilerParams.ReferencedAssemblies.Add(typeof(Document).Assembly.Location);        // RevitAPI
-                compilerParams.ReferencedAssemblies.Add(typeof(VibeModel.Services.Helpers.WarningSwallower).Assembly.Location); // VibeModel
+                compilerParams.ReferencedAssemblies.Add(typeof(VibeModel.Services.Helpers.TransactionHelper).Assembly.Location); // VibeModel
 
                 try
                 {
@@ -119,6 +119,12 @@ public static class DynamicCommand
                 var method = type.GetMethod("Run", BindingFlags.Public | BindingFlags.Static);
                 var output = (string)method.Invoke(null, new object[] { uiApp });
 
+                // Revit rolled back the wrapper transaction or one the snippet opened itself:
+                // the caller must see an error with Revit's reason, not the snippet's output alone.
+                var failures = VibeModel.Services.Helpers.FailureCollector.Current;
+                if (failures != null && failures.RolledBack)
+                    return RollbackError(failures.RollbackReason, output);
+
                 if (string.IsNullOrEmpty(output))
                     return "(exec completed, no output — use sb.AppendLine(...) to produce output)";
 
@@ -132,6 +138,16 @@ public static class DynamicCommand
             {
                 return "ERROR: Execution failed: " + ex.Message;
             }
+        }
+
+        // A snippet can commit several transactions; only the one Revit refused is gone.
+        internal const string RollbackHint = "Revit rolled back the transaction that failed; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";
+
+        internal static string RollbackError(string reason, string output)
+        {
+            var text = "ERROR: " + FailureReport.RollbackErrorMessage(reason) + "\nHint: " + RollbackHint;
+            output = output?.TrimEnd();
+            return string.IsNullOrEmpty(output) ? text : text + "\n\n" + output;
         }
     }
 }

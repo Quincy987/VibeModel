@@ -78,6 +78,11 @@ namespace VibeModel
                 // Dismiss non-transaction dialogs during command execution
                 application.DialogBoxShowing += OnDialogBoxShowing;
 
+                // Safety net for Revit failures in transactions VibeModel did not open itself
+                // (an exec snippet's own `new Transaction`): handled while a command runs, so
+                // Revit's modal failure dialog never blocks the main thread.
+                application.ControlledApplication.FailuresProcessing += OnFailuresProcessing;
+
                 // Track the active document title (fires on the Revit UI thread) so the
                 // chat pane can label saved sessions with the project name without
                 // touching the Revit API outside an API context.
@@ -109,6 +114,7 @@ namespace VibeModel
             try
             {
                 application.DialogBoxShowing -= OnDialogBoxShowing;
+                application.ControlledApplication.FailuresProcessing -= OnFailuresProcessing;
                 application.ViewActivated -= OnViewActivated;
                 application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
                 application.Idling -= OnStandardsIdling;
@@ -349,7 +355,10 @@ namespace VibeModel
             if (!RevitCommandHandler.IsProcessingCommand)
                 return;
 
-            // Transaction warnings are already handled by WarningSwallower in TransactionHelper.
+            // Revit failures are handled before this point (RevitFailureHandler). Log every
+            // dialog that still shows up during a command so a gap is visible in the log.
+            Logger.Warn("Dialog during command: " + e.DialogId + " (" + e.GetType().Name + ")");
+
             // This catches non-failure dialogs that Revit shows during our operations.
             if (e is Autodesk.Revit.UI.Events.TaskDialogShowingEventArgs taskArgs)
             {
@@ -361,6 +370,20 @@ namespace VibeModel
                 Logger.Info("Auto-dismissing MessageBox during command");
                 e.OverrideResult(1); // IDOK
             }
+        }
+
+        /// <summary>
+        /// Application-wide failure handling, only while a VibeModel command executes (the
+        /// user's own work keeps Revit's normal dialogs). Our own transactions are handled by
+        /// their preprocessor first; this sees what is left, including snippet transactions.
+        /// </summary>
+        private void OnFailuresProcessing(object sender, Autodesk.Revit.DB.Events.FailuresProcessingEventArgs e)
+        {
+            if (!RevitCommandHandler.IsProcessingCommand)
+                return;
+
+            var result = Services.Helpers.RevitFailureHandler.Process(e.GetFailuresAccessor(), out _);
+            e.SetProcessingResult(result);
         }
 
         private void OnDocumentChanged(object sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs e)
