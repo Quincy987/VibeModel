@@ -11,9 +11,9 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](#license)
 [![Tests](https://img.shields.io/badge/tests-1004%20passing-success)](#building-from-source)
 
-<img src="docs/images/vibe-quay-wall.gif" width="880" alt="Revit with the VibeModel chat docked on the right: a request to build a quay wall on the drawing's quay line, the plan zooming in, the wall appearing along the line, then a follow-up about the capstone.">
+<img src="docs/images/vibe-quay-wall.gif" width="880" alt="Revit with the VibeModel chat docked on the right. Three Dutch requests: build a quay wall as an L-wall on the base map's quay line (wall, foundation slab, capstone), put two rows of piles under the slab, cut a 1:50 section with level marks. The model and the views change live while the chat works.">
 
-<sub>A quay wall asked for in the chat, drawn on the imported drawing's quay line, then a capstone question. Real screen recording, time-lapsed.</sub>
+<sub>Three questions, in Dutch: a quay wall as an L-wall on the base map's quay line (wall, foundation slab, capstone), two pile rows under the slab, then a 1:50 section with level marks. Real screen recording; the wait is time-lapsed (red badge = real seconds). <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">Full videos</a>.</sub>
 
 </div>
 
@@ -51,7 +51,7 @@ Remember: new sections get phase 2
 
 ## What it can do
 
-Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live recording of the panel, folded under the table; the scripts and the rest live in [docs/demos](docs/demos/README.md).
+Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live screen recording folded under the table (Dutch prompts; the full videos are in the <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">demo-videos release</a>); the scripts and the rest live in [docs/demos](docs/demos/README.md).
 
 | | Topic | Status |
 |---|---|---|
@@ -67,38 +67,38 @@ Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live 
 
 <details><summary><b>Diagnosis</b> — see it</summary>
 
-<img src="docs/images/diagnosis.gif" width="420" alt="Animated recording of the VibeModel chat panel in Revit: a question why a wall is not visible in this view is typed and sent, one diagnosis step runs, and the answer names the cause (the wall was hidden with Hide in View) and how to unhide it, followed by one-tap follow-up suggestions.">
+<img src="docs/images/diagnosis.gif" width="880" alt="The capstone has disappeared from the 3D view. &quot;Why can't I see it? Put it back.&quot; The chat reads the view's settings, names the cause (Hide in View) and restores it.">
+<br><sub>Dutch: “I can't see the capstone in this 3D view any more. Why not? Put it back.” The chat reads the view's visibility gates, names the cause (hidden in view) and unhides it.</sub>
 
 </details>
 
 <details><summary><b>Information</b> — see it</summary>
 
-<img src="docs/images/information.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request for a table of the 5 longest walls is answered with a table of id, type, length in m and height in mm, the phase in the text, a numbered source and the ids on one line.">
+<img src="docs/images/information.gif" width="880" alt="A laser scan (point cloud) lies over the model. The chat reads the ground level along the new wall every 2 m into a table, shows the scan with the quay in 3D, then makes the capstone top follow the measured ground.">
+<br><sub>Dutch: a point cloud over the model; “read the ground level along the new wall every 2 m” gives a table and a 3D view with the scan; “let the capstone top follow that” shape-edits the slab and opens a longitudinal section.</sub>
 
 </details>
 
 <details><summary><b>Modelling</b> — see it</summary>
 
-<img src="docs/images/modelling.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request to place 5 piles along a line, 3000 mm apart. The first attempt fails on the type name, the next steps look up the type and place all five in one step; the answer lists the positions and notes that one Ctrl+Z removes them.">
+<img src="docs/images/modelling.gif" width="880" alt="Expansion joints every 10 m through wall and capstone with an annotated elevation; all wooden piles replaced by raked concrete piles, each with its own pile number; a drowning-ladder recessed into the wall.">
+<br><sub>Dutch: “expansion joint every 10 m, 20 mm, with an elevation and a text label”; “replace the wooden piles by concrete piles 320x320, raked 1:5 outwards, numbered P01–P40”; “place a drowning-ladder recessed in the wall”. Each answer opens the view it made.</sub>
 
 </details>
 
 <details><summary><b>Sheets</b> — see it</summary>
 
-<img src="docs/images/sheets.gif" width="420" alt="Animated recording of the VibeModel chat panel: a request for a pile schedule on a new A0 sheet. Six steps create the schedule, filter out the sheet piles, place it on a new A0 sheet and check it; the answer shows the schedule as a table with a total.">
+<img src="docs/images/sheets.gif" width="880" alt="A pile schedule, level marks in the section, then section, elevation, 3D and schedule on a new A0 sheet with a fit check and a PDF export to the project folder.">
+<br><sub>Dutch: “a pile schedule with number, type and rake”; “add the level marks to section 1-1”; “put section, elevation, the 3D of the piles and the schedule on a new A0 sheet, check that everything fits, export it as PDF”.</sub>
 
 </details>
 
 <details><summary><b>Context</b> — see it</summary>
 
-<img src="docs/images/context.gif" width="420" alt="Animated recording of the VibeModel chat panel in two chats: 'Remember that new sections get phase 2' is saved to the project memory; in a new chat, 'Which phase do sections get here?' is answered from that memory.">
+<img src="docs/images/context.gif" width="880" alt="The project folder (memo, PDF) read with source markers, a project memory entry saved, and the journal of everything done in the model today.">
+<br><sub>Dutch: “which documents are in the project folder and what does the safety memo say?”; “remember: sections get phase 2 and the capstone is 200 mm”; “what was done in this model today?” — answered from the journal.</sub>
 
 </details>
-
-<div align="center">
-<img src="docs/images/vibe-3d-check.gif" width="880" alt="The same model in 3D: the chat selects the quay wall, colours it, explains a stray graphic override and removes it, then answers why the view suddenly looks coarse.">
-<br><sub>Diagnosis in the same chat: a stray colour override found and removed, then a question about a view that suddenly looks coarse.</sub>
-</div>
 
 ## How it works
 
@@ -122,6 +122,9 @@ VibeModel does not know how your office models. You tell it with a **standards p
 1. **Copy the sample.** `standards/example-office/` is a complete, fictional pack: `pack.json` (phases, view templates, title block, library paths, link settings), `core.md` (the rules every chat turn gets), topic sheets (`topics/phasing.md`, `sheets.md`, …) and `checks.json` (what `check` audits).
 2. **Fill in your office.** Your phase names, your view templates, where your family library lives, which parameters must be filled. Drop your modelling manual (PDF) next to it and run `standards --index` once: the chat can then quote it by chapter and cite it.
 3. **Point VibeModel at it.** Settings → *Standards pack folder* → your office share. Every modeller gets the same pack without a new add-in release; the add-in mirrors it to the local machine, so a missing VPN only means yesterday's pack stays in force.
+
+<img src="docs/images/standards.gif" width="880" alt="Recording: the model checked against an office standards pack; elements with problems coloured red in 3D; the chat fills the BIM-ID parameters and re-runs the check; then a temporary sheet-pile cofferdam is placed 3 m behind the quay wall in the temporary-works phase.">
+<br><sub>Dutch, with a real office pack: “check this model against the office standard and colour the problems red”; “fill the BIM-ID fields and check again”; “put a temporary sheet-pile cofferdam 3 m behind the wall in the temporary-works phase”.</sub>
 
 A pack only switches on for models that match its **fingerprint** (your phases and a shared parameter), so a stranger's model is never judged by your rules. And your pack stays yours: it lives on your share and your machines, never in this repository. The full format is in [standards/README.md](standards/README.md).
 
