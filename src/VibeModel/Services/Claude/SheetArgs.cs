@@ -419,6 +419,62 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>
+    /// `spot x y | spot elementId top|bottom` + `--leader x y`, `--fixed`, `--type name`: a spot
+    /// elevation (peilmaat) in the active view. Pure — unit-tested.
+    /// </summary>
+    internal sealed class SpotArgs
+    {
+        public double[] Point;         // x y in the view's frame (as `text`)
+        public int? ElementId;
+        public bool Top;               // element mode: top (true) or bottom (false)
+        public double[] Leader;        // leader end, view frame
+        public bool Fixed;
+        public string Type;
+        public string Error;
+
+        public const string Usage = "spot <x> <y> [--leader <x> <y>] [--fixed] [--type <name>]  |  " +
+                                    "spot <elementId> top|bottom [--leader <x> <y>] [--fixed] [--type <name>]";
+
+        public static SpotArgs Parse(string args)
+        {
+            var r = new SpotArgs();
+            var f = FlagArgs.Parse(args);
+            r.Error = f.Unknown("leader", "fixed", "type");
+            if (r.Error != null) return r;
+
+            var pos = f.Positional.SelectMany(p => p.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)).ToList();
+            if (pos.Count == 2 && (pos[1].Equals("top", StringComparison.OrdinalIgnoreCase) || pos[1].Equals("bottom", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!int.TryParse(pos[0], out int id)) { r.Error = "'" + pos[0] + "' is not an element id (spot <elementId> top|bottom)."; return r; }
+                r.ElementId = id;
+                r.Top = pos[1].Equals("top", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (pos.Count == 1 && int.TryParse(pos[0], out _))
+            { r.Error = "Say which side: spot " + pos[0] + " top|bottom."; return r; }
+            else if (pos.Count == 2)
+            {
+                r.Point = new double[2];
+                for (int i = 0; i < 2; i++)
+                    if (!FlagArgs.TryNum(pos[i], out r.Point[i])) { r.Error = "'" + pos[i] + "' is not a number (mm) — give x y, or an element id with top|bottom."; return r; }
+            }
+            else { r.Error = "Usage: " + Usage; return r; }
+
+            if (f.Has("leader") && !f.TryNums("leader", 2, out r.Leader, out r.Error)) return r;
+            if (f.Has("fixed"))
+            {
+                if (f.Values("fixed").Count > 0) { r.Error = "--fixed takes no value."; return r; }
+                r.Fixed = true;
+            }
+            if (f.Has("type"))
+            {
+                r.Type = f.Text("type");
+                if (string.IsNullOrWhiteSpace(r.Type)) { r.Error = "--type needs a spot elevation type name."; return r; }
+            }
+            return r;
+        }
+    }
+
+    /// <summary>
     /// `sheet` flags: --name, --number, --set "Param=Value" (repeatable). What remains parses
     /// exactly as before ([titleBlockName] [viewId]).
     /// </summary>

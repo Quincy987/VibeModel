@@ -57,6 +57,8 @@ namespace VibeModel.Tests
         [InlineData("look")]
         [InlineData("place")]
         [InlineData("placeid")]
+        [InlineData("spot")]
+        [InlineData("whatdepends")]
         public void Discovery_RegistersExpectedCommandNames(string name)
         {
             Assert.True(Registry.GetCommands().ContainsKey(name),
@@ -88,6 +90,7 @@ namespace VibeModel.Tests
         [InlineData("schedule")]
         [InlineData("callout")]
         [InlineData("region")]
+        [InlineData("spot")]
         public void IsModification_TrueForDocumentMutatingCommands(string name)
         {
             Assert.True(Registry.IsModification(name), name + " should be a modification command.");
@@ -102,6 +105,7 @@ namespace VibeModel.Tests
         [InlineData("docs")]
         [InlineData("readdoc")]
         [InlineData("export")]
+        [InlineData("whatdepends")]
         public void IsModification_FalseForReadOnlyCommands(string name)
         {
             Assert.False(Registry.IsModification(name), name + " should be read-only.");

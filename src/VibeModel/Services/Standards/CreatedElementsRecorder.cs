@@ -47,6 +47,43 @@ namespace VibeModel.Services.Standards
         }
     }
 
+    /// <summary>
+    /// Every element a VibeModel command created in this Revit session, per document — so
+    /// `spot`, `dimension`, `tag` and `whatdepends` can warn that an annotation sits on an
+    /// element VibeModel may replace. Fed from DocumentChanged while a command runs. Capped at
+    /// 50 000 ids per document (the oldest drop out). Main-thread only.
+    /// </summary>
+    public static class VibeModelCreated
+    {
+        private const int Cap = 50000;
+        private static readonly Dictionary<string, LinkedHashSet> ByDoc = new Dictionary<string, LinkedHashSet>();
+
+        public static void Record(string docKey, ICollection<ElementId> added)
+        {
+            if (string.IsNullOrEmpty(docKey) || added == null || added.Count == 0) return;
+            if (!ByDoc.TryGetValue(docKey, out var set)) ByDoc[docKey] = set = new LinkedHashSet();
+            foreach (var id in added) if (id != null) set.Add(id.IntegerValue);
+            set.Trim(Cap);
+        }
+
+        public static bool Contains(Document doc, ElementId id)
+        {
+            if (doc == null || id == null) return false;
+            var key = Services.Claude.ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+            return ByDoc.TryGetValue(key, out var set) && set.Contains(id.IntegerValue);
+        }
+
+        // Insertion-ordered set so the cap drops the oldest ids first.
+        private sealed class LinkedHashSet
+        {
+            private readonly HashSet<int> _set = new HashSet<int>();
+            private readonly Queue<int> _order = new Queue<int>();
+            public void Add(int v) { if (_set.Add(v)) _order.Enqueue(v); }
+            public bool Contains(int v) => _set.Contains(v);
+            public void Trim(int cap) { while (_order.Count > cap) _set.Remove(_order.Dequeue()); }
+        }
+    }
+
     /// <summary>What one command / batch changed: distinct ids, an id in exactly one group.</summary>
     public sealed class RecordedChanges
     {

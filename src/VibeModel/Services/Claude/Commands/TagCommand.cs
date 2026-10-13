@@ -114,13 +114,19 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("View: " + view.Name);
             if (ta.At != null || ta.Leader)
                 sb.AppendLine("Head: " + (ta.At != null ? Mm.F(ta.At[0]) + ", " + Mm.F(ta.At[1]) + " (" + atConvention + ")" : "at the element") + (ta.Leader ? ", with leader" : ""));
+            bool vmCreated = Standards.VibeModelCreated.Contains(doc, element.Id);
+            sb.AppendLine("Attached to: " + AnnotationText.CategoryWord(element.Category.Name) + " " + eid + " '" + element.Name + "'" +
+                          (vmCreated ? " (created by VibeModel this session)" : ""));
+            if (vmCreated || AnnotationText.LikelyReplaced(element.Category.Id.IntegerValue))
+                sb.AppendLine("Note: tags " + eid + " — a replacement re-tags the new element when it covers the same spot, else removes this tag (the replacing command's response says so)");
 
             var data = new Dictionary<string, object>
             {
                 { "created", new List<object> { tag.Id.IntegerValue } },
                 { "taggedElement", eid },
                 { "type", tagSymbol.Family.Name + " : " + tagSymbol.Name },
-                { "view", view.Name }
+                { "view", view.Name },
+                { "vibeModelCreated", vmCreated }
             };
             return CommandResult.Ok(sb.ToString(), data);
         }

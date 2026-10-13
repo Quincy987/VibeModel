@@ -305,7 +305,7 @@ wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
 
-### Sheet Assembly (section / crop / viewport / dimension / text / sheetinfo / schedule / callout / region / export)
+### Sheet Assembly (section / crop / viewport / dimension / spot / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
 and read the result back without looking at the Revit UI.
 ```bash
@@ -326,6 +326,10 @@ curl -s "http://localhost:18884/dimension?args=--points 0 0 5000 0"             
 curl -s "http://localhost:18884/dimension?args=--levels"                                             # Level string in the active section
 curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
+curl -s "http://localhost:18884/spot?args=103000 2000"                                               # Spot elevation (peilmaat) at a point, active view
+curl -s "http://localhost:18884/spot?args=1730980 bottom"                                            # ...on an element's top|bottom (a pile's tip)
+curl -s "http://localhost:18884/spot?args=101000 2000 --fixed --leader 104000 3500"                  # ...on a short detail line: never moves
+curl -s "http://localhost:18884/whatdepends?args=1730959 1730980"                                    # Read-only: annotations/hosted/joined on elements
 curl -s "http://localhost:18884/list?args=dimensions --view"                                         # Values in mm; also 'list text', 'list sheets' (view counts)
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
@@ -363,7 +367,61 @@ curl -s "http://localhost:18884/export?args=ifc"                                
 - **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
-  Revit's refusal message is returned verbatim with the usual cause.
+  A face that lies on a level (vertical dimension) or a grid / reference plane (horizontal) within 1 mm,
+  and that the view shows, is dimensioned to that datum instead ("level 'B.K. …' (at the Floors face
+  of 1730959)") — same value, survives the element being replaced. The response lists `Attached to:`
+  per reference (`stable (level)` / `element face of <id> (Floors, created by VibeModel this session)`)
+  and a `Note:` when a reference is a floor/foundation/wall face or a VibeModel-created element; JSON
+  `references[]` gains `stable` and `vibeModelCreated`. Should Revit refuse the datum version (an extent
+  that does not reach), the faces themselves are dimensioned and a `Note:` says why. A family instance's face is referenced as the
+  instance's own (`<instance>:0:INSTANCE:<symbol ref>`): instance geometry hands out references to
+  the family symbol, and a dimension on those hangs on the symbol (outlives the pile, invisible to a
+  scan for it). Revit's refusal message is returned verbatim with the usual cause.
+- **`spot`** (peilmaat) needs the same ACTIVE plan/section/elevation/detail view. `spot <x> <y>` snaps
+  (≤ 100 mm, in the view plane) to the nearest reference: a face the view CUTS (system families), else
+  the edge the view shows beyond the cut, and always an edge for family instances — measured: Revit
+  refuses a spot on an instance face in a section ("does not lie on its reference") and on a face behind
+  the cut ("no valid coordinates in the view"). Ties prefer a cut face, then a level edge (a pile's tip
+  square), then the element nearest the viewer. In a plan: the highest upward face at that x,y.
+  `spot <id> top|bottom`: the highest/lowest horizontal face (system; its near edge when not cut) or the
+  extreme level edge (instance), at the element's middle moved onto the cut plane. Default leader:
+  shoulder 12 paper mm above (top) / below (bottom), text 12 mm to the right; `--leader x y` moves the
+  text (view frame, the shoulder stays vertical over the point). `--fixed` hangs it on a 200 mm detail
+  line through the point (sections only — in a plan a detail line has the level's height): it never
+  moves or breaks, and never follows the model. `--type` = a spot elevation type (exact, else unique
+  substring; default: the document's). The response gives the value, `Attached to: floor 1730959
+  'Deksteen_200' — top face at x=103000 (follows the element)` and a `Warning:` when that element was
+  created by VibeModel this session or is a floor/foundation/wall (likely to be replaced).
+- **`whatdepends <ids|selected>`** (read-only): per element the spot elevations, dimensions and tags that
+  reference it (with view and sheet), hosted family instances, joined elements and "created by VibeModel
+  this session", then a `Verdict:` (how many annotations in which views a replacement affects). Revit's
+  dependent-element list misses an instance's edge-referenced spot, so annotations are also scanned.
+- **Annotations survive replacements.** Measured in Revit 2023: most host changes through the API
+  raise no failure — deleting a floor silently deletes its spot and a 3-reference dimension; a wall+floor
+  dimension survives with only the wall references (0 segments, reads wrong on the sheet); a pile's
+  type/parameter change can leave its tip spot with a stale value; shape-editing a floor invalidates the
+  spot on it. Around `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and any batch holding one) the
+  `AnnotationGuard` records the spots, dimensions and tags on the elements the command names (a type id
+  covers its instances; every annotation in the document for `exec`; skipped above 5000, logged once,
+  and the capture time is logged above 200 ms). Afterwards it only looks at annotations whose referenced
+  element the command deleted or changed — an annotation the command removed itself (named in `delete`,
+  or deleted by an `exec` snippet while its host stayed untouched) stays removed. A spot whose element
+  survived but moved or went stale is refreshed on the same element; a lost spot moves to a replacement
+  with a face/edge at the same height (±1 mm) within 50 mm (a 350 pile replacing a 320 one keeps its tip
+  spot); a dimension is re-created with every lost face replaced by a face on the old reference plane
+  (±1 mm, parallel, seen edge-on — also a new face of the same, changed element); a tag moves to the
+  replacement covering the old element's middle. A replacement is an element of the same category near
+  the old one that the command added, or that VibeModel created earlier this session (placed in a
+  previous call) — never an unrelated neighbour, so deleting one floor does not move its spot onto the
+  next. What cannot be re-hosted is deleted — never an invalid annotation left behind — and listed: `-- annotations: re-hosted 2 spot elevations (1730946 → 1730963 on
+  structural foundation 1730950, …); removed 1 dimension that referenced 1730914 (view Doorsnede 1-1,
+  sheet 0003)`, after the `-- revit`/`-- check` lines (JSON: additive `annotations` object
+  `{rehosted:[{from,to,kind,host,hosts,view}], removed:[{id,kind,referenced,view,sheet,by}]}`, `by` =
+  `revit` when Revit's failure policy deleted it — marked `(Revit)` in text). The re-host is in the same
+  undo step (a TransactionGroup) — except `exec`, whose snippet may save, open or close documents (not
+  allowed inside a group), so there it is its own undo step. A rolled-back atomic batch is not
+  reconciled. Nothing is touched when no recorded annotation changed. Pure parts (wording, tolerances,
+  scope): `AnnotationReport.cs`; Revit side: `AnnotationGuard.cs`.
 - **`schedule`** matches fields by the names Revit lists (exact, else a unique substring; unknown →
   the schedulable fields of that category). `--filter` numbers are in the project's display unit;
   a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per

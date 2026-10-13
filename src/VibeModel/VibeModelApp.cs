@@ -400,8 +400,12 @@ namespace VibeModel
                 Services.Standards.StandardsContext.MarkPromptDirty();
                 if (Services.Standards.CreatedElementsRecorder.IsArmed &&
                     e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted)
+                {
+                    var added = e.GetAddedElementIds();
                     Services.Standards.CreatedElementsRecorder.Record(
-                        e.GetAddedElementIds(), e.GetModifiedElementIds(), e.GetDeletedElementIds());
+                        added, e.GetModifiedElementIds(), e.GetDeletedElementIds());
+                    Services.Standards.VibeModelCreated.Record(key, added);
+                }
 
                 switch (e.Operation)
                 {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -231,15 +232,37 @@ namespace VibeModel.Services.Claude
             bool modifying = _registry.IsModification(request.Command);
             RecordedChanges changes = null;
             CommandResult cr;
-            FailureReport revit;
-            if (modifying) CreatedElementsRecorder.Arm();
+            FailureReport revit = null;
+
+            // Annotations on the elements this command replaces/changes (spot elevations,
+            // dimensions, tags): recorded now, re-hosted or removed afterwards — in the same undo
+            // step (one TransactionGroup), except for exec, whose snippet may save, open or close
+            // documents (not allowed inside a group): there the re-host is its own undo step.
+            var gdoc = AnnotationGuard.Applies(request.Command) ? app.ActiveUIDocument?.Document : null;
+            var snapshot = gdoc != null ? GuardCapture(gdoc, AnnotationScope.TargetIds(request.Command, request.Args)) : null;
+            TransactionGroup group = null;
+            AnnotationOutcome annotations = null;
+            if (snapshot != null && !request.Command.Equals("exec", StringComparison.OrdinalIgnoreCase))
+            {
+                try { group = new TransactionGroup(gdoc, "VibeModel: " + request.Command); group.Start(); }
+                catch (Exception ex) { Logger.Warn("Annotation guard: no transaction group (" + ex.Message + ")"); group?.Dispose(); group = null; }
+            }
             try
             {
-                cr = FailureCollector.Collect(() => _registry.ExecuteCore(request.Command, request.Args, app), out revit);
+                if (modifying) CreatedElementsRecorder.Arm();
+                try
+                {
+                    cr = FailureCollector.Collect(() => _registry.ExecuteCore(request.Command, request.Args, app), out revit);
+                }
+                finally
+                {
+                    if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
+                }
+                if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, changes, revit);
             }
             finally
             {
-                if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
+                EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
             }
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
             if (cr.Success && changes != null)
@@ -255,6 +278,7 @@ namespace VibeModel.Services.Claude
                 stamp = TryTakeStamp(app);
 
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
+            var annotationLine = annotations?.ToTextLine();
 
             if (json)
             {
@@ -263,7 +287,8 @@ namespace VibeModel.Services.Claude
                 {
                     if (stamp != null) dict["meta"] = stamp.ToMeta();
                     if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
-                    if (!revit.IsEmpty) dict["revit"] = revit.ToJson();
+                    if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
+                    if (annotationLine != null) dict["annotations"] = annotations.ToJson();
                 }
                 return _json.Serialize(obj);
             }
@@ -271,10 +296,66 @@ namespace VibeModel.Services.Claude
             var text = cr.RenderText();
             // What Revit's failure processing did (warnings dismissed, annotations deleted). An
             // error already carries Revit's reason, so its text stays as it is.
-            if (cr.Success)
+            if (cr.Success && revit != null)
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
+            if (annotationLine != null) text = AppendLine(text, annotationLine);
             return stamp != null ? stamp.AppendToText(text) : text;
+        }
+
+        // ------------------------------------------------------------------ annotation guard
+
+        /// <summary>Never lets the guard break a command: a failure means "no snapshot".</summary>
+        private static AnnotationSnapshot GuardCapture(Document doc, ICollection<int> targets)
+        {
+            try { return AnnotationGuard.Capture(doc, targets); }
+            catch (Exception ex)
+            {
+                Logger.Warn("Annotation guard: capture failed — " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Null when nothing happened (or the guard failed — logged, the command's result stands).</summary>
+        private static AnnotationOutcome GuardReconcile(AnnotationSnapshot snapshot, RecordedChanges changes, FailureReport revit)
+        {
+            try
+            {
+                var outcome = AnnotationGuard.Reconcile(snapshot, changes, revit);
+                return outcome == null || outcome.IsEmpty ? null : outcome;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Annotation guard: reconcile failed — " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Closes the guard's group: one undo step when anything was committed, else rolled back
+        /// (an empty group would leave an empty undo entry). Never leaves it open — an open
+        /// group locks the document.
+        /// </summary>
+        private static void EndGroup(TransactionGroup group, bool anyCommitted)
+        {
+            if (group == null) return;
+            try
+            {
+                if (group.HasStarted() && !group.HasEnded())
+                {
+                    if (anyCommitted) group.Assimilate();
+                    else group.RollBack();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Annotation guard: closing the group failed — " + ex.Message);
+                try { if (group.HasStarted() && !group.HasEnded()) group.RollBack(); } catch { }
+            }
+            finally
+            {
+                group.Dispose();
+            }
         }
 
         private static string AppendLine(string text, string line)
@@ -358,7 +439,15 @@ namespace VibeModel.Services.Claude
             var entries = new List<object>();      // json form (per-command results)
             bool anyModified = false, anyError = false, rolledBack = false;
 
-            RecordedChanges changes;
+            // Annotations on what the batch replaces: recorded now, re-hosted before the group
+            // is assimilated (same undo step); skipped when an atomic batch rolls back.
+            var batchItems = BatchItems(req.Batch).ToList();
+            var snapshot = AnnotationScope.AppliesToAny(batchItems.Select(i => i.Key))
+                ? GuardCapture(doc, AnnotationScope.TargetIds(batchItems)) : null;
+            var batchRevit = new FailureReport();
+            AnnotationOutcome annotations = null;
+
+            RecordedChanges changes = null;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
                 tg.Start();
@@ -371,6 +460,7 @@ namespace VibeModel.Services.Claude
                         // string prefix. Text output stays byte-identical via RenderText(), plus
                         // "-- revit" lines only when Revit's failure processing did something.
                         var cr = FailureCollector.Collect(() => _registry.ExecuteCore(item.Command, item.Args, app), out var revit);
+                        batchRevit.Merge(revit);
 
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
@@ -400,6 +490,11 @@ namespace VibeModel.Services.Claude
                     }
                     else if (anyModified)
                     {
+                        if (snapshot != null)
+                        {
+                            changes = CreatedElementsRecorder.DisarmChanges();
+                            annotations = GuardReconcile(snapshot, changes, batchRevit);
+                        }
                         tg.Assimilate(); // merge all committed child transactions into one undo entry
                     }
                     else
@@ -414,7 +509,11 @@ namespace VibeModel.Services.Claude
                 }
                 finally
                 {
-                    changes = CreatedElementsRecorder.DisarmChanges();
+                    if (CreatedElementsRecorder.IsArmed)
+                    {
+                        var rest = CreatedElementsRecorder.DisarmChanges();
+                        if (changes == null) changes = rest;
+                    }
                 }
             }
 
@@ -424,6 +523,8 @@ namespace VibeModel.Services.Claude
                 Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn);
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             if (checkLine != null) sb.AppendLine(checkLine);
+            var annotationLine = annotations?.ToTextLine();
+            if (annotationLine != null) sb.AppendLine(annotationLine);
 
             // One stamp for the whole batch, never per sub-command.
             var stamp = TryTakeStamp(app);
@@ -441,6 +542,8 @@ namespace VibeModel.Services.Claude
                     envelope["meta"] = stamp.ToMeta();
                 if (checkLine != null)
                     envelope["check"] = CheckEnvelope(checkLine, findings);
+                if (annotationLine != null)
+                    envelope["annotations"] = annotations.ToJson();
                 return _json.Serialize(envelope);
             }
 
