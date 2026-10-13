@@ -146,11 +146,11 @@ local stand-ins were run against the real share:
 
 ## The real demo project (read-only, after the merge)
 
-Opened the office's real demo project (IB template, 796 model elements, 3 BGT/K&L links, 2
+Opened the office's real demo project (office template, 796 model elements, 3 BGT/K&L links, 2
 point clouds, georeferenced). **It was not recognised**: the project had deleted the template's
 scope boxes, which the fingerprint required. Scope boxes are now supporting evidence only
 (phases + a bound shared parameter are the required criteria — those survive in real projects).
-Re-run: `template: ib-amsterdam (fingerprint match 2/2: phases, shared parameters, 3/3 view
+Re-run: `template: office-pack (fingerprint match 2/2: phases, shared parameters, 3/3 view
 templates, 4/4 views)`, prompt blocks 996 B + 3730 B, and `check` gave a real audit: survey point
 501 km from the internal origin yet correctly OK (shared 0,0,0), base point unrounded and
 unpinned, 4 of 7 underlays/grids unpinned, 7 plot views without a view template, file name.

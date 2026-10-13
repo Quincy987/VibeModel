@@ -385,17 +385,17 @@ namespace VibeModel.Tests
     {
         private static readonly string[] Fields =
         {
-            "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "Drawn By", "IB_AANVULLENDE_BEPALING_1",
-            "IB_AANVULLENDE_BEPALING_2", "IB_AANVULLENDE_BEPALING_4", "Sheet Issue Date"
+            "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "Drawn By", "OFFICE_NOTE_1",
+            "OFFICE_NOTE_2", "OFFICE_NOTE_4", "Sheet Issue Date"
         };
 
         [Fact]
         public void Stamp_GlobRangeAndPlain()
         {
-            var names = StampPatterns.Expand(new[] { "NL_META_*", "IB_AANVULLENDE_BEPALING_1..5", "drawn by", "Missing Field" },
+            var names = StampPatterns.Expand(new[] { "NL_META_*", "OFFICE_NOTE_1..5", "drawn by", "Missing Field" },
                 Fields, out var unmatched);
-            Assert.Equal(new[] { "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "IB_AANVULLENDE_BEPALING_1", "IB_AANVULLENDE_BEPALING_2",
-                                 "IB_AANVULLENDE_BEPALING_4", "Drawn By" }, names);
+            Assert.Equal(new[] { "NL_META_DOCUMENTSTATUS", "NL_META_PARAAF", "OFFICE_NOTE_1", "OFFICE_NOTE_2",
+                                 "OFFICE_NOTE_4", "Drawn By" }, names);
             Assert.Equal(new[] { "Missing Field" }, unmatched);
         }
 

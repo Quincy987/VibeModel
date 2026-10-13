@@ -295,7 +295,7 @@ namespace VibeModel.Services.Claude
 
     /// <summary>
     /// Office stamp-field patterns (pack `sheets.stampParameters`) against the parameter names a
-    /// sheet really has: `NL_META_*` (glob) and `IB_BEPALING_1..5` (numeric range) expand; a
+    /// sheet really has: `NL_META_*` (glob) and `OFFICE_NOTE_1..5` (numeric range) expand; a
     /// plain name stays as is. Pure — unit-tested.
     /// </summary>
     internal static class StampPatterns
