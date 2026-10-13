@@ -13,9 +13,9 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 
 </div>
 
-https://github.com/user-attachments/assets/0265c762-6a13-4089-b537-b8c73ea619e8
+https://github.com/user-attachments/assets/f0ce4493-641e-4ac3-a2cd-503215edaa36
 
-<div align="center"><sub>Three questions, in Dutch: a quay wall as an L-wall on the base map's quay line (wall, foundation slab, capstone), two pile rows under the slab, then a 1:50 section with level marks. Real screen recording; only the wait is sped up 6x (red badge = real seconds). <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">Full videos</a>.</sub></div>
+<div align="center"><sub>One request, in English: "Build a 20 m quay wall on the quay line of the drawing … wall, foundation slab, two rows of piles and a capstone." Real screen recording of v1.2.9; only the wait is sped up 6x (red badge = real seconds). <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">All videos</a>.</sub></div>
 
 ---
 
@@ -64,6 +64,14 @@ Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live 
 | 7 | **Checking against a document** — *"Does the number of bolts match the specification?"* | 🟡 Reads the PDF, counts, compares, cites sources, journals the result. Still a signal, not proof. ❌ Automatic drawing-vs-model comparison. |
 | 8 | **Context** — what it knows about your project and office | ✅ Project folder, office standards pack, project memory across chats, journal of changes. |
 | 9 | **Exchange** | ✅ Screenshots of any view or sheet; PDF, DWG and IFC export. |
+
+<details><summary><b>The longer version</b> — a quay wall in three questions (Dutch)</summary>
+
+https://github.com/user-attachments/assets/0265c762-6a13-4089-b537-b8c73ea619e8
+
+<sub>Dutch: a quay wall as an L-wall on the base map's quay line (wall, foundation slab, capstone); two pile rows under the slab; then a 1:50 section with level marks. The wait is sped up 6x.</sub>
+
+</details>
 
 <details><summary><b>Diagnosis</b> — see it</summary>
 
