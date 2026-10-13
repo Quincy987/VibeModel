@@ -405,7 +405,9 @@ namespace VibeModel
                 // project journal also at what it modified and deleted), and
                 // the prompt snapshot is re-rendered on the next idle.
                 Services.Standards.StandardsContext.MarkPromptDirty();
-                if (Services.Standards.CreatedElementsRecorder.IsArmed &&
+                // A family document a command generates (extrude / lwall …) commits its own
+                // transactions; its element ids mean nothing in the project and stay out.
+                if (Services.Standards.CreatedElementsRecorder.IsArmed && !doc.IsFamilyDocument &&
                     e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted)
                 {
                     var added = e.GetAddedElementIds();

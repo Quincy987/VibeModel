@@ -48,6 +48,7 @@ namespace VibeModel.Services.Standards
         public double CoordinateRoundingMm { get; private set; } = 1000;
         public LinkCadDefaults LinkCad { get; private set; } = new LinkCadDefaults();
         public ExportDefaults Export { get; private set; } = new ExportDefaults();
+        public ProfileDefaults Profiles { get; private set; } = new ProfileDefaults();
         public string StandardsFolder { get; private set; }
         /// <summary>What `standards distill` reads, in priority order (the text budget is spent first-come).</summary>
         public List<DistillSource> DistillSources { get; private set; } = new List<DistillSource>();
@@ -167,6 +168,7 @@ namespace VibeModel.Services.Standards
 
             pack.LinkCad = LinkCadDefaults.FromJson(PackJson.GetDict(root, "linkCad"));
             pack.Export = ExportDefaults.FromJson(PackJson.GetDict(root, "export"));
+            pack.Profiles = ProfileDefaults.FromJson(PackJson.GetDict(root, "profiles"));
             pack.StandardsFolder = PackJson.GetString(root, "standardsFolder");
             var distill = PackJson.GetDict(root, "distill");
             foreach (var s in PackJson.GetDictList(distill, "sources"))
@@ -449,6 +451,79 @@ namespace VibeModel.Services.Standards
             e.DwgSetup = string.IsNullOrWhiteSpace(s) ? null : s.Trim();
             return e;
         }
+    }
+
+    /// <summary>
+    /// How `profile` / `extrude` / `sweep` / `lwall` generate families in this office (plan 12 §3).
+    /// Every key is optional; an absent block gives the built-in defaults (prefix VM_, Generic
+    /// Models, the Autodesk metric templates, the families folder under the project folder).
+    /// </summary>
+    public sealed class ProfileDefaults
+    {
+        public string FamilyPrefix { get; set; }
+        /// <summary>Category per kind ("lwall", "extrude", "sweep") or per profile name ("capstone").</summary>
+        public Dictionary<string, string> Category { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Template file per kind: lineBased, generic, foundation, framing, profile.</summary>
+        public Dictionary<string, string> FamilyTemplates { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Folder for the generated .rfa files, relative to the project folder.</summary>
+        public string Folder { get; set; }
+        public string SharedParameterFile { get; set; }
+        public string LengthParameter { get; set; }
+        public string ObjectCodeParameter { get; set; }
+        /// <summary>Material per kind / profile name, "default" for the rest.</summary>
+        public Dictionary<string, string> Materials { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>lwall type-name pattern: {stem} {height} {foot} {footThickness} {toe} {slope}.</summary>
+        public string TypeName { get; set; }
+
+        /// <summary>The first key that has a category ("capstone", then "extrude"); null when none.</summary>
+        public string CategoryFor(params string[] keys) => First(Category, keys);
+
+        /// <summary>The first key that has a material, else "default"; null when none.</summary>
+        public string MaterialFor(params string[] keys) => First(Materials, keys) ?? First(Materials, "default");
+
+        private static string First(Dictionary<string, string> map, params string[] keys)
+        {
+            foreach (var k in keys ?? new string[0])
+                if (!string.IsNullOrWhiteSpace(k) && map.TryGetValue(k.Trim(), out var v) && !string.IsNullOrWhiteSpace(v))
+                    return v.Trim();
+            return null;
+        }
+
+        internal static ProfileDefaults FromJson(Dictionary<string, object> d)
+        {
+            var p = new ProfileDefaults();
+            if (d == null) return p;
+            p.FamilyPrefix = PackJson.GetString(d, "familyPrefix");
+            Fill(p.Category, PackJson.GetDict(d, "category"));
+            Fill(p.FamilyTemplates, PackJson.GetDict(d, "familyTemplates"));
+            p.Folder = Clean(PackJson.GetString(d, "folder"));
+            var sp = PackJson.GetDict(d, "sharedParameters");
+            p.SharedParameterFile = Clean(PackJson.GetString(sp, "file"));
+            p.LengthParameter = Clean(PackJson.GetString(sp, "length"));
+            p.ObjectCodeParameter = Clean(PackJson.GetString(sp, "objectCode"));
+            // "material": "Beton" is shorthand for { "default": "Beton" }.
+            var mat = PackJson.GetDict(d, "material");
+            if (mat != null) Fill(p.Materials, mat);
+            else
+            {
+                var single = Clean(PackJson.GetString(d, "material"));
+                if (single != null) p.Materials["default"] = single;
+            }
+            p.TypeName = Clean(PackJson.GetString(d, "typeName"));
+            return p;
+        }
+
+        private static void Fill(Dictionary<string, string> target, Dictionary<string, object> source)
+        {
+            if (source == null) return;
+            foreach (var kv in source)
+            {
+                var v = Clean(PackJson.GetString(source, kv.Key));
+                if (v != null) target[kv.Key] = v;
+            }
+        }
+
+        private static string Clean(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
     }
 
     public sealed class LinkCadDefaults

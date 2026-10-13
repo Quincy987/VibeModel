@@ -266,7 +266,13 @@ namespace VibeModel.Services.Claude
             }
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
             if (cr.Success && changes != null)
-                Journal(app, request.Command, request.Args, changes, request.Turn);
+            {
+                // A modifying command that also writes a file (a generated family's .rfa) names it.
+                IList<string> written = null;
+                if (_registry.GetCommands().TryGetValue(request.Command, out var cmd) && cmd is IJournaledCommand j)
+                    try { written = j.JournalFiles(cr); } catch { written = null; }
+                Journal(app, request.Command, request.Args, changes, request.Turn, written);
+            }
             else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
             bool json = request.Format == ResponseFormat.Json;
@@ -562,7 +568,7 @@ namespace VibeModel.Services.Claude
         /// Attributed to the chat turn of its X-VibeModel-Turn header, else to the chat turn
         /// running in this session (the Claude Code CLI's curls carry no header).
         /// </summary>
-        private static void Journal(UIApplication app, string command, string args, RecordedChanges changes, ChatTurnRef turn)
+        private static void Journal(UIApplication app, string command, string args, RecordedChanges changes, ChatTurnRef turn, IList<string> written = null)
         {
             try
             {
@@ -571,7 +577,7 @@ namespace VibeModel.Services.Claude
                 if (doc == null) return;
                 var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args,
                     RecordedChanges.Values(changes.Added), RecordedChanges.Values(changes.Modified),
-                    RecordedChanges.Values(changes.Deleted), turn ?? ProjectJournal.CurrentTurn);
+                    RecordedChanges.Values(changes.Deleted), turn ?? ProjectJournal.CurrentTurn, written);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)
