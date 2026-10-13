@@ -372,7 +372,8 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   of 1730959)") — same value, survives the element being replaced. The response lists `Attached to:`
   per reference (`stable (level)` / `element face of <id> (Floors, created by VibeModel this session)`)
   and a `Note:` when a reference is a floor/foundation/wall face or a VibeModel-created element; JSON
-  `references[]` gains `stable` and `vibeModelCreated`. A family instance's face is referenced as the
+  `references[]` gains `stable` and `vibeModelCreated`. Should Revit refuse the datum version (an extent
+  that does not reach), the faces themselves are dimensioned and a `Note:` says why. A family instance's face is referenced as the
   instance's own (`<instance>:0:INSTANCE:<symbol ref>`): instance geometry hands out references to
   the family symbol, and a dimension on those hangs on the symbol (outlives the pile, invisible to a
   scan for it). Revit's refusal message is returned verbatim with the usual cause.
@@ -395,19 +396,24 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   reference it (with view and sheet), hosted family instances, joined elements and "created by VibeModel
   this session", then a `Verdict:` (how many annotations in which views a replacement affects). Revit's
   dependent-element list misses an instance's edge-referenced spot, so annotations are also scanned.
-- **Annotations survive replacements.** Measured in Revit 2023: host changes through the API raise NO
-  failure — deleting a floor silently deletes its spot and a 3-reference dimension; a wall+floor
+- **Annotations survive replacements.** Measured in Revit 2023: most host changes through the API
+  raise no failure — deleting a floor silently deletes its spot and a 3-reference dimension; a wall+floor
   dimension survives with only the wall references (0 segments, reads wrong on the sheet); a pile's
   type/parameter change can leave its tip spot with a stale value; shape-editing a floor invalidates the
   spot on it. Around `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and any batch holding one) the
-  `AnnotationGuard` records the spots, dimensions and tags on the elements the command names (every one
-  in the document for `exec`; skipped above 5000, logged once) and afterwards: a spot whose element
+  `AnnotationGuard` records the spots, dimensions and tags on the elements the command names (a type id
+  covers its instances; every annotation in the document for `exec`; skipped above 5000, logged once,
+  and the capture time is logged above 200 ms). Afterwards it only looks at annotations whose referenced
+  element the command deleted or changed — an annotation the command removed itself (named in `delete`,
+  or deleted by an `exec` snippet while its host stayed untouched) stays removed. A spot whose element
   survived but moved or went stale is refreshed on the same element; a lost spot moves to a replacement
-  of the same category with a face/edge at the same height (±1 mm) within 50 mm (a 350 pile replacing a
-  320 one keeps its tip spot); a dimension is re-created with every lost face replaced by a face of a
-  replacement on the old reference plane (±1 mm, parallel, seen edge-on); a tag moves to the replacement
-  covering the old element's middle. What cannot be re-hosted is deleted — never an invalid annotation
-  left behind — and listed: `-- annotations: re-hosted 2 spot elevations (1730946 → 1730963 on
+  with a face/edge at the same height (±1 mm) within 50 mm (a 350 pile replacing a 320 one keeps its tip
+  spot); a dimension is re-created with every lost face replaced by a face on the old reference plane
+  (±1 mm, parallel, seen edge-on — also a new face of the same, changed element); a tag moves to the
+  replacement covering the old element's middle. A replacement is an element of the same category near
+  the old one that the command added, or that VibeModel created earlier this session (placed in a
+  previous call) — never an unrelated neighbour, so deleting one floor does not move its spot onto the
+  next. What cannot be re-hosted is deleted — never an invalid annotation left behind — and listed: `-- annotations: re-hosted 2 spot elevations (1730946 → 1730963 on
   structural foundation 1730950, …); removed 1 dimension that referenced 1730914 (view Doorsnede 1-1,
   sheet 0003)`, after the `-- revit`/`-- check` lines (JSON: additive `annotations` object
   `{rehosted:[{from,to,kind,host,hosts,view}], removed:[{id,kind,referenced,view,sheet,by}]}`, `by` =

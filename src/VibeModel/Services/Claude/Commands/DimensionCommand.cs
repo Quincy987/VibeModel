@@ -36,6 +36,7 @@ namespace VibeModel.Services.Claude.Commands
             public double Dist;       // --points only
             public bool Stable;       // a level, grid or reference plane - survives any element replacement
             public int FaceOf;        // the element whose face/plane this is (0 for datums)
+            public bool Substituted;  // a level/grid/reference plane standing in for an element face at the same position
         }
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -61,6 +62,7 @@ namespace VibeModel.Services.Claude.Commands
 
             XYZ d;
             List<Cand> refs;
+            List<Cand> faceRefs = null;   // element mode: the faces themselves, before levels/grids replaced them
             Line line;
             var notes = new List<string>();
 
@@ -120,14 +122,18 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 d = Direction(a.Dir, elems, right, up, vdir, view);
                 refs = new List<Cand>();
+                faceRefs = new List<Cand>();
+                var datums = DatumsInView(doc, view, d, o);
                 foreach (var e in elems)
                 {
-                    var c = PreferDatums(doc, view, References(view, e, d, vdir, o), d, o);
-                    if (c.Count == 0)
+                    var found = References(view, e, d, vdir, o);
+                    if (found.Count == 0)
                         notes.Add("element " + e.Id.IntegerValue + " (" + (e.Category?.Name ?? e.GetType().Name) + ") has no face/plane perpendicular to the dimension direction in this view — skipped");
-                    refs.AddRange(c);
+                    faceRefs.AddRange(found);
+                    refs.AddRange(PreferDatums(doc, found, datums));
                 }
                 refs = Order(refs);
+                faceRefs = Order(faceRefs);
                 if (refs.Count < 2)
                     return CommandResult.Error("BAD_ARGS", "Found " + refs.Count + " usable reference(s); a dimension needs two." +
                         (notes.Count > 0 ? " " + string.Join("; ", notes) : ""),
@@ -150,15 +156,19 @@ namespace VibeModel.Services.Claude.Commands
                 line = Line.CreateBound(o + d * (refs.First().Pos - 1) + perp * q, o + d * (refs.Last().Pos + 1) + perp * q);
             }
 
-            var ra = new ReferenceArray();
-            foreach (var c in refs) ra.Append(c.Ref);
-
-            Dimension dim = null;
-            var error = TransactionHelper.Execute(doc, "VibeModel: Create Dimension", () =>
+            var error = Create(doc, view, line, refs, out var dim);
+            if (error != null && faceRefs != null && faceRefs.Count >= 2 && refs.Any(c => c.Substituted))
             {
-                dim = doc.Create.NewDimension(view, line, ra);
-                if (dim == null) throw new InvalidOperationException("Revit returned no dimension.");
-            });
+                // Revit refused a level/grid standing in for a face (e.g. its extent does not reach
+                // here): dimension the faces themselves, as before.
+                var retry = Create(doc, view, line, faceRefs, out dim);
+                if (retry == null)
+                {
+                    notes.Add("dimensioned to the element faces: Revit refused the level/grid at the same position (" + error.Replace("ERROR: ", "") + ")");
+                    refs = faceRefs;
+                    error = null;
+                }
+            }
             if (error != null)
                 return CommandResult.FromTransactionError(error, "REVIT_ERROR",
                     "Usually: the references are not parallel, or not perpendicular to the view plane in '" + view.Name +
@@ -200,21 +210,30 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(sb.ToString(), data);
         }
 
+        private static string Create(Document doc, View view, Line line, List<Cand> refs, out Dimension dim)
+        {
+            var ra = new ReferenceArray();
+            foreach (var c in refs) ra.Append(c.Ref);
+            Dimension created = null;
+            var error = TransactionHelper.Execute(doc, "VibeModel: Create Dimension", () =>
+            {
+                created = doc.Create.NewDimension(view, line, ra);
+                if (created == null) throw new InvalidOperationException("Revit returned no dimension.");
+            });
+            dim = created;
+            return error;
+        }
+
         // ---------------------------------------------------------------- stable references
 
-        /// <summary>
-        /// An element face that lies on a level (vertical dimension) or on a grid / reference plane
-        /// (horizontal) within 1 mm is dimensioned to that datum instead: same value, and it
-        /// survives the element being replaced. Only datums the view shows are used.
-        /// </summary>
-        private static List<Cand> PreferDatums(Document doc, View view, List<Cand> found, XYZ d, XYZ o)
+        /// <summary>The levels (vertical dimension), grids and reference planes (horizontal) the view shows, as dimension candidates.</summary>
+        private static List<Cand> DatumsInView(Document doc, View view, XYZ d, XYZ o)
         {
-            if (found.Count == 0 || found.All(c => c.Stable)) return found;
-            double tol = RevitUnitHelper.MmToFeet(1);
             var datums = new List<Cand>();
             try
             {
-                foreach (var e in new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElements())
+                var classes = new ElementMulticlassFilter(new List<Type> { typeof(Level), typeof(Grid), typeof(ReferencePlane) });
+                foreach (var e in new FilteredElementCollector(doc, view.Id).WherePasses(classes))
                 {
                     if (e is Level l && Math.Abs(d.Z) > 0.99 && l.GetPlaneReference() != null)
                         datums.Add(new Cand { Ref = l.GetPlaneReference(), Pos = (l.ProjectElevation - o.Z) * Math.Sign(d.Z), ElementId = l.Id.IntegerValue, What = "level '" + l.Name + "'", Stable = true });
@@ -224,8 +243,19 @@ namespace VibeModel.Services.Claude.Commands
                         datums.Add(new Cand { Ref = rp.GetReference(), Pos = (rp.BubbleEnd - o).DotProduct(d), ElementId = rp.Id.IntegerValue, What = "reference plane '" + rp.Name + "'", Stable = true });
                 }
             }
-            catch { return found; }
-            if (datums.Count == 0) return found;
+            catch { /* no datums: faces only */ }
+            return datums;
+        }
+
+        /// <summary>
+        /// An element face that lies on a level (vertical dimension) or on a grid / reference plane
+        /// (horizontal) within 1 mm is dimensioned to that datum instead: same value, and it
+        /// survives the element being replaced. Only datums the view shows are used.
+        /// </summary>
+        private static List<Cand> PreferDatums(Document doc, List<Cand> found, List<Cand> datums)
+        {
+            if (found.Count == 0 || datums.Count == 0 || found.All(c => c.Stable)) return found;
+            double tol = RevitUnitHelper.MmToFeet(1);
             var result = new List<Cand>();
             foreach (var c in found)
             {
@@ -235,7 +265,7 @@ namespace VibeModel.Services.Claude.Commands
                 var host = doc.GetElement(new ElementId(of));
                 result.Add(new Cand
                 {
-                    Ref = datum.Ref, Pos = datum.Pos, ElementId = datum.ElementId, Stable = true,
+                    Ref = datum.Ref, Pos = datum.Pos, ElementId = datum.ElementId, Stable = true, Substituted = true,
                     What = datum.What + " (at the " + (host?.Category?.Name ?? "element") + " face of " + of + ")"
                 });
             }
@@ -409,7 +439,7 @@ namespace VibeModel.Services.Claude.Commands
         /// for it). The instance's own reference to the same face is used instead.
         /// </summary>
         private static Reference InstanceRef(Element e, Reference r)
-            => e is FamilyInstance fi && r != null && r.ElementId != fi.Id ? (AnnotationGeometry.ToInstanceReference(fi, r) ?? r) : r;
+            => e is FamilyInstance fi ? (AnnotationGeometry.AsInstanceReference(fi, r) ?? r) : r;
 
         private static IEnumerable<PlanarFace> PlanarFaces(Element e, View view)
         {

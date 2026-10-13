@@ -107,7 +107,9 @@ namespace VibeModel.Tests
         {
             var v = AnnotationText.DependsVerdict(new List<long> { 1730959 }, 2, new List<string> { "Doorsnede probe, sheet 0003" }, 0);
             Assert.StartsWith("Replacing 1730959 affects 2 annotations in 1 view (Doorsnede probe, sheet 0003) and 0 hosted elements.", v);
-            Assert.Contains("within 1 mm", v);
+            Assert.EndsWith(AnnotationText.RehostRule, v);
+            Assert.Contains("same height (±1 mm) within 50 mm", AnnotationText.RehostRule);
+            Assert.Contains("same planes (±1 mm)", AnnotationText.RehostRule);
             var none = AnnotationText.DependsVerdict(new List<long> { 5 }, 0, new List<string>(), 1);
             Assert.Equal("Replacing 5 affects 0 annotations and 1 hosted element.", none);
         }
@@ -122,15 +124,6 @@ namespace VibeModel.Tests
         }
 
         // ------------------------------------------------------------------ matching maths
-
-        [Fact]
-        public void Within_ExactToleranceEdge()
-        {
-            var a = new V3(1000, 2000, 300);
-            Assert.True(AnnotationMatch.Within(a, new V3(1001.0, 2000, 300)));
-            Assert.False(AnnotationMatch.Within(a, new V3(1001.01, 2000, 300)));
-            Assert.True(AnnotationMatch.Within(a, a));
-        }
 
         [Fact]
         public void SamePlane_ParallelEitherSense_WithinOneMillimetre()
@@ -156,6 +149,20 @@ namespace VibeModel.Tests
             Assert.False(AnnotationMatch.SpotMatch(old, new V3(105066, 100000, -10051)));     // 51 mm away
             Assert.True(AnnotationMatch.SameHeight(1030, 1031));
             Assert.False(AnnotationMatch.SameHeight(1030, 1031.01));
+        }
+
+        [Fact]
+        public void AssignPositions_NearestEndWins_RegardlessOfReferenceOrder()
+        {
+            // A face at 1100 and a level at 1300 whose references come in the "wrong" order.
+            var ts = new List<double> { 1100, 1300 };
+            Assert.Equal(new double?[] { 1300, 1100 }, AnnotationMatch.AssignPositions(ts, new List<double?> { 1300.2, 1099.9 }));
+            Assert.Equal(new double?[] { 1100, 1300 }, AnnotationMatch.AssignPositions(ts, new List<double?> { 1100, 1300 }));
+            // No estimate: the free ends that are left, in order.
+            Assert.Equal(new double?[] { 1100, 1300, 1700 },
+                AnnotationMatch.AssignPositions(new List<double> { 1100, 1300, 1700 }, new List<double?> { null, 1290, null }));
+            // More references than ends: the rest stay unknown.
+            Assert.Equal(new double?[] { 5, null }, AnnotationMatch.AssignPositions(new List<double> { 5 }, new List<double?> { null, null }));
         }
 
         [Fact]

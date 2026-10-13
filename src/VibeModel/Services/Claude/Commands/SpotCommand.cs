@@ -116,8 +116,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (a.Fixed)
                 {
                     var vdir = view.ViewDirection.Normalize();
-                    var o = SheetHelper.SectionOrigin(view);
-                    var onPlane = origin - vdir * (origin - o).DotProduct(vdir);
+                    var onPlane = origin - vdir * (origin - view.Origin).DotProduct(vdir);   // view.Origin lies on the cut plane
                     var right = view.RightDirection.Normalize();
                     double half = RevitUnitHelper.MmToFeet(100);
                     helper = doc.Create.NewDetailCurve(view, Line.CreateBound(onPlane - right * half, onPlane + right * half));
@@ -157,8 +156,9 @@ namespace VibeModel.Services.Claude.Commands
                               (side == "point" ? "" : side + " ") + kind + " at " + where + " (follows the element)");
             if (vmCreated || likely)
                 sb.AppendLine("Warning: " + host.Id.IntegerValue + (vmCreated ? " was created by VibeModel in this session" : " is a " + AnnotationText.CategoryWord(host.Category?.Name) + " and likely to be replaced") +
-                              "; replacing it (placeid + delete, exec) re-hosts this spot when the new element lies within " +
-                              Mm.F1(AnnotationMatch.RehostToleranceMm) + " mm, else removes it — the replacing command's response says which. Use --fixed for a reference that never moves.");
+                              "; replacing it (placeid + delete, exec) moves this spot to the new element when it has a face/edge at the same height (±" +
+                              Mm.F1(AnnotationMatch.RehostToleranceMm) + " mm) within " + Mm.F(AnnotationMatch.SearchRadiusMm) +
+                              " mm, else removes it — the replacing command's response says which. Use --fixed for a reference that never moves.");
 
             var data = new Dictionary<string, object>
             {
@@ -272,12 +272,11 @@ namespace VibeModel.Services.Claude.Commands
             if (!(view is ViewPlan))
             {
                 var vdir = view.ViewDirection.Normalize();
-                var o = SheetHelper.SectionOrigin(view);
                 var flat = new XYZ(vdir.X, vdir.Y, 0);
                 if (flat.GetLength() > 1e-6)
                 {
                     flat = flat.Normalize();
-                    c = c - flat * (c - o).DotProduct(flat);
+                    c = c - flat * (c - view.Origin).DotProduct(flat);   // view.Origin lies on the cut plane
                 }
             }
             return c;
@@ -351,10 +350,8 @@ namespace VibeModel.Services.Claude.Commands
             return best;
         }
 
-        private static bool IsFlat(Curve c) => c is Line l && Math.Abs(l.Direction.Z) < 0.01;
-
         // On a tie: a face the view cuts, then a level edge (a pile's tip square), then any edge.
-        private static int Rank(AnnotationGeometry.Hit h) => h.Curve == null ? 0 : IsFlat(h.Curve) ? 1 : 2;
+        private static int Rank(AnnotationGeometry.Hit h) => h.Curve == null ? 0 : AnnotationGeometry.IsLevel(h.Curve) ? 1 : 2;
 
         // Then the one nearest the viewer — what the section shows in front.
         private static double Depth(AnnotationGeometry.Hit h, View view) => Math.Abs((h.Point - view.Origin).DotProduct(view.ViewDirection.Normalize()));

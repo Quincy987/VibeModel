@@ -47,9 +47,7 @@ namespace VibeModel.Services.Claude.Commands
                 elements.Add(e);
             }
 
-            var sheets = new Dictionary<int, string>();
-            foreach (var vp in new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>())
-                if (doc.GetElement(vp.SheetId) is ViewSheet s) sheets[vp.ViewId.IntegerValue] = s.SheetNumber;
+            var sheets = AnnotationGuard.SheetsByView(doc);
 
             // One scan for all ids (instances need it — their edge spots are no dependents).
             var scanned = AnnotationGuard.ReferencingAnnotations(doc, ids);
@@ -78,7 +76,7 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 catch { /* some elements refuse dependents — the scan covers them */ }
                 foreach (var de in scanned)
-                    if (References(de, id)) annotations[de.Id.IntegerValue] = de;
+                    if (AnnotationGuard.ReferencedIds(de).Contains(id)) annotations[de.Id.IntegerValue] = de;
 
                 var hosted = allHosted.Where(fi => fi.Host.Id.IntegerValue == id).Select(fi => fi.Id.IntegerValue).ToList();
                 List<int> joined;
@@ -127,18 +125,6 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine();
             sb.AppendLine("Verdict: " + verdict);
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object> { { "elements", perElement }, { "verdict", verdict } });
-        }
-
-        private static bool References(Element annotation, int id)
-        {
-            try
-            {
-                if (annotation is IndependentTag t) return t.GetTaggedLocalElementIds().Any(i => i.IntegerValue == id);
-                if (annotation is Dimension d)
-                    foreach (Reference r in d.References) if (r.ElementId.IntegerValue == id) return true;
-            }
-            catch { }
-            return false;
         }
     }
 }

@@ -178,11 +178,15 @@ namespace VibeModel.Services.Claude
             var text = "Replacing " + who + " affects " + annotations + (annotations == 1 ? " annotation" : " annotations");
             if (nv > 0) text += " in " + nv + (nv == 1 ? " view" : " views") + " (" + string.Join("; ", viewLabels.Take(5)) + (nv > 5 ? "; …" : "") + ")";
             text += " and " + hosted + (hosted == 1 ? " hosted element" : " hosted elements") + ".";
-            if (annotations > 0)
-                text += " delete/exec/set re-host spots, dimensions and tags whose reference lands within " +
-                        Mm(AnnotationMatch.RehostToleranceMm) + " mm of the new element and list what they remove.";
+            if (annotations > 0) text += " " + RehostRule;
             return text;
         }
+
+        /// <summary>How delete/exec/set/join/unjoin/phase treat annotations on what they replace — one wording for every response.</summary>
+        public static readonly string RehostRule =
+            "delete, exec, set, join, unjoin and phase move them onto a replacement — a spot to a face/edge at the same height (±" +
+            Mm(AnnotationMatch.RehostToleranceMm) + " mm) within " + Mm(AnnotationMatch.SearchRadiusMm) + " mm, a dimension to faces on the same planes (±" +
+            Mm(AnnotationMatch.RehostToleranceMm) + " mm), a tag to the element covering the old one's middle — and list what they remove.";
 
         private static string Mm(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
     }
@@ -206,8 +210,6 @@ namespace VibeModel.Services.Claude
         /// <summary>Normals count as parallel at |dot| ≥ this.</summary>
         public const double ParallelDot = 0.999;
 
-        public static bool Within(V3 a, V3 b, double tolMm = RehostToleranceMm) => (a - b).Length <= tolMm + 1e-9;
-
         /// <summary>The radius (mm) around the old reference in which replacement elements are looked for.</summary>
         public const double SearchRadiusMm = 50.0;
 
@@ -228,6 +230,31 @@ namespace VibeModel.Services.Claude
             if (la < 1e-12 || lb < 1e-12) return false;
             if (Math.Abs(normalA.Dot(normalB) / (la * lb)) < ParallelDot) return false;
             return Math.Abs((originB - originA).Dot(normalA) / la) <= tolMm + 1e-9;
+        }
+
+        /// <summary>
+        /// Gives each reference one of the segment ends: the nearest free one to its own position;
+        /// references without a position take the free ends that are left, in order. Revit's
+        /// reference order does not have to follow the line's direction.
+        /// </summary>
+        public static List<double?> AssignPositions(List<double> ts, List<double?> estimates)
+        {
+            var result = new List<double?>(estimates.Select(_ => (double?)null));
+            var free = new List<double>(ts);
+            for (int i = 0; i < estimates.Count; i++)
+            {
+                if (!estimates[i].HasValue || free.Count == 0) continue;
+                var nearest = free.OrderBy(x => Math.Abs(x - estimates[i].Value)).First();
+                result[i] = nearest;
+                free.Remove(nearest);
+            }
+            for (int i = 0; i < estimates.Count && free.Count > 0; i++)
+            {
+                if (result[i].HasValue) continue;
+                result[i] = free[0];
+                free.RemoveAt(0);
+            }
+            return result;
         }
 
         /// <summary>Same facing: a spot on a top face only moves to another face that also faces up (dot ≥ ParallelDot).</summary>

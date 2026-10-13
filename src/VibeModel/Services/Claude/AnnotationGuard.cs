@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Autodesk.Revit.DB;
 using VibeModel.Infrastructure;
@@ -10,19 +11,21 @@ namespace VibeModel.Services.Claude
 {
     /// <summary>
     /// Keeps annotations alive when a VibeModel command replaces or changes the element they sit
-    /// on. Measured in Revit 2023: host changes made through the API raise no failure at all —
+    /// on. Measured in Revit 2023: most host changes made through the API raise no failure —
     /// deleting a floor silently deletes its spot elevation, a wall+floor dimension survives with
-    /// only the wall references (0 segments, reads wrong on the sheet), moving a pile deletes its
-    /// spot, and changing a pile's length leaves its spot with a stale value.
+    /// only the wall references (0 segments, reads wrong on the sheet), a pile's parameter change
+    /// can leave its spot with a stale value, and shape-editing a floor invalidates its spot.
     /// <para>
     /// Around delete / exec / set / join / unjoin / phase (and any batch holding one of them):
     /// <see cref="Capture"/> records the spot elevations, dimensions and tags on the elements the
     /// command names (every one in the document for exec); after the command <see cref="Reconcile"/>
-    /// puts each one that vanished or went stale back on the new (or the same, refreshed) element
-    /// when that element's face/edge lies within <see cref="AnnotationMatch.RehostToleranceMm"/>
-    /// of where the old reference was, and deletes the rest — never an invalid annotation left
-    /// behind. Revit's own failure handling (<see cref="FailureCollector"/>) runs first; annotations
-    /// it deleted are listed as removed "(Revit)" unless they could be re-hosted.
+    /// looks only at annotations whose referenced element the command deleted or changed (an
+    /// annotation the command removed itself stays removed). Each one that vanished or went stale
+    /// is refreshed on the same element when it survived, else moved to a replacement (what the
+    /// command added, or an element VibeModel created earlier this session) — spots at the same
+    /// height ±1 mm within 50 mm, dimension faces on the old plane ±1 mm — and the rest is deleted,
+    /// never left invalid. Revit's own failure handling (<see cref="FailureCollector"/>) runs first;
+    /// annotations it deleted are listed as removed "(Revit)" unless they could be re-hosted.
     /// </para>
     /// Main thread only. Never throws into a command: callers wrap every step.
     /// </summary>
@@ -37,19 +40,25 @@ namespace VibeModel.Services.Claude
 
         public static bool Applies(string command) => AnnotationScope.Applies(command);
 
+        /// <summary>Every spot elevation, dimension and tag in the document (one collector, three classes).</summary>
+        internal static FilteredElementCollector Annotations(Document doc)
+            => new FilteredElementCollector(doc).WherePasses(new ElementMulticlassFilter(
+                new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) }));
+
         // ------------------------------------------------------------------ capture
 
         /// <summary>
         /// Records the annotations that reference <paramref name="targets"/> (null = every
-        /// annotation in the document). Null when there is nothing to guard.
+        /// annotation in the document; a type id stands for all its instances). Null when there
+        /// is nothing to guard.
         /// </summary>
         public static AnnotationSnapshot Capture(Document doc, ICollection<int> targets)
         {
             if (doc == null || doc.IsFamilyDocument) return null;
             if (targets != null && targets.Count == 0) return null;
+            var clock = Stopwatch.StartNew();
 
-            var collector = new FilteredElementCollector(doc).WherePasses(new ElementMulticlassFilter(
-                new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) }));
+            var collector = Annotations(doc);
             int count = collector.GetElementCount();
             if (count == 0) return null;
             if (count > Budget)
@@ -59,7 +68,8 @@ namespace VibeModel.Services.Claude
                 return null;
             }
 
-            var targetSet = targets != null ? new HashSet<int>(targets) : null;
+            var named = targets != null ? new HashSet<int>(targets) : new HashSet<int>();
+            var targetSet = targets != null ? WithInstancesOfTypes(doc, targets) : null;
             var sheets = SheetsByView(doc);
             var records = new List<AnnotationRecord>();
             foreach (var e in collector)
@@ -77,25 +87,40 @@ namespace VibeModel.Services.Claude
                     Logger.Warn("Annotation guard: could not record " + e.Id.IntegerValue + ": " + ex.Message);
                 }
             }
-            return records.Count == 0 ? null : new AnnotationSnapshot(doc, records);
+            if (clock.ElapsedMilliseconds > 200)
+                Logger.Info("Annotation guard: captured " + records.Count + " of " + count + " annotations in " + clock.ElapsedMilliseconds + " ms");
+            return records.Count == 0 ? null : new AnnotationSnapshot(doc, records, named);
+        }
+
+        /// <summary>The targets plus, for every target that is a type, the instances of that type (a type edit changes them all).</summary>
+        private static HashSet<int> WithInstancesOfTypes(Document doc, ICollection<int> targets)
+        {
+            var set = new HashSet<int>(targets);
+            var types = new HashSet<int>(targets.Where(t => doc.GetElement(new ElementId(t)) is ElementType));
+            if (types.Count == 0) return set;
+            foreach (var e in new FilteredElementCollector(doc).WhereElementIsNotElementType())
+            {
+                var tid = e.GetTypeId();
+                if (tid != null && types.Contains(tid.IntegerValue)) set.Add(e.Id.IntegerValue);
+            }
+            return set;
         }
 
         private static AnnotationRecord Record(Document doc, Element e, HashSet<int> targets)
         {
-            if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) return null;
+            if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) return null;   // a floor's sketch dimensions etc.
 
             if (e is IndependentTag tag)
             {
                 var tagged = tag.GetTaggedLocalElementIds().Where(i => i != ElementId.InvalidElementId).ToList();
                 if (tagged.Count == 0) return null;
                 if (targets != null && !tagged.Any(i => targets.Contains(i.IntegerValue))) return null;
-                var host = doc.GetElement(tagged[0]);
                 var rec = new AnnotationRecord
                 {
                     Id = e.Id.IntegerValue, Kind = AnnotationKind.Tag, OwnerViewId = e.OwnerViewId, TypeId = e.GetTypeId(),
                     Head = tag.TagHeadPosition, TagLeader = tag.HasLeader, Orientation = tag.TagOrientation
                 };
-                rec.Refs.Add(RefOf(doc, host, null));
+                rec.Refs.Add(RefOf(doc, doc.GetElement(tagged[0]), null));
                 return rec;
             }
 
@@ -107,14 +132,12 @@ namespace VibeModel.Services.Claude
                 var host = doc.GetElement(reference.ElementId);
                 if (host == null) return null;
                 if (targets != null && !targets.Contains(host.Id.IntegerValue)) return null;
-                var view = doc.GetElement(e.OwnerViewId) as View;
                 var rec = new AnnotationRecord
                 {
                     Id = e.Id.IntegerValue, Kind = AnnotationKind.SpotElevation, OwnerViewId = e.OwnerViewId, TypeId = e.GetTypeId()
                 };
-                var rr = RefOf(doc, host, reference);
-                rec.Refs.Add(rr);
-                var hit = AnnotationGeometry.Resolve(doc, sd, view);
+                rec.Refs.Add(RefOf(doc, host, reference));
+                var hit = AnnotationGeometry.Resolve(doc, sd, doc.GetElement(e.OwnerViewId) as View);
                 rec.Point = hit?.Point ?? SafeOrigin(sd);
                 rec.FaceNormal = hit?.Normal;
                 rec.EdgeRef = hit != null ? hit.Curve != null : host is FamilyInstance;
@@ -144,11 +167,12 @@ namespace VibeModel.Services.Claude
                 var ts = SegmentPositions(dim, rec.LineOrigin, rec.LineDir);
                 rec.TMin = ts.Count > 0 ? ts.Min() : 0;
                 rec.TMax = ts.Count > 0 ? ts.Max() : 0;
+                var hosts = list.Select(x => doc.GetElement(x.ElementId)).ToList();
+                var positions = AnnotationMatch.AssignPositions(ts, list.Select((x, i) => PlanePosition(hosts[i], x, rec.LineOrigin, rec.LineDir, ts)).ToList());
                 for (int i = 0; i < list.Count; i++)
                 {
-                    var host = doc.GetElement(list[i].ElementId);
-                    var rr = RefOf(doc, host, list[i]);
-                    rr.T = i < ts.Count ? ts[i] : (double?)null;
+                    var rr = RefOf(doc, hosts[i], list[i]);
+                    rr.T = positions[i];
                     rec.Refs.Add(rr);
                 }
                 return rec;
@@ -160,16 +184,11 @@ namespace VibeModel.Services.Claude
         {
             var rr = new RefRecord { ElementId = host?.Id.IntegerValue ?? -1 };
             if (reference != null)
-            {
                 try { rr.Stable = reference.ConvertToStableRepresentation(doc); } catch { }
-                rr.RefType = reference.ElementReferenceType;
-            }
             if (host != null)
             {
-                rr.Category = host.Category?.Name;
                 rr.CategoryId = host.Category?.Id.IntegerValue ?? 0;
-                rr.IsInstance = host is FamilyInstance;
-                rr.IsDatum = host is Level || host is Grid || host is ReferencePlane || host is DetailCurve || host is ModelCurve;
+                rr.IsDatum = IsDatum(host);
                 var bb = host.get_BoundingBox(null);
                 if (bb != null) { rr.BoxMin = bb.Min; rr.BoxMax = bb.Max; }
             }
@@ -206,6 +225,35 @@ namespace VibeModel.Services.Claude
             return ts;
         }
 
+        /// <summary>
+        /// Where a dimension reference lies along the dimension line (feet from <paramref name="lo"/>):
+        /// a level's elevation, a grid/reference plane's position, a face's plane. A family
+        /// instance's face may come back in the instance's own frame — of the two readings the one
+        /// closer to a segment end wins. Null when unknown (a family's centre plane).
+        /// </summary>
+        private static double? PlanePosition(Element host, Reference r, XYZ lo, XYZ dir, List<double> ts)
+        {
+            try
+            {
+                if (host is Level l) return Math.Abs(dir.Z) > 0.99 ? (l.ProjectElevation - lo.Z) * dir.Z : (double?)null;
+                if (host is Grid g && g.Curve is Line gl) return (gl.Origin - lo).DotProduct(dir);
+                if (host is ReferencePlane rp) return (rp.BubbleEnd - lo).DotProduct(dir);
+                XYZ p = null;
+                var go = host?.GetGeometryObjectFromReference(r);
+                if (go is PlanarFace pf) p = pf.Origin;
+                else if (go is Edge ed) p = ed.AsCurve().Evaluate(0.5, true);
+                if (p == null) return null;
+                double t = (p - lo).DotProduct(dir);
+                if (host is FamilyInstance fi && ts.Count > 0)
+                {
+                    double tt = (fi.GetTransform().OfPoint(p) - lo).DotProduct(dir);
+                    if (ts.Min(x => Math.Abs(x - tt)) < ts.Min(x => Math.Abs(x - t))) t = tt;
+                }
+                return t;
+            }
+            catch { return null; }
+        }
+
         internal static double SpotValueMm(SpotDimension sd)
         {
             try
@@ -221,7 +269,7 @@ namespace VibeModel.Services.Claude
             try { return sd.Origin; } catch { return null; }
         }
 
-        private static Dictionary<int, string> SheetsByView(Document doc)
+        internal static Dictionary<int, string> SheetsByView(Document doc)
         {
             var map = new Dictionary<int, string>();
             foreach (var vp in new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>())
@@ -251,9 +299,17 @@ namespace VibeModel.Services.Claude
             var damaged = new List<AnnotationRecord>();
             foreach (var rec in snapshot.Records)
             {
-                var e = doc.GetElement(new ElementId(rec.Id));
-                if (e == null) { lost.Add(rec); continue; }
+                // Only what this command did to the referenced elements counts: an annotation the
+                // command deleted itself (named, or an exec snippet deleting it with its host
+                // untouched) stays deleted.
+                if (snapshot.Named.Contains(rec.Id)) continue;
                 bool touched = rec.Refs.Any(r => deleted.Contains(r.ElementId) || modified.Contains(r.ElementId));
+                var e = doc.GetElement(new ElementId(rec.Id));
+                if (e == null)
+                {
+                    if (touched || revitDeleted.Contains(rec.Id)) lost.Add(rec);
+                    continue;
+                }
                 if (!touched) continue;
                 try
                 {
@@ -312,22 +368,18 @@ namespace VibeModel.Services.Claude
                 results.TryGetValue(rec.Id, out var r);
                 // Revit's failure handling may still have deleted a re-created annotation at commit.
                 if (r != null && doc.GetElement(new ElementId(r.NewId)) != null)
-                {
                     outcome.Rehosted.Add(new RehostedAnnotation
                     {
                         From = rec.Id, To = r.NewId, Kind = rec.Kind, View = rec.ViewName,
-                        Hosts = r.Hosts.GroupBy(h => h.Id.IntegerValue).Select(g => new KeyValuePair<long, string>(g.Key, g.First().Category?.Name)).ToList()
+                        Hosts = r.Hosts.Values.Select(h => new KeyValuePair<long, string>(h.Id.IntegerValue, h.Category?.Name)).ToList()
                     });
-                }
                 else
-                {
                     outcome.Removed.Add(new RemovedAnnotation
                     {
                         Id = rec.Id, Kind = rec.Kind, View = rec.ViewName, Sheet = rec.Sheet,
                         Referenced = Culprits(rec, deleted, modified),
                         ByRevit = revitDeleted.Contains(rec.Id)
                     });
-                }
             }
             return outcome;
         }
@@ -343,7 +395,13 @@ namespace VibeModel.Services.Claude
         private sealed class RehostResult
         {
             public int NewId;
-            public List<Element> Hosts = new List<Element>();
+            public readonly Dictionary<int, Element> Hosts = new Dictionary<int, Element>();   // by id, in order of use
+
+            public RehostResult Host(Element e)
+            {
+                if (e != null && !Hosts.ContainsKey(e.Id.IntegerValue)) Hosts[e.Id.IntegerValue] = e;
+                return this;
+            }
         }
 
         private static RehostResult Rehost(Document doc, AnnotationRecord rec, List<Element> added, HashSet<int> deleted)
@@ -370,17 +428,19 @@ namespace VibeModel.Services.Claude
             var same = old.ElementId > 0 ? doc.GetElement(new ElementId(old.ElementId)) : null;
             if (same != null)
             {
-                hit = AnnotationGeometry.Nearest(doc, same, view, rec.Point, rec.EdgeRef, rec.FaceNormal, double.MaxValue);
+                hit = AnnotationGeometry.Nearest(same, view, rec.Point, rec.EdgeRef, rec.FaceNormal, double.MaxValue);
                 if (hit != null) host = same;
             }
-            // 2. A new element of the same category with a face/edge at the same height (±1 mm)
-            //    within the 50 mm search radius — a spot measures height, so a 350 pile replacing
-            //    a 320 one (its tip edge 15 mm further out) keeps its tip spot.
+            // 2. A replacement with a face/edge at the same height (±1 mm) within the search radius —
+            //    a spot measures height, so a 350 pile replacing a 320 one (its tip edge 15 mm
+            //    further out) keeps its tip spot.
             if (hit == null)
             {
-                foreach (var cand in Candidates(doc, added, old, rec.Point, rec.Point))
+                var oldMm = AnnotationGeometry.V(rec.Point);
+                foreach (var cand in Candidates(doc, added, old, rec.Point, false))
                 {
-                    var h = AnnotationGeometry.Nearest(doc, cand, view, rec.Point, rec.EdgeRef, rec.FaceNormal, SearchFt, rec.Point.Z);
+                    var h = AnnotationGeometry.Nearest(cand, view, rec.Point, rec.EdgeRef, rec.FaceNormal, SearchFt,
+                        p => AnnotationMatch.SpotMatch(oldMm, AnnotationGeometry.V(p)));
                     if (h != null && (hit == null || h.Distance < hit.Distance)) { hit = h; host = cand; }
                 }
             }
@@ -397,57 +457,48 @@ namespace VibeModel.Services.Claude
 
             var spot = doc.Create.NewSpotElevation(view, hit.Reference, hit.Point, bend, end, hit.Point, rec.HasLeader);
             if (spot == null) return null;
-            if (rec.TypeId != null && rec.TypeId != ElementId.InvalidElementId && spot.GetTypeId() != rec.TypeId)
-                try { spot.ChangeTypeId(rec.TypeId); } catch { /* keep the default type */ }
-            return new RehostResult { NewId = spot.Id.IntegerValue, Hosts = { host } };
+            KeepType(spot, rec.TypeId);
+            return new RehostResult { NewId = spot.Id.IntegerValue }.Host(host);
         }
 
         private static RehostResult RehostDimension(Document doc, View view, AnnotationRecord rec, List<Element> added, HashSet<int> deleted)
         {
             if (rec.LineOrigin == null || rec.LineDir == null) return null;
             var vdir = view.ViewDirection.Normalize();
+            var dirMm = AnnotationGeometry.V(rec.LineDir);
             var ra = new ReferenceArray();
-            var hosts = new List<Element>();
+            var result = new RehostResult();
             foreach (var rr in rec.Refs)
             {
                 var existing = rr.ElementId > 0 && !deleted.Contains(rr.ElementId) ? doc.GetElement(new ElementId(rr.ElementId)) : null;
-                Reference keep = null;
-                if (existing != null && rr.Stable != null)
-                {
-                    try
-                    {
-                        var parsed = Reference.ParseFromStableRepresentation(doc, rr.Stable);
-                        if (parsed != null && (rr.IsDatum || existing is FamilyInstance || existing.GetGeometryObjectFromReference(parsed) != null))
-                            keep = parsed;
-                    }
-                    catch { keep = null; }
-                }
+                var keep = StillValid(doc, existing, rr);
                 if (keep != null)
                 {
                     ra.Append(keep);
-                    if (!rr.IsDatum && !hosts.Contains(existing)) hosts.Add(existing);
+                    if (!rr.IsDatum) result.Host(existing);
                     continue;
                 }
                 if (rr.IsDatum || !rr.T.HasValue) return null;   // a datum that is gone, or no position recorded
 
-                // A planar face of a replacement element on the old reference plane (±1 mm).
-                var planeOrigin = rec.LineOrigin + rec.LineDir * rr.T.Value;
-                var probe = rr.BoxMin != null ? (rr.BoxMin + rr.BoxMax) * 0.5 : planeOrigin;
+                // A planar face of a replacement (or of the same, changed element) on the old reference plane (±1 mm).
+                var planeMm = AnnotationGeometry.V(rec.LineOrigin + rec.LineDir * rr.T.Value);
+                var probe = rr.BoxMin != null ? (rr.BoxMin + rr.BoxMax) * 0.5 : rec.LineOrigin + rec.LineDir * rr.T.Value;
                 Reference best = null; Element bestHost = null; double bestD = double.MaxValue;
-                foreach (var cand in Candidates(doc, added, rr, probe, null))
+                foreach (var cand in Candidates(doc, added, rr, probe, true))
                 {
                     foreach (var g in AnnotationGeometry.Enumerate(cand, view, faces: true, edges: false))
                     {
                         if (!(g.Face is PlanarFace pf)) continue;
-                        if (Math.Abs(pf.FaceNormal.DotProduct(rec.LineDir)) < AnnotationMatch.ParallelDot) continue;
                         if (Math.Abs(pf.FaceNormal.DotProduct(vdir)) > 0.01) continue;   // must be seen edge-on
-                        double dd = Math.Abs((pf.Origin - planeOrigin).DotProduct(rec.LineDir));
-                        if (dd <= TolFt + 1e-9 && dd < bestD) { best = g.Reference; bestHost = cand; bestD = dd; }
+                        var originMm = AnnotationGeometry.V(pf.Origin);
+                        if (!AnnotationMatch.SamePlane(dirMm, planeMm, AnnotationGeometry.V(pf.FaceNormal), originMm)) continue;
+                        double dd = Math.Abs((originMm - planeMm).Dot(dirMm) / dirMm.Length);
+                        if (dd < bestD) { best = g.Reference; bestHost = cand; bestD = dd; }
                     }
                 }
                 if (best == null) return null;
                 ra.Append(best);
-                if (!hosts.Contains(bestHost)) hosts.Add(bestHost);
+                result.Host(bestHost);
             }
 
             double t0 = rec.TMin, t1 = rec.TMax;
@@ -455,9 +506,43 @@ namespace VibeModel.Services.Claude
             var line = Line.CreateBound(rec.LineOrigin + rec.LineDir * (t0 - 1), rec.LineOrigin + rec.LineDir * (t1 + 1));
             var dim = doc.Create.NewDimension(view, line, ra);
             if (dim == null) return null;
-            if (rec.TypeId != null && rec.TypeId != ElementId.InvalidElementId && dim.GetTypeId() != rec.TypeId)
-                try { dim.ChangeTypeId(rec.TypeId); } catch { }
-            return new RehostResult { NewId = dim.Id.IntegerValue, Hosts = hosts };
+            KeepType(dim, rec.TypeId);
+            result.NewId = dim.Id.IntegerValue;
+            return result;
+        }
+
+        /// <summary>The recorded reference when its element and face still exist; null otherwise.</summary>
+        private static Reference StillValid(Document doc, Element existing, RefRecord rr)
+        {
+            if (existing == null) return null;
+            // A datum's reference is rebuilt from the element: measured, a level reference parsed back
+            // from a dimension's "<level>:0:SURFACE" makes NewDimension fail ("Invalid number of references").
+            var datum = DatumReference(existing);
+            if (datum != null) return datum;
+            if (rr.Stable == null) return null;
+            try
+            {
+                var parsed = Reference.ParseFromStableRepresentation(doc, rr.Stable);
+                if (parsed == null) return null;
+                // A family-instance plane has no geometry object to check; a face does.
+                return existing is FamilyInstance || existing.GetGeometryObjectFromReference(parsed) != null ? parsed : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Levels, grids, reference planes and detail/model lines: never replaced by a command.</summary>
+        private static bool IsDatum(Element e) => e is Level || e is Grid || e is ReferencePlane || e is CurveElement;
+
+        private static Reference DatumReference(Element e)
+        {
+            switch (e)
+            {
+                case Level l: return l.GetPlaneReference();
+                case Grid g: return new Reference(g);
+                case ReferencePlane rp: return rp.GetReference();
+                case CurveElement ce: return ce.GeometryCurve?.Reference;
+                default: return null;
+            }
         }
 
         private static RehostResult RehostTag(Document doc, View view, AnnotationRecord rec, List<Element> added)
@@ -465,49 +550,66 @@ namespace VibeModel.Services.Claude
             var old = rec.Refs[0];
             if (old.BoxMin == null) return null;
             var centre = (old.BoxMin + old.BoxMax) * 0.5;
-            Element host = null;
-            foreach (var cand in Candidates(doc, added, old, centre, centre))
-            {
-                host = cand;
-                break;
-            }
+            var host = Candidates(doc, added, old, centre, false).FirstOrDefault(c => Contains(c, centre));
             if (host == null) return null;
             var tag = IndependentTag.Create(doc, rec.TypeId, view.Id, new Reference(host), rec.TagLeader, rec.Orientation, rec.Head);
-            return tag == null ? null : new RehostResult { NewId = tag.Id.IntegerValue, Hosts = { host } };
+            return tag == null ? null : new RehostResult { NewId = tag.Id.IntegerValue }.Host(host);
+        }
+
+        private static void KeepType(Element annotation, ElementId typeId)
+        {
+            if (typeId == null || typeId == ElementId.InvalidElementId || annotation.GetTypeId() == typeId) return;
+            try { annotation.ChangeTypeId(typeId); } catch { /* keep the default type */ }
         }
 
         /// <summary>
-        /// Replacement candidates of the old reference's category: what the command added first,
-        /// then existing model elements near the old element (its box ± 50 mm). When
-        /// <paramref name="mustContain"/> is given the candidate's box must contain that point ± 50 mm.
+        /// Replacement candidates of the old reference's category, near the old element (its box
+        /// ± 50 mm): what the command added first, then elements VibeModel created earlier this
+        /// session (a replacement placed in a previous call) — never an unrelated neighbour, so
+        /// deleting one floor does not move its spot onto the next. <paramref name="includeSame"/>:
+        /// the old element itself too (a dimension whose face died while the element survived).
         /// </summary>
-        private static IEnumerable<Element> Candidates(Document doc, List<Element> added, RefRecord old, XYZ probe, XYZ mustContain)
+        private static IEnumerable<Element> Candidates(Document doc, List<Element> added, RefRecord old, XYZ probe, bool includeSame)
         {
-            var seen = new HashSet<int> { old.ElementId };
-            foreach (var e in added)
-                if (Fits(e, old, mustContain) && seen.Add(e.Id.IntegerValue)) yield return e;
-
+            var seen = new HashSet<int>();
+            if (includeSame && old.ElementId > 0 && doc.GetElement(new ElementId(old.ElementId)) is Element same && Fits(same, old))
+            {
+                seen.Add(same.Id.IntegerValue);
+                yield return same;
+            }
+            seen.Add(old.ElementId);
             var min = old.BoxMin ?? probe; var max = old.BoxMax ?? probe;
             if (min == null || max == null) yield break;
             var outline = new Outline(new XYZ(Math.Min(min.X, max.X) - SearchFt, Math.Min(min.Y, max.Y) - SearchFt, Math.Min(min.Z, max.Z) - SearchFt),
                                       new XYZ(Math.Max(min.X, max.X) + SearchFt, Math.Max(min.Y, max.Y) + SearchFt, Math.Max(min.Z, max.Z) + SearchFt));
-            IEnumerable<Element> near;
+
+            foreach (var e in added)
+                if (Fits(e, old) && Overlaps(e, outline) && seen.Add(e.Id.IntegerValue)) yield return e;
+
+            List<Element> near;
             try { near = new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(new BoundingBoxIntersectsFilter(outline)).ToList(); }
             catch { yield break; }
             foreach (var e in near)
-                if (Fits(e, old, mustContain) && seen.Add(e.Id.IntegerValue)) yield return e;
+                if (Fits(e, old) && VibeModelCreated.Contains(doc, e.Id) && seen.Add(e.Id.IntegerValue)) yield return e;
         }
 
-        private static bool Fits(Element e, RefRecord old, XYZ mustContain)
+        private static bool Fits(Element e, RefRecord old)
+            => e != null && SheetHelper.IsModelContent(e) &&
+               (old.CategoryId == 0 || (e.Category?.Id.IntegerValue ?? 0) == old.CategoryId);
+
+        private static bool Overlaps(Element e, Outline outline)
         {
-            if (e == null || !SheetHelper.IsModelContent(e)) return false;
-            if (old.CategoryId != 0 && (e.Category?.Id.IntegerValue ?? 0) != old.CategoryId) return false;
-            if (mustContain == null) return true;
             var bb = e.get_BoundingBox(null);
-            if (bb == null) return false;
-            return mustContain.X >= bb.Min.X - SearchFt && mustContain.X <= bb.Max.X + SearchFt &&
-                   mustContain.Y >= bb.Min.Y - SearchFt && mustContain.Y <= bb.Max.Y + SearchFt &&
-                   mustContain.Z >= bb.Min.Z - SearchFt && mustContain.Z <= bb.Max.Z + SearchFt;
+            return bb != null && outline.Intersects(new Outline(bb.Min, bb.Max), 0);
+        }
+
+        private static bool Contains(Element e, XYZ p)
+        {
+            var bb = e.get_BoundingBox(null);
+            return bb != null &&
+                   p.X >= bb.Min.X - SearchFt && p.X <= bb.Max.X + SearchFt &&
+                   p.Y >= bb.Min.Y - SearchFt && p.Y <= bb.Max.Y + SearchFt &&
+                   p.Z >= bb.Min.Z - SearchFt && p.Z <= bb.Max.Z + SearchFt;
         }
 
         /// <summary>
@@ -516,8 +618,6 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private static bool SpotStillValid(Document doc, SpotDimension sd, AnnotationRecord rec)
         {
-            var refs = sd.References;
-            if (refs == null || refs.Size == 0) return false;
             var hit = AnnotationGeometry.Resolve(doc, sd, doc.GetElement(rec.OwnerViewId) as View);
             if (hit == null || hit.Distance > TolFt) return false;
             double value = SpotValueMm(sd);
@@ -528,32 +628,31 @@ namespace VibeModel.Services.Claude
 
         // ------------------------------------------------------------------ queries (whatdepends)
 
-        /// <summary>The spot elevations, dimensions and tags that reference any of <paramref name="ids"/>.</summary>
+        /// <summary>The spot elevations, dimensions and tags (in a view) that reference any of <paramref name="ids"/>.</summary>
         public static List<Element> ReferencingAnnotations(Document doc, ICollection<int> ids)
         {
             var set = new HashSet<int>(ids);
             var result = new List<Element>();
-            var collector = new FilteredElementCollector(doc).WherePasses(new ElementMulticlassFilter(
-                new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) }));
-            foreach (var e in collector)
+            foreach (var e in Annotations(doc))
             {
                 try
                 {
-                    IEnumerable<int> referenced;
-                    if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) continue;   // sketch dimensions of a floor's boundary etc.
-                    if (e is IndependentTag t) referenced = t.GetTaggedLocalElementIds().Select(i => i.IntegerValue);
-                    else if (e is Dimension d)
-                    {
-                        var list = new List<int>();
-                        foreach (Reference r in d.References) list.Add(r.ElementId.IntegerValue);
-                        referenced = list;
-                    }
-                    else continue;
-                    if (referenced.Any(set.Contains)) result.Add(e);
+                    if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) continue;   // a floor's sketch dimensions etc.
+                    if (ReferencedIds(e).Any(set.Contains)) result.Add(e);
                 }
                 catch { /* unreadable annotation — skip */ }
             }
             return result;
+        }
+
+        /// <summary>The element ids an annotation references (a tag: what it tags).</summary>
+        internal static IEnumerable<int> ReferencedIds(Element annotation)
+        {
+            if (annotation is IndependentTag t) return t.GetTaggedLocalElementIds().Select(i => i.IntegerValue);
+            var list = new List<int>();
+            if (annotation is Dimension d)
+                foreach (Reference r in d.References) list.Add(r.ElementId.IntegerValue);
+            return list;
         }
 
         public static AnnotationKind KindOf(Element e)
@@ -565,12 +664,14 @@ namespace VibeModel.Services.Claude
     {
         internal Document Doc { get; }
         internal List<AnnotationRecord> Records { get; }
-        public int Count => Records.Count;
+        /// <summary>The ids the command named itself — an annotation among them was deleted on purpose.</summary>
+        internal HashSet<int> Named { get; }
 
-        internal AnnotationSnapshot(Document doc, List<AnnotationRecord> records)
+        internal AnnotationSnapshot(Document doc, List<AnnotationRecord> records, HashSet<int> named)
         {
             Doc = doc;
             Records = records;
+            Named = named ?? new HashSet<int>();
         }
     }
 
@@ -578,11 +679,8 @@ namespace VibeModel.Services.Claude
     {
         public int ElementId;
         public string Stable;
-        public ElementReferenceType RefType;
-        public string Category;
         public int CategoryId;
-        public bool IsInstance;
-        public bool IsDatum;
+        public bool IsDatum;              // level, grid, reference plane, detail/model line: never replaced
         public XYZ BoxMin, BoxMax;        // the element's model box when recorded
         public double? T;                 // dimension references: position along the dimension line (feet)
     }
@@ -619,7 +717,7 @@ namespace VibeModel.Services.Claude
     /// Faces and edges with references, in model coordinates, for annotations. Family
     /// instances: instance geometry, Fine (edges — Revit refuses a spot on an instance FACE in a
     /// section: "Spot Dimension does not lie on its reference"); system families: the view's
-    /// geometry (faces). Never combine DetailLevel with View in one Options.
+    /// geometry. Never combine DetailLevel with View in one Options.
     /// </summary>
     internal static class AnnotationGeometry
     {
@@ -654,13 +752,9 @@ namespace VibeModel.Services.Claude
             var fi = e as FamilyInstance;
             foreach (var g in Walk(ge, faces, edges))
             {
-                // Instance geometry carries references to the (internal) symbol — measured: a spot on
-                // such an edge reports the symbol as its host, so it outlives the pile and is
-                // invisible to a scan for the pile. "<instance>:0:INSTANCE:<symbol ref>" is the
-                // instance's own reference to the same edge/face.
-                if (fi != null && g.Reference.ElementId != fi.Id)
+                if (fi != null)
                 {
-                    var r = ToInstanceReference(fi, g.Reference);
+                    var r = AsInstanceReference(fi, g.Reference);
                     if (r == null) continue;
                     g.Reference = r;
                 }
@@ -668,14 +762,23 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        internal static Reference ToInstanceReference(FamilyInstance fi, Reference symbolRef)
+        /// <summary>
+        /// Instance geometry carries references to the (internal) family symbol — measured: a spot
+        /// or dimension on such a reference hangs on the symbol, outlives the instance and is
+        /// invisible to a scan for it. "&lt;instance&gt;:0:INSTANCE:&lt;symbol ref&gt;" is the
+        /// instance's own reference to the same face/edge. A reference to the instance itself or to
+        /// a nested shared component (a real element) is kept as it is. Null when it cannot be made.
+        /// </summary>
+        internal static Reference AsInstanceReference(FamilyInstance fi, Reference r)
         {
+            if (r == null) return null;
+            if (r.ElementId == fi.Id) return r;
+            var doc = fi.Document;
+            if (!(doc.GetElement(r.ElementId) is ElementType)) return r;
             try
             {
-                var doc = fi.Document;
-                var stable = symbolRef.ConvertToStableRepresentation(doc);
-                var r = Reference.ParseFromStableRepresentation(doc, fi.UniqueId + ":0:INSTANCE:" + stable);
-                return r != null && r.ElementId == fi.Id ? r : null;
+                var parsed = Reference.ParseFromStableRepresentation(doc, fi.UniqueId + ":0:INSTANCE:" + r.ConvertToStableRepresentation(doc));
+                return parsed != null && parsed.ElementId == fi.Id ? parsed : null;
             }
             catch { return null; }
         }
@@ -708,55 +811,54 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
-        /// The closest face (system families; facing like <paramref name="facing"/> when given) or
-        /// edge (family instances, or when <paramref name="preferEdge"/>) of <paramref name="e"/>
-        /// to <paramref name="p"/>, within <paramref name="maxFt"/>. Ties within 1 mm prefer a
-        /// horizontal edge (a pile's tip edge over its vertical corner).
+        /// The closest face (facing like <paramref name="facing"/> when given) or edge (family
+        /// instances, or when <paramref name="preferEdge"/>) of <paramref name="e"/> to
+        /// <paramref name="p"/>, within <paramref name="maxFt"/> and passing <paramref name="accept"/>
+        /// (tested on the point on the reference). Ties within 1 mm prefer a level edge (a pile's
+        /// tip edge over its vertical corner).
         /// </summary>
-        public static Hit Nearest(Document doc, Element e, View view, XYZ p, bool preferEdge, XYZ facing, double maxFt, double? sameZ = null)
+        public static Hit Nearest(Element e, View view, XYZ p, bool preferEdge, XYZ facing, double maxFt, Func<XYZ, bool> accept = null)
         {
             bool edges = e is FamilyInstance || preferEdge;
             Hit best = null;
             double tol = RevitUnitHelper.MmToFeet(1);
             foreach (var g in Enumerate(e, view, faces: !edges, edges: edges))
             {
-                Hit h = null;
-                if (g.Face != null)
-                {
-                    IntersectionResult r;
-                    try { r = g.Face.Project(p); } catch { r = null; }
-                    if (r == null) continue;
-                    XYZ n;
-                    try { n = g.Face.ComputeNormal(r.UVPoint); } catch { n = null; }
-                    if (facing != null && n != null && !AnnotationMatch.SameFacing(V(facing), V(n))) continue;
-                    h = new Hit { Reference = g.Reference, Point = r.XYZPoint, Normal = n, Distance = r.Distance };
-                }
-                else if (g.Curve != null)
-                {
-                    IntersectionResult r;
-                    try { r = g.Curve.Project(p); } catch { r = null; }
-                    if (r == null) continue;
-                    h = new Hit { Reference = g.Reference, Point = r.XYZPoint, Curve = g.Curve, Distance = r.Distance };
-                }
+                var h = Project(g, p);
                 if (h == null || h.Distance > maxFt) continue;
-                if (sameZ.HasValue && !AnnotationMatch.SameHeight(RevitUnitHelper.FeetToMm(sameZ.Value), RevitUnitHelper.FeetToMm(h.Point.Z))) continue;
+                if (h.Normal != null && facing != null && !AnnotationMatch.SameFacing(V(facing), V(h.Normal))) continue;
+                if (accept != null && !accept(h.Point)) continue;
                 if (best == null || h.Distance < best.Distance - tol ||
-                    (Math.Abs(h.Distance - best.Distance) <= tol && Horizontal(h.Curve) && !Horizontal(best.Curve)))
+                    (Math.Abs(h.Distance - best.Distance) <= tol && IsLevel(h.Curve) && !IsLevel(best.Curve)))
                     best = h;
             }
             return best;
         }
 
-        private static bool Horizontal(Curve c)
+        /// <summary>p projected onto a face or edge (model coordinates).</summary>
+        private static Hit Project(Geo g, XYZ p)
         {
-            if (!(c is Line l)) return false;
-            return Math.Abs(l.Direction.Z) < 0.01;
+            IntersectionResult r;
+            if (g.Face != null)
+            {
+                try { r = g.Face.Project(p); } catch { r = null; }
+                if (r == null) return null;
+                XYZ n = null;
+                try { n = g.Face.ComputeNormal(r.UVPoint); } catch { }
+                return new Hit { Reference = g.Reference, Point = r.XYZPoint, Normal = n, Distance = r.Distance };
+            }
+            if (g.Curve == null) return null;
+            try { r = g.Curve.Project(p); } catch { r = null; }
+            return r == null ? null : new Hit { Reference = g.Reference, Point = r.XYZPoint, Curve = g.Curve, Distance = r.Distance };
         }
 
+        public static bool IsLevel(Curve c) => c is Line l && Math.Abs(l.Direction.Z) < 0.01;
+
         /// <summary>
-        /// Where an existing spot elevation sits: the face/edge it references and its point in
-        /// model coordinates. A spot on a family instance reports its origin in the instance's
-        /// own frame; both readings are tried and the one on the geometry wins.
+        /// Where an existing spot elevation sits: its point on the face/edge it references, in
+        /// model coordinates. Cheap first (the referenced geometry object directly, trying the
+        /// family instance's own frame too — Revit may report a spot on an instance in that frame),
+        /// the model-frame geometry matched by stable representation as a fallback.
         /// </summary>
         public static Hit Resolve(Document doc, SpotDimension sd, View view)
         {
@@ -767,61 +869,46 @@ namespace VibeModel.Services.Claude
             XYZ raw;
             try { raw = sd.Origin; } catch { return null; }
 
+            var frames = new List<Transform> { Transform.Identity };
             var points = new List<XYZ> { raw };
             if (host is FamilyInstance fi)
             {
-                try { var t = fi.GetTransform(); points.Add(t.OfPoint(raw)); points.Add(t.Inverse.OfPoint(raw)); } catch { }
+                try { var t = fi.GetTransform(); frames.Add(t); points.Add(t.OfPoint(raw)); } catch { }
             }
 
-            string stable = null;
-            try { stable = reference.ConvertToStableRepresentation(doc); } catch { }
-
-            // The referenced face/edge itself: by its stable representation in the model-frame geometry.
-            Geo target = null;
-            if (stable != null)
-            {
-                bool inst = host is FamilyInstance;
-                foreach (var g in Enumerate(host, view, faces: true, edges: true))
-                {
-                    string s;
-                    try { s = g.Reference.ConvertToStableRepresentation(doc); } catch { continue; }
-                    if (s == stable) { target = g; break; }
-                }
-                if (target == null && !inst)
-                {
-                    try
-                    {
-                        var go = host.GetGeometryObjectFromReference(reference);
-                        if (go is Face f) target = new Geo { Reference = reference, Face = f };
-                        else if (go is Edge ed) target = new Geo { Reference = reference, Curve = ed.AsCurve() };
-                    }
-                    catch { }
-                }
-            }
-            if (target == null) return null;
-
+            GeometryObject go = null;
+            try { go = host.GetGeometryObjectFromReference(reference); } catch { }
             Hit best = null;
-            foreach (var p in points)
+            if (go is Face || go is Edge)
             {
-                Hit h = null;
-                if (target.Face != null)
-                {
-                    IntersectionResult r;
-                    try { r = target.Face.Project(p); } catch { r = null; }
-                    if (r != null)
+                var g = go is Face face ? new Geo { Reference = reference, Face = face } : new Geo { Reference = reference, Curve = ((Edge)go).AsCurve() };
+                foreach (var frame in frames)
+                    foreach (var p in points)
                     {
-                        XYZ n = null;
-                        try { n = target.Face.ComputeNormal(r.UVPoint); } catch { }
-                        h = new Hit { Reference = reference, Point = r.XYZPoint, Normal = n, Distance = r.Distance };
+                        var h = Project(g, frame.Inverse.OfPoint(p));
+                        if (h == null) continue;
+                        h.Point = frame.OfPoint(h.Point);              // the frames are rigid: distances stay
+                        if (h.Normal != null) h.Normal = frame.OfVector(h.Normal);
+                        if (h.Curve != null && !frame.IsIdentity) h.Curve = h.Curve.CreateTransformed(frame);
+                        if (best == null || h.Distance < best.Distance) best = h;
                     }
-                }
-                else
+            }
+            if (best != null && best.Distance <= RevitUnitHelper.MmToFeet(AnnotationMatch.RehostToleranceMm)) return best;
+
+            // Fallback: the face/edge in the model-frame geometry with the same stable representation.
+            string stable;
+            try { stable = reference.ConvertToStableRepresentation(doc); } catch { return best; }
+            foreach (var g in Enumerate(host, view, faces: true, edges: true))
+            {
+                string s;
+                try { s = g.Reference.ConvertToStableRepresentation(doc); } catch { continue; }
+                if (s != stable) continue;
+                foreach (var p in points)
                 {
-                    IntersectionResult r;
-                    try { r = target.Curve.Project(p); } catch { r = null; }
-                    if (r != null) h = new Hit { Reference = reference, Point = r.XYZPoint, Curve = target.Curve, Distance = r.Distance };
+                    var h = Project(g, p);
+                    if (h != null && (best == null || h.Distance < best.Distance)) { h.Reference = reference; best = h; }
                 }
-                if (h != null && (best == null || h.Distance < best.Distance)) best = h;
+                break;
             }
             return best;
         }
