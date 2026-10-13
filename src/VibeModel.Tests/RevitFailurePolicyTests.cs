@@ -251,7 +251,7 @@ namespace VibeModel.Tests
         public void RollbackErrorMessage_FallsBackWithoutReason()
         {
             Assert.Equal("Revit rolled the change back: X", FailureReport.RollbackErrorMessage("X"));
-            Assert.Equal("Revit rolled the change back: Revit refused the change", FailureReport.RollbackErrorMessage(null));
+            Assert.Equal("Revit rolled the change back: " + FailureReport.NoReason, FailureReport.RollbackErrorMessage(null));
             Assert.True(FailureReport.IsRollbackError("ERROR: Revit rolled the change back: X"));
             Assert.True(FailureReport.IsRollbackError("Revit rolled the change back: X"));
             Assert.False(FailureReport.IsRollbackError("ERROR: Wall too short"));

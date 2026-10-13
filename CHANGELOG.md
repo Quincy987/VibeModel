@@ -22,7 +22,8 @@
   command runs — over HTTP or the file-based fallback; your own work in Revit keeps the normal
   dialogs).
 - A transaction Revit rolled back during commit is now an error instead of a success (the commit
-  status used to be ignored).
+  status used to be ignored). Live example: `set <wall> "Unconnected Height" 1` reported success while
+  Revit silently undid it; it now says `Revit rolled the change back: Revit gave no reason …`.
 - Any dialog that still opens during a command is logged with its id.
 
 ### Fixed — "the IFC has no piles"

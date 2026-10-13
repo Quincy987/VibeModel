@@ -139,7 +139,10 @@ namespace VibeModel.Services.Claude
     {
         public const string RollbackErrorCode = "REVIT_FAILURE";
         public const string RollbackPrefix = "Revit rolled the change back: ";
-        public const string RollbackHint = "Revit refused this change and nothing of it was kept. The message is Revit's own: fix its cause (move/resize the element, delete the dependent annotation first, or re-host it) and retry.";
+        public const string RollbackHint = "Revit refused this change and nothing of it was kept. Fix the cause (a value the element cannot be built with, a moved or removed host, a dependent annotation: delete or re-host it first) and retry.";
+
+        /// <summary>Said when the commit was rolled back but Revit handed over no failure message (live: a wall set to 1 mm high).</summary>
+        public const string NoReason = "Revit gave no reason (it could not rebuild the model with this change)";
         private const int MaxListedIds = 10;
 
         public List<WarningEntry> Warnings { get; } = new List<WarningEntry>();
@@ -214,7 +217,7 @@ namespace VibeModel.Services.Claude
         }
 
         public static string RollbackErrorMessage(string reason)
-            => RollbackPrefix + (string.IsNullOrWhiteSpace(reason) ? "Revit refused the change" : Clean(reason));
+            => RollbackPrefix + (string.IsNullOrWhiteSpace(reason) ? NoReason : Clean(reason));
 
         /// <summary>True for an error message produced by <see cref="RollbackErrorMessage"/> (with or without "ERROR: ").</summary>
         public static bool IsRollbackError(string text)
