@@ -30,8 +30,8 @@ Revit work is full of small questions with slow answers: *why can't I see this b
 
 ## Quick start
 
-1. **Download** the [latest release](https://github.com/Quincy987/VibeModel/releases) and unzip it.
-2. **Run `install.ps1`** (right-click → *Run with PowerShell*). It finds your Revit versions and copies the files.
+1. **Download** `VibeModel-v<version>-Revit2023.zip` from the [latest release](https://github.com/Quincy987/VibeModel/releases/latest) (under *Assets* — not *Source code*) and unzip it.
+2. **Close Revit and double-click `install.cmd`.** It finds your Revit versions, copies the files, unblocks them and checks the result. Press Enter at the API-key question if you use Claude Code.
 3. **Open Revit**, click **VibeModel → Chat**, and type. An empty chat shows the open model, its project folder and four starter prompts.
 
 Connect it to Claude in one of two ways: a **Claude Code** subscription (recommended, auto-detected) or an **Anthropic API key** pasted into *Settings*. A local LLM works too. Details under [Installation](#installation).
@@ -163,7 +163,7 @@ No Node.js needed. Some extras (project-folder file access, cost tracking) are C
 <details>
 <summary><b>Manual installation</b></summary>
 
-1. Download and unzip the release. Copy `VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` and the `VibeModel.PdfText` folder into
+1. Download and unzip the release zip (`VibeModel-v<version>-Revit2023.zip`). Copy `VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` and the `VibeModel.PdfText` folder into
    ```
    %APPDATA%\Autodesk\Revit\Addins\{year}\
    ```
@@ -205,6 +205,8 @@ Adding a command is one file: implement `IClaudeCommand` in `src/VibeModel/Servi
 <summary><b>The VibeModel tab doesn't appear</b></summary>
 
 All files must be in the add-ins folder for *your* Revit year, and the DLLs must be unblocked (see manual installation). Then restart Revit. If Revit shows *External Tool Failure* / `0x80131515`, the DLLs are still blocked.
+
+The most common cause: the downloaded zip was GitHub's *Source code (zip)*, which contains no compiled add-in. Download the `VibeModel-v<version>-Revit2023.zip` under *Assets* instead; `install.cmd` names this when it happens, and keeps its window open so the message can be read.
 </details>
 
 <details>
