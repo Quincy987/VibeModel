@@ -103,7 +103,8 @@ itself. The user's own work in Revit is never touched.
 Lines go after a successful text response (before the stamp); JSON adds an additive `revit` object
 `{warnings:[{message,count}], resolved:[{message,deleted:[{id,category}]}], rolledBack}` on the
 envelope and per batch command. A batch reports per command and still undoes as one step; an atomic
-batch rolls back when a command was refused. From code: `FailureCollector.Current` (a `FailureReport`
+batch rolls back when a command was refused — and then its per-command `-- revit` lines (e.g. deleted
+annotations) were undone with everything else. From code: `FailureCollector.Current` (a `FailureReport`
 — `DeletedIds`, `Resolved[*].Deleted`, `RollbackReason`) while a command executes.
 
 ### Optional Auth Token (off by default)
