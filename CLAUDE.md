@@ -82,6 +82,28 @@ earlier query results.** Exceptions: `/health` and `/screenshot` are unstamped; 
 stamp for the whole response; text-mode error responses are unstamped (JSON errors still carry
 `meta`); no useful stamp exists before a document is open.
 
+### Revit failures (no modal dialog during a command)
+While a VibeModel command runs, Revit's failure dialog ("Error - cannot be ignored", "Highlighted
+walls overlap") never appears — it would block Revit's main thread (invisibly when Revit is
+minimized) and time out every following request. `RevitFailurePolicy` decides, `RevitFailureHandler`
+(`Services/Helpers/TransactionHelper.cs`) applies it — as the preprocessor of VibeModel's own
+transactions and, through `Application.FailuresProcessing`, for transactions an `exec` snippet opens
+itself. The user's own work in Revit is never touched.
+- **Warning** → dismissed, the change is kept: `-- revit warning: Highlighted walls overlap. … (2×)`.
+- **Error whose only failing elements are view-specific spot dimensions, dimensions or tags** with
+  Revit's "Delete Element(s)" resolution → resolved that way, the change is kept:
+  `-- revit resolved: Spot Dimension does not lie on its reference → deleted 1 annotation: 1730948 (Spot Elevations)`.
+- **Any other error** → the transaction is rolled back and the command fails with Revit's own reason:
+  `ERROR: Revit rolled the change back: <reason>` + a `Hint:` line (JSON code `REVIT_FAILURE`). A commit
+  Revit rolled back is never reported as success. `exec` fails as soon as any of its transactions was
+  rolled back (the hint says other transactions of the snippet were kept).
+
+Lines go after a successful text response (before the stamp); JSON adds an additive `revit` object
+`{warnings:[{message,count}], resolved:[{message,deleted:[{id,category}]}], rolledBack}` on the
+envelope and per batch command. A batch reports per command and still undoes as one step; an atomic
+batch rolls back when a command was refused. From code: `FailureCollector.Current` (a `FailureReport`
+— `DeletedIds`, `Resolved[*].Deleted`, `RollbackReason`) while a command executes.
+
 ### Optional Auth Token (off by default)
 By default the server is **fully open** on loopback — no token, nothing changes. To gate access
 (e.g. so other localhost processes can't call `exec`/`delete`), set the `VIBEMODEL_TOKEN`

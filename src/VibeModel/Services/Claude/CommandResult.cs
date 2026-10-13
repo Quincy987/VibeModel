@@ -41,6 +41,8 @@ namespace VibeModel.Services.Claude
         public static CommandResult Legacy(string rawText)
         {
             bool isError = rawText != null && rawText.StartsWith("ERROR", StringComparison.Ordinal);
+            if (isError && FailureReport.IsRollbackError(rawText))
+                return LegacyRollback(rawText);
             return new CommandResult
             {
                 Success = !isError,
@@ -100,7 +102,30 @@ namespace VibeModel.Services.Claude
         public static CommandResult FromTransactionError(string error, string code = "TRANSACTION_FAILED",
             string suggestion = null)
         {
+            // Revit refused the change during commit and rolled it back (see RevitFailurePolicy):
+            // its own reason is the message, with the generic fix as the hint.
+            if (FailureReport.IsRollbackError(error))
+                return Error(FailureReport.RollbackErrorCode, StripErrorPrefix(error), suggestion ?? FailureReport.RollbackHint);
             return Error(code, StripErrorPrefix(error), suggestion);
+        }
+
+        // A legacy command's rollback text ("ERROR: Revit rolled the change back: …\nHint: …"):
+        // verbatim in text mode, a clean message + suggestion in JSON.
+        private static CommandResult LegacyRollback(string rawText)
+        {
+            var lines = rawText.Replace("\r\n", "\n").Split('\n');
+            string hint = null;
+            foreach (var line in lines)
+                if (line.StartsWith("Hint:", StringComparison.Ordinal)) { hint = line.Substring(5).Trim(); break; }
+            return new CommandResult
+            {
+                Success = false,
+                _rawText = rawText,
+                _isLegacy = true,
+                ErrorCode = FailureReport.RollbackErrorCode,
+                Message = StripErrorPrefix(lines[0]),
+                Suggestion = hint ?? FailureReport.RollbackHint
+            };
         }
 
         // "ERROR: foo" -> "foo"; tolerant of "ERROR foo".

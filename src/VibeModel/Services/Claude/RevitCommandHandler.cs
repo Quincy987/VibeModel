@@ -8,6 +8,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Helpers;
 using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude
@@ -230,13 +231,16 @@ namespace VibeModel.Services.Claude
             bool modifying = _registry.IsModification(request.Command);
             RecordedChanges changes = null;
             CommandResult cr;
+            FailureReport revit;
             if (modifying) CreatedElementsRecorder.Arm();
+            FailureCollector.Arm();
             try
             {
                 cr = _registry.ExecuteCore(request.Command, request.Args, app);
             }
             finally
             {
+                revit = FailureCollector.Disarm();
                 if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
             }
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
@@ -261,11 +265,16 @@ namespace VibeModel.Services.Claude
                 {
                     if (stamp != null) dict["meta"] = stamp.ToMeta();
                     if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
+                    if (!revit.IsEmpty) dict["revit"] = revit.ToJson();
                 }
                 return _json.Serialize(obj);
             }
 
             var text = cr.RenderText();
+            // What Revit's failure processing did (warnings dismissed, annotations deleted). An
+            // error already carries Revit's reason, so its text stays as it is.
+            if (cr.Success)
+                foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
             return stamp != null ? stamp.AppendToText(text) : text;
         }
@@ -362,19 +371,28 @@ namespace VibeModel.Services.Claude
                     {
                         // ExecuteCore returns the structured result; decide on .Success, not a
                         // string prefix. Text output stays byte-identical via RenderText().
-                        var cr = _registry.ExecuteCore(item.Command, item.Args, app);
+                        // Revit failures are reported per command.
+                        FailureCollector.Arm();
+                        CommandResult cr;
+                        FailureReport revit;
+                        try { cr = _registry.ExecuteCore(item.Command, item.Args, app); }
+                        finally { revit = FailureCollector.Disarm(); }
 
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
                         sb.AppendLine(cr.RenderText());
+                        if (cr.Success)
+                            foreach (var line in revit.ToTextLines()) sb.AppendLine(line);
                         sb.AppendLine();
 
-                        entries.Add(new Dictionary<string, object>
+                        var entry = new Dictionary<string, object>
                         {
                             { "command", item.Command },
                             { "args", item.Args },
                             { "result", cr.ToJsonObject() }
-                        });
+                        };
+                        if (!revit.IsEmpty) entry["revit"] = revit.ToJson();
+                        entries.Add(entry);
 
                         if (!cr.Success) anyError = true;
                         else if (_registry.IsModification(item.Command)) anyModified = true;
