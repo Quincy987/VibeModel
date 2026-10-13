@@ -123,7 +123,7 @@ namespace VibeModel.Services.Claude.Commands
                 d = Direction(a.Dir, elems, right, up, vdir, view);
                 refs = new List<Cand>();
                 faceRefs = new List<Cand>();
-                var datums = DatumsInView(doc, view, d, o);
+                var datums = DatumsInView(doc, view, d, vdir, o);
                 foreach (var e in elems)
                 {
                     var found = References(view, e, d, vdir, o);
@@ -227,21 +227,14 @@ namespace VibeModel.Services.Claude.Commands
         // ---------------------------------------------------------------- stable references
 
         /// <summary>The levels (vertical dimension), grids and reference planes (horizontal) the view shows, as dimension candidates.</summary>
-        private static List<Cand> DatumsInView(Document doc, View view, XYZ d, XYZ o)
+        private static List<Cand> DatumsInView(Document doc, View view, XYZ d, XYZ vdir, XYZ o)
         {
             var datums = new List<Cand>();
             try
             {
                 var classes = new ElementMulticlassFilter(new List<Type> { typeof(Level), typeof(Grid), typeof(ReferencePlane) });
                 foreach (var e in new FilteredElementCollector(doc, view.Id).WherePasses(classes))
-                {
-                    if (e is Level l && Math.Abs(d.Z) > 0.99 && l.GetPlaneReference() != null)
-                        datums.Add(new Cand { Ref = l.GetPlaneReference(), Pos = (l.ProjectElevation - o.Z) * Math.Sign(d.Z), ElementId = l.Id.IntegerValue, What = "level '" + l.Name + "'", Stable = true });
-                    else if (e is Grid g && g.Curve is Line gl && Math.Abs(gl.Direction.DotProduct(d)) < 0.01 && Math.Abs(d.Z) < 0.01)
-                        datums.Add(new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = g.Id.IntegerValue, What = "grid '" + g.Name + "'", Stable = true });
-                    else if (e is ReferencePlane rp && Math.Abs(rp.Normal.DotProduct(d)) > 0.999)
-                        datums.Add(new Cand { Ref = rp.GetReference(), Pos = (rp.BubbleEnd - o).DotProduct(d), ElementId = rp.Id.IntegerValue, What = "reference plane '" + rp.Name + "'", Stable = true });
-                }
+                    datums.AddRange(References(view, e, d, vdir, o));
             }
             catch { /* no datums: faces only */ }
             return datums;
@@ -283,8 +276,8 @@ namespace VibeModel.Services.Claude.Commands
         {
             if (c.Stable)
             {
-                var kind = c.What.StartsWith("level", StringComparison.Ordinal) ? "level"
-                         : c.What.StartsWith("grid", StringComparison.Ordinal) ? "grid" : "reference plane";
+                var datum = doc.GetElement(new ElementId(c.ElementId));
+                var kind = datum is Level ? "level" : datum is Grid ? "grid" : "reference plane";
                 return new AttachedText { Text = "stable (" + kind + ")" };
             }
             int id = c.FaceOf != 0 ? c.FaceOf : c.ElementId;
@@ -390,7 +383,7 @@ namespace VibeModel.Services.Claude.Commands
 
             if (e is Grid g)
             {
-                if (g.Curve is Line gl && Math.Abs(gl.Direction.DotProduct(d)) < 0.01)
+                if (g.Curve is Line gl && Math.Abs(gl.Direction.DotProduct(d)) < 0.01 && Math.Abs(d.Z) < 0.01)   // a grid is a vertical plane
                     res.Add(new Cand { Ref = new Reference(g), Pos = (gl.Origin - o).DotProduct(d), ElementId = id, What = "grid '" + g.Name + "'", Stable = true });
                 return res;
             }

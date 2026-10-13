@@ -40,10 +40,13 @@ namespace VibeModel.Services.Claude
 
         public static bool Applies(string command) => AnnotationScope.Applies(command);
 
-        /// <summary>Every spot elevation, dimension and tag in the document (one collector, three classes).</summary>
+        /// <summary>Spot elevations, dimensions and tags (one filter, three classes).</summary>
+        internal static ElementFilter AnnotationFilter()
+            => new ElementMulticlassFilter(new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) });
+
+        /// <summary>Every spot elevation, dimension and tag in the document.</summary>
         internal static FilteredElementCollector Annotations(Document doc)
-            => new FilteredElementCollector(doc).WherePasses(new ElementMulticlassFilter(
-                new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) }));
+            => new FilteredElementCollector(doc).WherePasses(AnnotationFilter());
 
         // ------------------------------------------------------------------ capture
 
@@ -366,6 +369,12 @@ namespace VibeModel.Services.Claude
             foreach (var rec in lost.Concat(damaged))
             {
                 results.TryGetValue(rec.Id, out var r);
+                // Both transactions failed: the stale annotation is still there — not "removed".
+                if (r == null && doc.GetElement(new ElementId(rec.Id)) != null)
+                {
+                    Logger.Warn("Annotation guard: stale " + rec.Id + " could not be removed");
+                    continue;
+                }
                 // Revit's failure handling may still have deleted a re-created annotation at commit.
                 if (r != null && doc.GetElement(new ElementId(r.NewId)) != null)
                     outcome.Rehosted.Add(new RehostedAnnotation

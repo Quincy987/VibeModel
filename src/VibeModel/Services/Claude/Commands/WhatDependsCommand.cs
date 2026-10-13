@@ -51,7 +51,7 @@ namespace VibeModel.Services.Claude.Commands
 
             // One scan for all ids (instances need it — their edge spots are no dependents).
             var scanned = AnnotationGuard.ReferencingAnnotations(doc, ids);
-            var annotationFilter = new ElementMulticlassFilter(new List<Type> { typeof(Dimension), typeof(SpotDimension), typeof(IndependentTag) });
+            var annotationFilter = AnnotationGuard.AnnotationFilter();
             var allHosted = new FilteredElementCollector(doc).OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>()
                 .Where(fi => fi.Host != null && ids.Contains(fi.Host.Id.IntegerValue)).ToList();
 
