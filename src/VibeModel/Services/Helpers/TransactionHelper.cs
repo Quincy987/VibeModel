@@ -271,33 +271,31 @@ namespace VibeModel.Services.Helpers
 
     /// <summary>
     /// Collects the <see cref="FailureReport"/> of the command running on the main thread
-    /// (same pattern as CreatedElementsRecorder). Not armed → failures are still handled,
-    /// just not reported.
+    /// (same idea as CreatedElementsRecorder). Outside <see cref="Collect{T}"/> failures are
+    /// still handled, just not reported.
     /// </summary>
     public static class FailureCollector
     {
+        /// <summary>The running command's report; null when no command is being collected.</summary>
         public static FailureReport Current { get; private set; }
 
-        public static void Arm()
-        {
-            Current = new FailureReport();
-            RevitFailureHandler.ResetPasses();
-        }
-
-        /// <summary>Stop collecting and return the report (empty when never armed).</summary>
-        public static FailureReport Disarm()
-        {
-            var report = Current ?? new FailureReport();
-            Current = null;
-            return report;
-        }
-
-        /// <summary>Runs one command with the collector armed; <paramref name="report"/> is what Revit's failure processing did.</summary>
+        /// <summary>
+        /// Runs one command with its own report; <paramref name="report"/> is what Revit's failure
+        /// processing did. Nested calls are safe: the inner report is also merged into the outer one.
+        /// </summary>
         public static T Collect<T>(Func<T> run, out FailureReport report)
         {
-            Arm();
+            var outer = Current;
+            var mine = new FailureReport();
+            Current = mine;
+            if (outer == null) RevitFailureHandler.ResetPasses();
             try { return run(); }
-            finally { report = Disarm(); }
+            finally
+            {
+                Current = outer;
+                outer?.Merge(mine);
+                report = mine;
+            }
         }
     }
 }
