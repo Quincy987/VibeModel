@@ -13,7 +13,7 @@ An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch 
 
 <img src="docs/images/vibe-quay-wall.gif" width="880" alt="Revit with the VibeModel chat docked on the right: a request to build a quay wall on the drawing's quay line, the plan zooming in, the wall appearing along the line, then a follow-up about the capstone.">
 
-<sub>A quay wall asked for in the chat, drawn on the imported drawing's quay line, then a capstone question. Seven seconds, time-lapsed.</sub>
+<sub>A quay wall asked for in the chat, drawn on the imported drawing's quay line, then a capstone question. Real screen recording, time-lapsed.</sub>
 
 </div>
 
