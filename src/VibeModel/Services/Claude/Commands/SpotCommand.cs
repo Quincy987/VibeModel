@@ -220,6 +220,29 @@ namespace VibeModel.Services.Claude.Commands
             var face = top ? horizontal.OrderByDescending(f => f.Origin.Z).First() : horizontal.OrderBy(f => f.Origin.Z).First();
             var refOf = faces.First(g => ReferenceEquals(g.Face, face)).Reference;
             var pt = new XYZ(centre.X, centre.Y, face.Origin.Z);
+            if (!(view is ViewPlan) && !CutByView(face, view, pt))
+            {
+                // Seen beyond the cut plane: Revit only takes the edge the view shows (measured:
+                // a spot on the uncut face is refused, "no valid coordinates in the view").
+                var vdir = view.ViewDirection.Normalize();
+                double tolZ = RevitUnitHelper.MmToFeet(1);
+                AnnotationGeometry.Hit bestEdge = null;
+                double bestDepth = double.MaxValue;
+                foreach (var g in AnnotationGeometry.Enumerate(host, view, faces: false, edges: true))
+                {
+                    if (g.Curve == null || !g.Curve.IsBound) continue;
+                    if (Math.Abs(g.Curve.GetEndPoint(0).Z - face.Origin.Z) > tolZ || Math.Abs(g.Curve.GetEndPoint(1).Z - face.Origin.Z) > tolZ) continue;
+                    var r = g.Curve.Project(pt);
+                    if (r == null) continue;
+                    double depth = Math.Abs((r.XYZPoint - view.Origin).DotProduct(vdir));
+                    if (depth < bestDepth - tolZ)
+                    {
+                        bestDepth = depth;
+                        bestEdge = new AnnotationGeometry.Hit { Reference = g.Reference, Point = r.XYZPoint, Curve = g.Curve, Distance = r.Distance };
+                    }
+                }
+                return bestEdge;
+            }
             var proj = face.Project(pt);
             if (proj == null)
             {
@@ -280,7 +303,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 if (!SheetHelper.IsModelContent(e)) continue;
                 bool inst = e is FamilyInstance;
-                foreach (var g in AnnotationGeometry.Enumerate(e, view, faces: !inst, edges: inst))
+                foreach (var g in AnnotationGeometry.Enumerate(e, view, faces: !inst, edges: inst || !plan))
                 {
                     AnnotationGeometry.Hit h = null;
                     if (g.Face != null)
@@ -297,6 +320,7 @@ namespace VibeModel.Services.Claude.Commands
                             host = e;
                             continue;
                         }
+                        if (!CutByView(g.Face, view, p)) continue;   // beyond the cut plane: the edge is what the view shows
                         var rs = g.Face.Project(p);
                         if (rs == null) continue;
                         double d = InPlane(rs.XYZPoint - p, vdir);
@@ -316,7 +340,8 @@ namespace VibeModel.Services.Claude.Commands
                     if (h == null) continue;
                     double tol = RevitUnitHelper.MmToFeet(1);
                     if (best == null || h.Distance < best.Distance - tol ||
-                        (Math.Abs(h.Distance - best.Distance) <= tol && IsFlat(h.Curve) && !IsFlat(best.Curve)))
+                        (Math.Abs(h.Distance - best.Distance) <= tol &&
+                         (Rank(h) < Rank(best) || Rank(h) == Rank(best) && Depth(h, view) < Depth(best, view) - tol)))
                     {
                         best = h;
                         host = e;
@@ -327,6 +352,26 @@ namespace VibeModel.Services.Claude.Commands
         }
 
         private static bool IsFlat(Curve c) => c is Line l && Math.Abs(l.Direction.Z) < 0.01;
+
+        // On a tie: a face the view cuts, then a level edge (a pile's tip square), then any edge.
+        private static int Rank(AnnotationGeometry.Hit h) => h.Curve == null ? 0 : IsFlat(h.Curve) ? 1 : 2;
+
+        // Then the one nearest the viewer — what the section shows in front.
+        private static double Depth(AnnotationGeometry.Hit h, View view) => Math.Abs((h.Point - view.Origin).DotProduct(view.ViewDirection.Normalize()));
+
+        /// <summary>
+        /// True when the face passes through the view's cut plane near <paramref name="p"/> (a
+        /// section through a floor); false for a face seen beyond the cut (an elevation of it).
+        /// </summary>
+        private static bool CutByView(Face face, View view, XYZ p)
+        {
+            var vdir = view.ViewDirection.Normalize();
+            var onPlane = p - vdir * (p - view.Origin).DotProduct(vdir);
+            IntersectionResult r;
+            try { r = face.Project(onPlane); } catch { r = null; }
+            if (r == null) return false;
+            return Math.Abs((r.XYZPoint - onPlane).DotProduct(vdir)) <= RevitUnitHelper.MmToFeet(1);
+        }
 
         private static double InPlane(XYZ v, XYZ vdir)
         {

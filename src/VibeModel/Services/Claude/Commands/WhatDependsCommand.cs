@@ -73,7 +73,7 @@ namespace VibeModel.Services.Claude.Commands
                     foreach (var dep in e.GetDependentElements(annotationFilter))
                     {
                         var de = doc.GetElement(dep);
-                        if (de != null) annotations[de.Id.IntegerValue] = de;
+                        if (de != null && de.OwnerViewId != ElementId.InvalidElementId) annotations[de.Id.IntegerValue] = de;   // not a floor's sketch dimensions
                     }
                 }
                 catch { /* some elements refuse dependents — the scan covers them */ }

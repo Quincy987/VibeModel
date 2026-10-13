@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### Added — annotations survive replacements
+- Seen during the demo recordings: the chat put spot elevations on a capstone and a pile tip, then in
+  a later turn replaced those elements — the spots silently vanished or broke. Measured in Revit 2023:
+  host changes through the API raise no failure. Deleting a floor deletes its spot and a 3-reference
+  dimension; a wall+floor dimension survives with only the wall references (0 segments); a pile's
+  parameter change can leave its tip spot with a stale value; shape-editing a floor invalidates its spot.
+- Around `delete`, `exec`, `set`, `join`, `unjoin` and `phase` (and any batch with one of them) the
+  spot elevations, dimensions and tags on the elements involved are recorded and afterwards re-hosted:
+  refreshed on the same element when it moved or went stale, else moved to a replacement of the same
+  category (spots: a face/edge at the same height ±1 mm within 50 mm; dimensions: a face on the old
+  reference plane ±1 mm; tags: the replacement covering the old element's middle). Whatever cannot be
+  re-hosted is deleted, never left invalid. One line says what happened: `-- annotations: re-hosted …;
+  removed …` (JSON `annotations`), `(Revit)` when Revit's failure policy deleted it. Same undo step,
+  except `exec` (its own step). Verified live: piles 320→350 replaced by `placeid` + `delete` (both
+  pile spots and the floor-pile dimension re-hosted, values unchanged), the floor recreated by `exec`
+  (spot + both dimensions re-created with all references), a pile moved, the floor raised by `set`
+  (spot follows, no line), the floor shape-edited by `exec` (warning dismissed, spot re-hosted).
+- `spot <x> <y> | spot <id> top|bottom [--leader x y] [--fixed] [--type name]` — a spot elevation
+  (peilmaat). It snaps to a face the section cuts, else the edge the view shows, and always to an edge
+  of a family instance (Revit refuses instance faces and faces behind the cut). The response says what
+  it is attached to and warns when that element is likely to be replaced; `--fixed` hangs it on a
+  detail line that never moves.
+- `whatdepends <ids|selected>` (read-only) — the annotations (per view and sheet), hosted and joined
+  elements that depend on elements, with a verdict, before you replace them.
+- `dimension` prefers a level, grid or reference plane at the face's position (±1 mm), lists
+  `Attached to:` per reference and notes when a reference is likely to be replaced; JSON references get
+  `stable` and `vibeModelCreated`. `tag` says what it tags; `text --leader` says its leader is a free
+  point.
+
+### Fixed — dimensions and spots on family instances hung on the family symbol
+- Faces and edges of a family instance's geometry carry references to the family symbol. `dimension`
+  used them as they were, so a dimension to a pile was attached to the symbol: it outlived the pile and
+  no scan for the pile found it. Both `dimension` and `spot` now use the instance's own reference to
+  the same face/edge.
+
 
 ## v1.2.9 — Revit Failures Without Dialogs, IFC Read-Back (2026-10-13)
 

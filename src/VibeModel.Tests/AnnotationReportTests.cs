@@ -146,6 +146,19 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void SpotMatch_SameHeightWithinTheSearchRadius()
+        {
+            var old = new V3(105015, 100000, -10051);
+            // A 350 pile replacing a 320 one: its tip edge 15 mm further out, same height.
+            Assert.True(AnnotationMatch.SpotMatch(old, new V3(105030, 100000, -10051)));
+            Assert.True(AnnotationMatch.SpotMatch(old, new V3(105015, 100000, -10050.0)));
+            Assert.False(AnnotationMatch.SpotMatch(old, new V3(105015, 100000, -10049.99)));   // 1.01 mm higher
+            Assert.False(AnnotationMatch.SpotMatch(old, new V3(105066, 100000, -10051)));     // 51 mm away
+            Assert.True(AnnotationMatch.SameHeight(1030, 1031));
+            Assert.False(AnnotationMatch.SameHeight(1030, 1031.01));
+        }
+
+        [Fact]
         public void SameFacing_TopFaceDoesNotMatchABottomFace()
         {
             Assert.True(AnnotationMatch.SameFacing(new V3(0, 0, 1), new V3(0, 0, 5)));

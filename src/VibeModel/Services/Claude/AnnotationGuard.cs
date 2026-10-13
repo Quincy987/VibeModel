@@ -31,7 +31,7 @@ namespace VibeModel.Services.Claude
         /// <summary>Above this many annotations in the document the snapshot is skipped (logged once).</summary>
         public const int Budget = 5000;
 
-        private static readonly double SearchFt = RevitUnitHelper.MmToFeet(50);
+        private static readonly double SearchFt = RevitUnitHelper.MmToFeet(AnnotationMatch.SearchRadiusMm);
         private static readonly double TolFt = RevitUnitHelper.MmToFeet(AnnotationMatch.RehostToleranceMm);
         private static bool _budgetLogged;
 
@@ -259,7 +259,11 @@ namespace VibeModel.Services.Claude
                 {
                     if (rec.Kind == AnnotationKind.Dimension && e is Dimension d && !(e is SpotDimension))
                     {
-                        if (d.References.Size < rec.Refs.Count || !d.AreReferencesAvailable) damaged.Add(rec);
+                        // Measured: a wall+floor dimension whose floor was deleted survives with fewer
+                        // references and 0 segments. (AreReferencesAvailable reads False on healthy
+                        // dimensions too — not a signal.)
+                        int n = d.References.Size;
+                        if (n < rec.Refs.Count || (n >= 3 && d.NumberOfSegments != n - 1) || (n == 2 && d.Value == null)) damaged.Add(rec);
                     }
                     else if (rec.Kind == AnnotationKind.SpotElevation && e is SpotDimension sd)
                     {
@@ -312,7 +316,7 @@ namespace VibeModel.Services.Claude
                     outcome.Rehosted.Add(new RehostedAnnotation
                     {
                         From = rec.Id, To = r.NewId, Kind = rec.Kind, View = rec.ViewName,
-                        Hosts = r.Hosts.Select(h => new KeyValuePair<long, string>(h.Id.IntegerValue, h.Category?.Name)).ToList()
+                        Hosts = r.Hosts.GroupBy(h => h.Id.IntegerValue).Select(g => new KeyValuePair<long, string>(g.Key, g.First().Category?.Name)).ToList()
                     });
                 }
                 else
@@ -320,12 +324,20 @@ namespace VibeModel.Services.Claude
                     outcome.Removed.Add(new RemovedAnnotation
                     {
                         Id = rec.Id, Kind = rec.Kind, View = rec.ViewName, Sheet = rec.Sheet,
-                        Referenced = rec.Refs.Where(x => !x.IsDatum && x.ElementId > 0).Select(x => (long)x.ElementId).Distinct().ToList(),
+                        Referenced = Culprits(rec, deleted, modified),
                         ByRevit = revitDeleted.Contains(rec.Id)
                     });
                 }
             }
             return outcome;
+        }
+
+        /// <summary>The referenced elements this command deleted or changed; else every non-datum reference.</summary>
+        private static List<long> Culprits(AnnotationRecord rec, HashSet<int> deleted, HashSet<int> modified)
+        {
+            var hit = rec.Refs.Where(x => x.ElementId > 0 && (deleted.Contains(x.ElementId) || modified.Contains(x.ElementId)))
+                .Select(x => (long)x.ElementId).Distinct().ToList();
+            return hit.Count > 0 ? hit : rec.Refs.Where(x => !x.IsDatum && x.ElementId > 0).Select(x => (long)x.ElementId).Distinct().ToList();
         }
 
         private sealed class RehostResult
@@ -361,12 +373,14 @@ namespace VibeModel.Services.Claude
                 hit = AnnotationGeometry.Nearest(doc, same, view, rec.Point, rec.EdgeRef, rec.FaceNormal, double.MaxValue);
                 if (hit != null) host = same;
             }
-            // 2. A new element of the same category whose face/edge passes within the tolerance.
+            // 2. A new element of the same category with a face/edge at the same height (±1 mm)
+            //    within the 50 mm search radius — a spot measures height, so a 350 pile replacing
+            //    a 320 one (its tip edge 15 mm further out) keeps its tip spot.
             if (hit == null)
             {
                 foreach (var cand in Candidates(doc, added, old, rec.Point, rec.Point))
                 {
-                    var h = AnnotationGeometry.Nearest(doc, cand, view, rec.Point, rec.EdgeRef, rec.FaceNormal, TolFt);
+                    var h = AnnotationGeometry.Nearest(doc, cand, view, rec.Point, rec.EdgeRef, rec.FaceNormal, SearchFt, rec.Point.Z);
                     if (h != null && (hit == null || h.Distance < hit.Distance)) { hit = h; host = cand; }
                 }
             }
@@ -526,6 +540,7 @@ namespace VibeModel.Services.Claude
                 try
                 {
                     IEnumerable<int> referenced;
+                    if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) continue;   // sketch dimensions of a floor's boundary etc.
                     if (e is IndependentTag t) referenced = t.GetTaggedLocalElementIds().Select(i => i.IntegerValue);
                     else if (e is Dimension d)
                     {
@@ -636,7 +651,33 @@ namespace VibeModel.Services.Claude
                 try { ge = e.get_Geometry(new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine }); } catch { ge = null; }
             }
             if (ge == null) yield break;
-            foreach (var g in Walk(ge, faces, edges)) yield return g;
+            var fi = e as FamilyInstance;
+            foreach (var g in Walk(ge, faces, edges))
+            {
+                // Instance geometry carries references to the (internal) symbol — measured: a spot on
+                // such an edge reports the symbol as its host, so it outlives the pile and is
+                // invisible to a scan for the pile. "<instance>:0:INSTANCE:<symbol ref>" is the
+                // instance's own reference to the same edge/face.
+                if (fi != null && g.Reference.ElementId != fi.Id)
+                {
+                    var r = ToInstanceReference(fi, g.Reference);
+                    if (r == null) continue;
+                    g.Reference = r;
+                }
+                yield return g;
+            }
+        }
+
+        internal static Reference ToInstanceReference(FamilyInstance fi, Reference symbolRef)
+        {
+            try
+            {
+                var doc = fi.Document;
+                var stable = symbolRef.ConvertToStableRepresentation(doc);
+                var r = Reference.ParseFromStableRepresentation(doc, fi.UniqueId + ":0:INSTANCE:" + stable);
+                return r != null && r.ElementId == fi.Id ? r : null;
+            }
+            catch { return null; }
         }
 
         private static IEnumerable<Geo> Walk(GeometryElement ge, bool faces, bool edges)
@@ -672,9 +713,9 @@ namespace VibeModel.Services.Claude
         /// to <paramref name="p"/>, within <paramref name="maxFt"/>. Ties within 1 mm prefer a
         /// horizontal edge (a pile's tip edge over its vertical corner).
         /// </summary>
-        public static Hit Nearest(Document doc, Element e, View view, XYZ p, bool preferEdge, XYZ facing, double maxFt)
+        public static Hit Nearest(Document doc, Element e, View view, XYZ p, bool preferEdge, XYZ facing, double maxFt, double? sameZ = null)
         {
-            bool edges = e is FamilyInstance || preferEdge && !(e is HostObject);
+            bool edges = e is FamilyInstance || preferEdge;
             Hit best = null;
             double tol = RevitUnitHelper.MmToFeet(1);
             foreach (var g in Enumerate(e, view, faces: !edges, edges: edges))
@@ -698,6 +739,7 @@ namespace VibeModel.Services.Claude
                     h = new Hit { Reference = g.Reference, Point = r.XYZPoint, Curve = g.Curve, Distance = r.Distance };
                 }
                 if (h == null || h.Distance > maxFt) continue;
+                if (sameZ.HasValue && !AnnotationMatch.SameHeight(RevitUnitHelper.FeetToMm(sameZ.Value), RevitUnitHelper.FeetToMm(h.Point.Z))) continue;
                 if (best == null || h.Distance < best.Distance - tol ||
                     (Math.Abs(h.Distance - best.Distance) <= tol && Horizontal(h.Curve) && !Horizontal(best.Curve)))
                     best = h;

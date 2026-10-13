@@ -399,9 +399,17 @@ namespace VibeModel.Services.Claude.Commands
             if (faces.Count == 0) return res;
             var pos = faces.Select(f => (f.Origin - o).DotProduct(d)).ToList();
             foreach (var i in DimensionMath.Extremes(pos, Tol))
-                res.Add(new Cand { Ref = faces[i].Reference, Pos = pos[i], ElementId = id, What = (e.Category?.Name ?? "element") + " face", FaceOf = id });
+                res.Add(new Cand { Ref = InstanceRef(e, faces[i].Reference), Pos = pos[i], ElementId = id, What = (e.Category?.Name ?? "element") + " face", FaceOf = id });
             return res;
         }
+
+        /// <summary>
+        /// A face of a family instance's geometry references the family symbol; dimensioned as is,
+        /// the dimension hangs on the symbol (it outlives the instance and is invisible to a scan
+        /// for it). The instance's own reference to the same face is used instead.
+        /// </summary>
+        private static Reference InstanceRef(Element e, Reference r)
+            => e is FamilyInstance fi && r != null && r.ElementId != fi.Id ? (AnnotationGeometry.ToInstanceReference(fi, r) ?? r) : r;
 
         private static IEnumerable<PlanarFace> PlanarFaces(Element e, View view)
         {
@@ -455,7 +463,7 @@ namespace VibeModel.Services.Claude.Commands
                     var r = f.Project(new XYZ(p.X, p.Y, zMid));
                     if (r == null || r.Distance > snap) continue;
                     if (best == null || r.Distance < best.Dist)
-                        best = new Cand { Ref = f.Reference, Pos = (f.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = (e.Category?.Name ?? "element") + " face", Dist = r.Distance, FaceOf = e.Id.IntegerValue };
+                        best = new Cand { Ref = InstanceRef(e, f.Reference), Pos = (f.Origin - o).DotProduct(d), ElementId = e.Id.IntegerValue, What = (e.Category?.Name ?? "element") + " face", Dist = r.Distance, FaceOf = e.Id.IntegerValue };
                 }
             }
             return best;

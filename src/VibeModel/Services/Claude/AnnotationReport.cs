@@ -208,6 +208,19 @@ namespace VibeModel.Services.Claude
 
         public static bool Within(V3 a, V3 b, double tolMm = RehostToleranceMm) => (a - b).Length <= tolMm + 1e-9;
 
+        /// <summary>The radius (mm) around the old reference in which replacement elements are looked for.</summary>
+        public const double SearchRadiusMm = 50.0;
+
+        /// <summary>A spot elevation's new reference: the same height (±tolerance), mm.</summary>
+        public static bool SameHeight(double zMmA, double zMmB, double tolMm = RehostToleranceMm) => System.Math.Abs(zMmA - zMmB) <= tolMm + 1e-9;
+
+        /// <summary>
+        /// A spot elevation may move to a replacement whose face/edge lies at the same height
+        /// (±1 mm) within the search radius of the old point — a spot measures height.
+        /// </summary>
+        public static bool SpotMatch(V3 oldPoint, V3 newPoint)
+            => (newPoint - oldPoint).Length <= SearchRadiusMm + 1e-9 && SameHeight(oldPoint.Z, newPoint.Z);
+
         /// <summary>Same plane: parallel normals (either sense) and the second origin within tol of the first plane.</summary>
         public static bool SamePlane(V3 normalA, V3 originA, V3 normalB, V3 originB, double tolMm = RehostToleranceMm)
         {
