@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## v1.2.9 — Revit Failures Without Dialogs, IFC Read-Back (2026-10-13)
+
 ### Fixed — a Revit failure dialog no longer hangs every command
 - Seen live during the demo recordings: a command or `exec` snippet that made Revit post an error
   ("Spot Dimension does not lie on its reference", "One or more Spot Dimension references are no
