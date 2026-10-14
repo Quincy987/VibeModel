@@ -112,6 +112,8 @@ namespace VibeModel.Services.Chat
             public KeyTestOutcome Outcome;
             public int Status;
             public string Detail;
+            /// <summary>The URL that was tried (a failure names its host, which may not be the saved one).</summary>
+            public string Url;
             public bool Ok => Outcome == KeyTestOutcome.Ok;
         }
 
@@ -127,6 +129,13 @@ namespace VibeModel.Services.Chat
         {
             var modelsUrl = ModelsUrl(baseUrl == null ? MessagesUrl : SettingsManager.MessagesUrl(baseUrl)) +
                             "/" + Uri.EscapeDataString(model ?? "");
+            var result = TryKey(apiKey, model, timeout, modelsUrl, ct);
+            result.Url = modelsUrl;
+            return result;
+        }
+
+        private static KeyTestResult TryKey(string apiKey, string model, TimeSpan timeout, string modelsUrl, CancellationToken ct)
+        {
             try
             {
                 using (var client = CreateClient(timeout))

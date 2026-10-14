@@ -267,6 +267,18 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void KeyTest_NetworkFailure_NamesTheHostThatWasTried()
+        {
+            var result = new AnthropicHttp.KeyTestResult
+            {
+                Outcome = AnthropicHttp.KeyTestOutcome.Network,
+                Detail = "x",
+                Url = "https://gateway.example/v1/models/m"
+            };
+            Assert.Contains("gateway.example", ClaudeSetup.DescribeKeyTest("en", result, "m"));
+        }
+
+        [Fact]
         public void ApiErrorMessage_ReadsTheApiError_NotAProxyPage()
         {
             Assert.Equal("invalid x-api-key", AnthropicHttp.ErrorMessage("{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));

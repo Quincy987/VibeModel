@@ -40,7 +40,7 @@ namespace VibeModel.Services.Chat
                 case AnthropicHttp.KeyTestOutcome.NoAccess: return Strings.For(language, Strings.WizardApiNoAccess);
                 case AnthropicHttp.KeyTestOutcome.ModelUnknown: return Strings.For(language, Strings.WizardApiModelUnknown, model);
                 case AnthropicHttp.KeyTestOutcome.Network:
-                    return Strings.For(language, Strings.WizardApiNetwork, HostOf(AnthropicHttp.MessagesUrl), result.Detail);
+                    return Strings.For(language, Strings.WizardApiNetwork, HostOf(result.Url ?? AnthropicHttp.MessagesUrl), result.Detail);
                 default: return Strings.For(language, Strings.WizardApiOther, result.Status, result.Detail);
             }
         }

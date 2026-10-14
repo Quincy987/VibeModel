@@ -9,7 +9,7 @@ etc.; screenshots that show internal names are kept out of the repository
 
 | Area | Result |
 |---|---|
-| Unit tests | **1150 / 1150 pass** (51 new: settings/DPAPI/managed, CLI discovery, proxy hand-over, TLS, pricing, screenshots, diagnose masking, mock-API end-to-end) |
+| Unit tests | **1151 / 1151 pass** (52 new: settings/DPAPI/managed, CLI discovery, proxy hand-over, TLS, pricing, screenshots, diagnose masking, mock-API end-to-end) |
 | Installer, fresh user (sandboxed profile, 17 files marked "from the internet") | installs, unblocks all, verifies, exit 0 |
 | Installer, second run | every file "already up to date", exit 0 |
 | Installer, GitHub "Source code (zip)" | names the right download, exit 1 |
@@ -172,7 +172,9 @@ claude.ai: DNS 160.79.104.10,… · HTTPS reachable (HTTP 403, 80 ms) · certifi
 
 Found and fixed during the run: the header said "Not Connected" in English and cut off *Diagnose* at
 the default pane width; then the squeezed title left a stray "V…". Now the status is localized
-("Niet verbonden"), trims, and the title fades out when it does not fit.
+("Niet verbonden"), trims, and the title fades out when it does not fit. (In the review that followed,
+the title's width check was rewritten to measure the text once; that version was not started in Revit
+again.)
 
 ## 4. The API backend without a key: mock Messages API
 
