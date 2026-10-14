@@ -34,8 +34,8 @@ have no administrator rights.
 - **Cost line** under each answer: `31.0k tokens · ≈ €0,12` (API: list prices in `ModelPricing`;
   Claude Code: its own `total_cost_usd`). Never stored with the chat.
 - **Settings → Anthropic API:** model and endpoint fields; *Validate* uses the same free key check as the
-  wizard, against the endpoint typed in the box, and tests IT's / the environment's key when the box is
-  empty. Such a key is shown masked and never copied into settings.json. The Claude Code tab finds the
+  wizard, against the endpoint typed in the box (a network failure names that host), and tests IT's /
+  the environment's key when the box is empty. Such a key is shown masked and never copied into settings.json. The Claude Code tab finds the
   CLI the way the backend does (off the UI thread) and no longer mentions npm.
 - Warnings and errors are always logged now (INFO stays behind `VIBEMODEL_DEBUG=1`), so support has a log.
 - Header: "Niet verbonden" in the pane's language; the buttons stay visible in the default narrow pane.
