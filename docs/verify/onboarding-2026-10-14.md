@@ -172,9 +172,29 @@ claude.ai: DNS 160.79.104.10,… · HTTPS reachable (HTTP 403, 80 ms) · certifi
 
 Found and fixed during the run: the header said "Not Connected" in English and cut off *Diagnose* at
 the default pane width; then the squeezed title left a stray "V…". Now the status is localized
-("Niet verbonden"), trims, and the title fades out when it does not fit. (In the review that followed,
-the title's width check was rewritten to measure the text once; that version was not started in Revit
-again.)
+("Niet verbonden"), trims, and the title fades out when it does not fit. (The title's width check was
+rewritten in review; the re-run below shows that version.)
+
+## 5. Re-run after the reviews (commit 898d898)
+
+Same fresh-user setup, zip rebuilt from the reviewed code, one Revit 2023 started for it:
+
+- Installer: "Installing for Revit 2023", unsigned note "asks once … (again after each update)"; Revit
+  showed "Security - Unsigned Add-In" once → *Always Load*.
+- Header: no stray "V…" title, every button visible (screenshot 1 above is from this run).
+- Wizard, wrong key, *Testen* pressed and then *Opslaan en starten* / *Testen* again at once: exactly one
+  key check ran (log: `key test InvalidKey (HTTP 401)`) — the buttons are disabled while it runs, so the
+  extra presses were refused; status "niet geaccepteerd"; no settings.json written.
+- Settings → *Validate* with a key in the box and `https://no-such-host.vibemodel-test.invalid` typed as
+  endpoint: "no-such-host.vibemodel-test.invalid is niet bereikbaar: The remote name could not be
+  resolved …" (the typed endpoint was tested and named). Endpoint box emptied: the default API answered
+  401 → "niet geaccepteerd". Closed without saving: still no settings.json.
+- TLS: after these HTTPS calls, `exec` read Revit's process-wide
+  `ServicePointManager.SecurityProtocol` = `SystemDefault` — VibeModel no longer narrows it.
+- `/diagnose`: "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude …", API reachable
+  (HTTP 401, 203 ms). No ERROR lines in the session log.
+- Not exercised: the Enter-key path of the double-check guard (pressing keys would need focus on the
+  user's desktop), and the screenshot/thinking changes of the API backend (no API key; mock tests).
 
 ## 4. The API backend without a key: mock Messages API
 
