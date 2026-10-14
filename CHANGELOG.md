@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## v1.2.10 — Zero-Admin Onboarding, Annotations Survive Replacements (2026-10-14)
+
 ### Changed — installing for people who are not programmers (no admin, no terminal)
 Feedback from a colleague who installed it: the add-in landed, but "Node.js to connect Claude" was
 nowhere to be found. Installing developer tools is not something modellers do, and office laptops
