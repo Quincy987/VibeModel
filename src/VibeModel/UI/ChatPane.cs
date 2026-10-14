@@ -218,6 +218,14 @@ namespace VibeModel.UI
             };
             Grid.SetColumn(title, 0);
             headerGrid.Children.Add(title);
+            // In the default ~460 px pane the buttons leave no room for the title, and an ellipsis
+            // would leave a stray "V…". Revit's pane caption already says "VibeModel Chat", so the
+            // title simply fades out when it does not fit (it stays in the UI-automation tree).
+            title.SizeChanged += (s, e) =>
+            {
+                title.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                title.Opacity = title.ActualWidth + 0.5 < title.DesiredSize.Width ? 0 : 1;
+            };
 
             _statusText = new TextBlock
             {
@@ -225,7 +233,10 @@ namespace VibeModel.UI
                 Foreground = FgSecondary,
                 FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0)
+                // The default pane is ~460 px: the status gives way so every header button stays visible.
+                MaxWidth = 100,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 0, 4, 0)
             };
             Grid.SetColumn(_statusText, 1);
             headerGrid.Children.Add(_statusText);
@@ -283,8 +294,8 @@ namespace VibeModel.UI
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
                 FontSize = 11,
-                Padding = new Thickness(8, 2, 8, 2),
-                Margin = new Thickness(2, 0, 4, 0)
+                Padding = new Thickness(5, 2, 5, 2),
+                Margin = new Thickness(1, 0, 2, 0)
             };
             btn.MouseEnter += (s, e) => btn.Foreground = FgPrimary;
             btn.MouseLeave += (s, e) => btn.Foreground = FgSecondary;
@@ -755,7 +766,7 @@ namespace VibeModel.UI
             }
             else
             {
-                _statusText.Text = "Not Connected";
+                _statusText.Text = Strings.Get(Strings.StatusNotConnected);
                 _statusText.Foreground = FgError;
             }
         }

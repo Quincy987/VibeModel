@@ -90,6 +90,7 @@ namespace VibeModel.Services.Chat
         public const string ApiUnreachable = "ApiUnreachable";                 // {0} = url, {1} = reason
         public const string ClaudeDisabledByIt = "ClaudeDisabledByIt";
         public const string UsageTip = "UsageTip";
+        public const string StatusNotConnected = "StatusNotConnected";
         // Connect wizard (the not-configured welcome card).
         public const string WizardTitle = "WizardTitle";
         public const string WizardIntro = "WizardIntro";
@@ -141,7 +142,7 @@ namespace VibeModel.Services.Chat
                 { StaleResume, "[Resumed session was stale - starting fresh chat.]" },
                 { IdleStoppedMidTool, "[Stopped: task went idle for 3 min mid-tool. Session was reset to avoid a broken transcript - please rephrase your request.]" },
                 { IdleStopped, "[Stopped: task went idle for 3 min. Say \"continue\" to resume.]" },
-                { ApiKeyMissing, "API key not configured. Click Settings to add your Anthropic API key." },
+                { ApiKeyMissing, "Not connected to Claude yet. Use the Connect to Claude card in the chat (New Chat shows it), or Settings → Anthropic API." },
                 { LocalEndpointMissing, "Local LLM endpoint not configured. Click Settings to set it up." },
                 { LocalNotReachable, "Local LLM not reachable at {0}. Is the server running?" },
                 { LocalError, "Local LLM error {0}: {1}" },
@@ -195,6 +196,7 @@ namespace VibeModel.Services.Chat
                 { ApiMaxTokens, "[The answer was cut off at the length limit - ask \"continue\" for the rest.]" },
                 { ApiUnreachable, "Cannot reach {0}: {1}. Check the network or proxy, or press Diagnose and send the report to your administrator." },
                 { ClaudeDisabledByIt, "Claude Code is switched off on this computer by IT." },
+                { StatusNotConnected, "Not connected" },
                 { UsageTip, "Tokens this answer used, and an estimate of its cost at Anthropic's list price (the Console has the real bill)." },
                 { WizardTitle, "Connect to Claude" },
                 { WizardIntro, "The chat needs a connection to Claude. Pick one way - you only do this once." },
@@ -246,7 +248,7 @@ namespace VibeModel.Services.Chat
                 { StaleResume, "[De vorige sessie was verlopen - er is een nieuwe chat gestart.]" },
                 { IdleStoppedMidTool, "[Gestopt: de taak stond 3 minuten stil midden in een stap. De sessie is opnieuw gestart om een kapot gesprek te voorkomen - formuleer je vraag opnieuw.]" },
                 { IdleStopped, "[Gestopt: de taak stond 3 minuten stil. Typ \"ga door\" om verder te gaan.]" },
-                { ApiKeyMissing, "Er is geen API-sleutel ingesteld. Klik op Settings om je Anthropic API-sleutel toe te voegen." },
+                { ApiKeyMissing, "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude in de chat (New Chat toont hem), of Settings → Anthropic API." },
                 { LocalEndpointMissing, "Er is geen adres voor het lokale taalmodel ingesteld. Klik op Settings om het in te stellen." },
                 { LocalNotReachable, "Het lokale taalmodel is niet bereikbaar op {0}. Draait de server?" },
                 { LocalError, "Fout van het lokale taalmodel {0}: {1}" },
@@ -300,6 +302,7 @@ namespace VibeModel.Services.Chat
                 { ApiMaxTokens, "[Het antwoord is afgebroken op de maximale lengte - vraag \"ga door\" voor de rest.]" },
                 { ApiUnreachable, "{0} is niet bereikbaar: {1}. Controleer het netwerk of de proxy, of klik op Diagnose en stuur het rapport naar je beheerder." },
                 { ClaudeDisabledByIt, "Claude Code is op deze computer uitgeschakeld door IT." },
+                { StatusNotConnected, "Niet verbonden" },
                 { UsageTip, "Tokens die dit antwoord gebruikte, en een schatting van de kosten tegen de prijslijst van Anthropic (de echte rekening staat in de Console)." },
                 { WizardTitle, "Verbind met Claude" },
                 { WizardIntro, "De chat heeft een verbinding met Claude nodig. Kies één manier - dit doe je maar één keer." },

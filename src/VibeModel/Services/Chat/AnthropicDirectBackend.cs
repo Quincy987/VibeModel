@@ -26,6 +26,9 @@ namespace VibeModel.Services.Chat
         private string _turnSystemPrompt;
         private string _lastTurnSystemPrompt;
 
+        /// <summary>Tests: replaces <see cref="ChatBackendBase.BuildSystemPrompt"/> (no global settings touched).</summary>
+        internal Func<string> SystemPromptSource { get; set; }
+
         // Attachment size guards. The API caps requests at ~32MB; base64 inflates bytes
         // by 4/3, so the practical raw-file ceiling for a PDF is ~22MB (the plan's 30MB
         // would sail past the request limit once encoded). Images above the reject cap
@@ -130,7 +133,7 @@ namespace VibeModel.Services.Chat
             // turns lose their image, and the system prompt is frozen for this turn. When either
             // changes what came before, earlier thinking blocks no longer match their conversation
             // and are removed (the API would refuse them).
-            _turnSystemPrompt = BuildSystemPrompt();
+            _turnSystemPrompt = (SystemPromptSource ?? BuildSystemPrompt)();
             var historyEdited = DropOldScreenshotImages();
             var systemChanged = _lastTurnSystemPrompt != null && _lastTurnSystemPrompt != _turnSystemPrompt;
             _lastTurnSystemPrompt = _turnSystemPrompt;

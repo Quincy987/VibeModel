@@ -15,18 +15,38 @@
 .PARAMETER NoBuild
     Pack whatever is in src\VibeModel\bin\Release\Revit<year> without building first.
 
+.PARAMETER Sign
+    Authenticode-sign VibeModel.dll, the PDF helper and install.ps1 before zipping (scripts\sign.ps1)
+    with the certificate given by -Thumbprint or -PfxPath.
+
+.PARAMETER AllowSelfSigned
+    Testing only: -Sign without a certificate uses a self-signed one. Never hand such a zip out:
+    measured in Revit 2023, a self-signed (untrusted) signature makes Revit show "Security - Invalid
+    Signature ... may have been tampered with ... we recommend that you do not load it" with only
+    Load / Do Not Load on EVERY start - worse than an unsigned add-in, which asks once
+    ("Always Load").
+
 .EXAMPLE
     .\scripts\package-release.ps1
     .\scripts\package-release.ps1 -RevitVersion 2024
+    .\scripts\package-release.ps1 -Sign -Thumbprint 0123ABCD...
 #>
 
 param(
     [string]$RevitVersion = "2023",
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$Sign,
+    [string]$Thumbprint,
+    [string]$PfxPath,
+    [switch]$AllowSelfSigned
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+
+if ($Sign -and -not $Thumbprint -and -not $PfxPath -and -not $AllowSelfSigned) {
+    throw "-Sign needs -Thumbprint or -PfxPath (a certificate this office trusts). A self-signed signature makes Revit warn 'Invalid Signature' on every start - for a test build add -AllowSelfSigned."
+}
 
 $csproj = Join-Path $root "src\VibeModel\VibeModel.csproj"
 $version = ([xml](Get-Content $csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
@@ -66,24 +86,35 @@ if (Test-Path (Join-Path $root "LICENSE")) { Copy-Item (Join-Path $root "LICENSE
 Get-ChildItem $pdfDir -File | Where-Object { $_.Extension -in ".exe", ".dll", ".config" } |
     Copy-Item -Destination (Join-Path $stage "VibeModel.PdfText")
 
+$signedBy = "not signed"
+if ($Sign) {
+    $signArgs = @{ Root = $stage }
+    if ($Thumbprint) { $signArgs.Thumbprint = $Thumbprint }
+    if ($PfxPath) { $signArgs.PfxPath = $PfxPath }
+    $signResult = & (Join-Path $PSScriptRoot "sign.ps1") @signArgs | Select-Object -Last 1
+    if ($signResult.Failed -gt 0) { throw "Signing failed for $($signResult.Failed) file(s)" }
+    $signedBy = $signResult.Signer + $(if ($signResult.SelfSigned) { " (SELF-SIGNED TEST BUILD - Revit warns 'Invalid Signature'; do not distribute)" } else { "" })
+}
+
 @"
 VibeModel v$version - AI chat inside Autodesk Revit $RevitVersion
 =================================================
 
-Install (3 steps):
+Install (no administrator rights needed):
   1. Close Revit.
-  2. Double-click install.cmd. It copies the add-in to %APPDATA%\Autodesk\Revit\Addins\<year>\ and unblocks the files.
-     (Press Enter at the API-key question when you use Claude Code.)
-  3. Start Revit. The VibeModel tab is in the ribbon; click Chat.
+  2. Double-click install.cmd. It copies the add-in for your Windows account, unblocks the files
+     and checks the result. Nothing to fill in.
+  3. Start Revit -> tab VibeModel -> Chat. The first time, the chat shows "Connect to Claude":
+     paste the API key you got from your administrator, or install / log in to Claude Code
+     with one click. No terminal, no Node.js.
 
-Connect to Claude:
-  - Claude Code (recommended): install Node.js, run  npm install -g @anthropic-ai/claude-code , run  claude  once and log in.
-    VibeModel detects it automatically.
-  - Or an Anthropic API key: Settings in the chat pane.
+Something not working? Click Diagnose in the chat pane, copy the report and send it to your
+administrator. The installer writes %LOCALAPPDATA%\VibeModel\logs\install.log.
 
-No VibeModel tab? Every file must be in the Addins folder of YOUR Revit year and the DLLs must be unblocked;
-install.cmd checks both and tells you. Run it again after closing Revit.
+For IT: install.cmd -Quiet (no questions), managed.json for a shared key / model / proxy-friendly
+gateway, details in docs/deployment.md on GitHub.
 
+Signature: $signedBy
 Docs, source and newer versions: https://github.com/Quincy987/VibeModel
 "@ | Set-Content (Join-Path $stage "README.txt") -Encoding UTF8
 

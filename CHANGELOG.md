@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+### Changed — installing for people who are not programmers (no admin, no terminal)
+Feedback from a colleague who installed it: the add-in landed, but "Node.js to connect Claude" was
+nowhere to be found. Installing developer tools is not something modellers do, and office laptops
+have no administrator rights.
+- **Connect to Claude, inside Revit.** An unconnected chat shows a wizard instead of npm commands:
+  paste an API key (checked against the API at once, free: `GET /v1/models/{model}`; a wrong key is
+  never stored), or install Claude Code with Anthropic's per-user installer in a visible window, log
+  in, and switch to it — no restart. Every control has an AutomationId.
+- **An API key wins.** `auto` now prefers a configured key (managed.json, `ANTHROPIC_API_KEY`, or the
+  user's own), then Claude Code, then a local model. Default model `claude-sonnet-5-5`.
+- **The key is never plain text on disk:** DPAPI-encrypted for the Windows user
+  (`AnthropicApiKeyProtected`); an old plain-text key is encrypted on first read and removed.
+- **IT can manage it:** read-only `managed.json` (`%ProgramData%\VibeModel\` then `%APPDATA%\VibeModel\`)
+  with `PreferredBackend`, `Model`, `ApiBaseUrl`, `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`,
+  `Language`; managed fields are locked in Settings ("beheerd door IT"). `ApiBaseUrl` lets a gateway
+  that speaks the Messages API stand in for api.anthropic.com. See docs/deployment.md.
+- **Office networks:** every API call (chat, quick replies, distiller, key test) goes through the
+  Windows proxy with the user's Windows credentials, TLS 1.2, the Windows certificate store. Claude
+  Code gets the Windows proxy as `HTTPS_PROXY` when none is set.
+- **Claude Code found where the native installer puts it** (`%USERPROFILE%\.local\bin`) and on a PATH
+  read fresh from the registry; `ClaudeCliPath` / `VIBEMODEL_CLAUDE_CLI` set it (`none` = off).
+  Without Git for Windows the CLI shells out through PowerShell: it is now allowed, and the prompt
+  says to call `curl.exe` there.
+- **Diagnose** (chat header + `diagnose` command): versions, signature, backend, key source (masked),
+  where Claude Code was looked for, proxy, DNS/HTTPS to api.anthropic.com and claude.ai with the
+  certificate issuer, recent warnings/errors, settings with secrets masked; Copy / Save.
+- **Cost line** under each answer: `31.0k tokens · ≈ €0,12` (API: list prices in `ModelPricing`;
+  Claude Code: its own `total_cost_usd`). Never stored with the chat.
+- Warnings and errors are always logged now (INFO stays behind `VIBEMODEL_DEBUG=1`), so support has a log.
+- Header: "Niet verbonden" in the pane's language; the buttons stay visible in the default narrow pane.
+
+### Fixed — the API backend on models that think by default
+- Sonnet 5.5 (the new default) thinks by default. Its thinking blocks are now kept and sent back with
+  the turn (they were dropped, which breaks a tool loop), the system prompt is frozen for a whole turn,
+  screenshots and attachments are trimmed only between turns (then stale thinking is removed), and a
+  400 about thinking blocks is answered once by removing them and retrying. A refusal and a cut-off
+  answer are explained instead of returning nothing. `max_tokens` 32000.
+
+### Installer and release zip
+- `install.cmd` asks nothing but "close Revit" (no API-key prompt any more), is idempotent ("already up
+  to date"), logs to `%LOCALAPPDATA%\VibeModel\logs\install.log`, reports the signature, and has
+  `-Quiet` (IT: no questions; exit 2 when Revit runs) and `-InstallClaudeCode`.
+- `scripts/sign.ps1` (Set-AuthenticodeSignature + timestamp) and `package-release.ps1 -Sign -Thumbprint`.
+  **Measured in Revit 2023:** unsigned → one "Always Load" prompt per new version; a trusted signature
+  → no prompt at all; a self-signed (untrusted) signature → "Security - Invalid Signature … may have
+  been tampered with" on every start, with only Load / Do Not Load. So packaging refuses to sign
+  without a real certificate (`-AllowSelfSigned` for tests only), and the installer does not offer to
+  trust a certificate (Windows itself warns that adding a root is a security risk).
+
 ### Added — annotations survive replacements
 - Seen during the demo recordings: the chat put spot elevations on a capstone and a pile tip, then in
   a later turn replaced those elements — the spots silently vanished or broke. Measured in Revit 2023:
