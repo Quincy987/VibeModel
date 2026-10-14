@@ -9,11 +9,13 @@ etc.; screenshots that show internal names are kept out of the repository
 
 | Area | Result |
 |---|---|
-| Unit tests | **1136 / 1136 pass**, three runs in a row (37 new: settings/DPAPI/managed, CLI discovery, pricing, diagnose masking, mock-API end-to-end) |
+| Unit tests | **1150 / 1150 pass** (51 new: settings/DPAPI/managed, CLI discovery, proxy hand-over, TLS, pricing, screenshots, diagnose masking, mock-API end-to-end) |
 | Installer, fresh user (sandboxed profile, 17 files marked "from the internet") | installs, unblocks all, verifies, exit 0 |
 | Installer, second run | every file "already up to date", exit 0 |
 | Installer, GitHub "Source code (zip)" | names the right download, exit 1 |
 | Installer `-Quiet` while Revit runs | "Revit is running …", exit 2, no prompt |
+| Installer, Revit 2023 + 2025 folders | installs into 2023 only, "Also found Revit 2025 - not touched" |
+| Installer, zip for a Revit that is not installed | names what is missing, exit 3 |
 | Revit, unsigned build | "Security - Unsigned Add-In" once per new build → *Always Load* |
 | Revit, self-signed (untrusted) build | **"Security - Invalid Signature"** on every start → never ship this |
 | Revit, trusted signature | **no dialog** |
@@ -68,6 +70,10 @@ From GitHub's source-code zip:
 ```
 
 `-Quiet` with a process named `Revit` running: `Revit is running - close it and run the installer again.`, exit 2.
+After the review the installer only installs into the Revit year in the zip's `revit-year.txt`: with
+`Addins\2023` and `Addins\2025` present it installed into 2023 and printed
+`Also found Revit 2025 - not touched: this build is for Revit 2023 only.`; with a year that is not
+installed it stopped with exit 3. (The installer runs above predate this and say "Revit versions: 2023".)
 All three PowerShell scripts parse without errors and are pure ASCII (Windows PowerShell 5.1 reads
 BOM-less scripts as ANSI).
 

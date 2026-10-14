@@ -90,6 +90,8 @@ namespace VibeModel.Infrastructure
             return Convert.ToBase64String(bytes);
         }
 
+        private static bool _loggedUnprotectFailure;
+
         internal static string Unprotect(string blob)
         {
             try
@@ -100,7 +102,10 @@ namespace VibeModel.Infrastructure
             catch (Exception ex)
             {
                 // Another Windows user's (or another machine's) blob: unreadable here, so no key.
-                Logger.Warn("Stored API key could not be decrypted for this Windows user: " + ex.Message);
+                // Logged once: the pane asks for the key on every availability check.
+                if (!_loggedUnprotectFailure)
+                    Logger.Warn("Stored API key could not be decrypted for this Windows user: " + ex.Message);
+                _loggedUnprotectFailure = true;
                 return null;
             }
         }
@@ -117,16 +122,16 @@ namespace VibeModel.Infrastructure
 
         // --- Model, endpoint, backend (managed.json overrides settings.json) ------------------
 
-        public static string GetModel()
+        /// <summary>IT's value for <paramref name="key"/>, else the user's non-empty one, else the fallback.</summary>
+        private static string ManagedOrSetting(string key, string fallback)
         {
-            var managed = ManagedSettings.GetString(ManagedSettings.Model);
+            var managed = ManagedSettings.GetString(key);
             if (managed != null) return managed;
-            var settings = Load();
-            object val;
-            if (settings.TryGetValue("Model", out val) && val is string model && !string.IsNullOrWhiteSpace(model))
-                return model;
-            return DefaultModel;
+            var configured = GetString(key, "");
+            return string.IsNullOrWhiteSpace(configured) ? fallback : configured.Trim();
         }
+
+        public static string GetModel() => ManagedOrSetting(ManagedSettings.Model, DefaultModel);
 
         /// <summary>The model the user chose; empty = the default (<see cref="DefaultModel"/>).</summary>
         public static string GetModelSetting() => GetString("Model", "");
@@ -140,13 +145,7 @@ namespace VibeModel.Infrastructure
         }
 
         /// <summary>The Messages API host: managed.json, settings.json, else api.anthropic.com.</summary>
-        public static string GetApiBaseUrl()
-        {
-            var managed = ManagedSettings.GetString(ManagedSettings.ApiBaseUrl);
-            if (managed != null) return managed;
-            var configured = GetString("ApiBaseUrl", "");
-            return string.IsNullOrWhiteSpace(configured) ? DefaultApiBaseUrl : configured.Trim();
-        }
+        public static string GetApiBaseUrl() => ManagedOrSetting(ManagedSettings.ApiBaseUrl, DefaultApiBaseUrl);
 
         public static void SetApiBaseUrl(string url)
         {
@@ -168,14 +167,6 @@ namespace VibeModel.Infrastructure
             return b + "/v1/messages";
         }
 
-        /// <summary>True for the Anthropic API itself (beta headers a gateway may reject are only sent there).</summary>
-        public static bool IsAnthropicEndpoint(string baseUrl)
-        {
-            Uri uri;
-            return Uri.TryCreate(MessagesUrl(baseUrl), UriKind.Absolute, out uri)
-                   && uri.Host.Equals("api.anthropic.com", StringComparison.OrdinalIgnoreCase);
-        }
-
         /// <summary>IT can switch the Claude Code backend off entirely (managed DisableClaudeCode).</summary>
         public static bool IsClaudeCodeDisabled() => ManagedSettings.GetBool(ManagedSettings.DisableClaudeCode) == true;
 
@@ -194,16 +185,7 @@ namespace VibeModel.Infrastructure
             return string.IsNullOrWhiteSpace(configured) ? null : configured.Trim();
         }
 
-        public static string GetPreferredBackend()
-        {
-            var managed = ManagedSettings.GetString(ManagedSettings.PreferredBackend);
-            if (managed != null) return managed;
-            var settings = Load();
-            object val;
-            if (settings.TryGetValue("PreferredBackend", out val) && val is string backend)
-                return backend;
-            return "auto";
-        }
+        public static string GetPreferredBackend() => ManagedOrSetting(ManagedSettings.PreferredBackend, "auto");
 
         public static void SetPreferredBackend(string backend)
         {
@@ -290,7 +272,7 @@ namespace VibeModel.Infrastructure
         /// language the model falls back to when the user's own language is unclear.
         /// </summary>
         public static string GetLanguage() => Services.Chat.Strings.Normalize(
-            ManagedSettings.GetString(ManagedSettings.Language) ?? GetString("Language", Services.Chat.Strings.Dutch));
+            ManagedOrSetting(ManagedSettings.Language, Services.Chat.Strings.Dutch));
 
         public static void SetLanguage(string language) => SetValue("Language", Services.Chat.Strings.Normalize(language));
 

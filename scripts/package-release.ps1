@@ -82,6 +82,8 @@ Copy-Item (Join-Path $root "VibeModel.addin") $stage
 Copy-Item (Join-Path $root "install.ps1") $stage
 Copy-Item (Join-Path $root "install.cmd") $stage
 Copy-Item (Join-Path $root "CHANGELOG.md") $stage
+# The installer installs only into this Revit year (a build loads only in the Revit it targets).
+Set-Content (Join-Path $stage "revit-year.txt") $RevitVersion -Encoding ASCII
 if (Test-Path (Join-Path $root "LICENSE")) { Copy-Item (Join-Path $root "LICENSE") $stage }
 Get-ChildItem $pdfDir -File | Where-Object { $_.Extension -in ".exe", ".dll", ".config" } |
     Copy-Item -Destination (Join-Path $stage "VibeModel.PdfText")

@@ -152,6 +152,20 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void ThinkingError_WithoutThinkingBlocks_IsNotRetried()
+        {
+            // Nothing to remove, so the same request would fail the same way: report it at once.
+            _api.Enqueue(MockMessagesApi.Error(400,
+                "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"thinking is not supported for this model\"}}"));
+            var backend = new AnthropicDirectBackend(new ClaudeCommandRegistry().GetCommands(), 1);
+
+            var (_, error, _) = RunTurn(backend, "x");
+
+            Assert.NotNull(error);
+            Assert.Single(_api.Requests);
+        }
+
+        [Fact]
         public void Refusal_IsExplained_NotAnEmptyAnswer()
         {
             _api.Enqueue(MockMessagesApi.Ok(Sse(

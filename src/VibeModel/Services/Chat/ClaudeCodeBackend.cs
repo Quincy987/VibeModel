@@ -239,21 +239,32 @@ namespace VibeModel.Services.Chat
 
         /// <summary>
         /// The CLI does not read Windows' proxy settings: when Windows routes the API through a
-        /// proxy and the environment names none, hand it over as HTTPS_PROXY / HTTP_PROXY.
+        /// proxy and the environment names none, hand it over. Only HTTPS_PROXY — the API is HTTPS —
+        /// plus NO_PROXY for loopback: the CLI talks to VibeModel with curl over http://127.0.0.1, and
+        /// curl honours http_proxy, so a proxy there would carry every Revit command off the machine.
         /// NODE_EXTRA_CA_CERTS (a TLS-inspecting proxy's root) passes through untouched.
         /// </summary>
         internal static void ApplyProxyEnvironment(ProcessStartInfo psi)
         {
             var env = psi.EnvironmentVariables;
-            if (!string.IsNullOrEmpty(env["HTTPS_PROXY"]) || !string.IsNullOrEmpty(env["HTTP_PROXY"]) ||
-                !string.IsNullOrEmpty(env["https_proxy"])) return;
-            var proxy = AnthropicHttp.SystemProxyFor("https://api.anthropic.com/");
-            if (proxy == null) return;
-            var value = proxy.GetLeftPart(UriPartial.Authority);
-            env["HTTPS_PROXY"] = value;
-            env["HTTP_PROXY"] = value;
-            if (!_loggedProxy) Logger.Info("Claude Code: Windows proxy handed over as HTTPS_PROXY=" + value);
-            _loggedProxy = true;
+            var add = ProxyVariables(name => env[name], AnthropicHttp.SystemProxyFor("https://api.anthropic.com/"));
+            foreach (var kv in add) env[kv.Key] = kv.Value;
+            if (add.Count > 0 && !_loggedProxy)
+                Logger.Info("Claude Code: Windows proxy handed over - " + string.Join(", ", add.Select(kv => kv.Key + "=" + kv.Value)));
+            if (add.Count > 0) _loggedProxy = true;
+        }
+
+        /// <summary>The variables to add for <paramref name="proxy"/> given the current environment (empty = none).</summary>
+        internal static IDictionary<string, string> ProxyVariables(Func<string, string> getEnv, Uri proxy)
+        {
+            var add = new Dictionary<string, string>();
+            if (proxy == null) return add;
+            if (new[] { "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy" }.Any(n => !string.IsNullOrEmpty(getEnv(n))))
+                return add; // the user (or IT) configured it explicitly
+            add["HTTPS_PROXY"] = proxy.GetLeftPart(UriPartial.Authority);
+            if (string.IsNullOrEmpty(getEnv("NO_PROXY")) && string.IsNullOrEmpty(getEnv("no_proxy")))
+                add["NO_PROXY"] = "127.0.0.1,localhost,::1";
+            return add;
         }
 
         /// <summary>The usage of a CLI result event: total_cost_usd and the token counts; null when absent.</summary>

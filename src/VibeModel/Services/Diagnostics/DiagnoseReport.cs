@@ -41,7 +41,7 @@ namespace VibeModel.Services.Diagnostics
         public static string Build()
         {
             // Slow parts first, in parallel.
-            var api = Task.Run(() => ProbeHost(AnthropicHttp.MessagesUrl.Replace("/v1/messages", "/v1/models")));
+            var api = Task.Run(() => ProbeHost(AnthropicHttp.ModelsUrl(AnthropicHttp.MessagesUrl)));
             var claudeAi = Task.Run(() => ProbeHost("https://claude.ai/"));
             var cli = Task.Run(() =>
             {

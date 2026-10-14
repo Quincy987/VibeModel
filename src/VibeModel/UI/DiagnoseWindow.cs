@@ -7,6 +7,7 @@ using System.Windows.Media;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Chat;
 using VibeModel.Services.Diagnostics;
+using static VibeModel.UI.Palette;
 
 namespace VibeModel.UI
 {
@@ -16,13 +17,6 @@ namespace VibeModel.UI
     /// </summary>
     public sealed class DiagnoseWindow : Window
     {
-        private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-        private static readonly SolidColorBrush BgPanel = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
-        private static readonly SolidColorBrush FgPrimary = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
-        private static readonly SolidColorBrush FgSecondary = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
-        private static readonly SolidColorBrush BgButton = new SolidColorBrush(Color.FromRgb(0x0E, 0x63, 0x9C));
-        private static readonly SolidColorBrush BgButtonSecondary = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
-
         private readonly TextBox _report;
         private readonly TextBlock _status;
         private readonly Button _copy;
@@ -59,7 +53,7 @@ namespace VibeModel.UI
             root.Children.Add(hint);
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-            _copy = MakeButton(Strings.Get(Strings.DiagnoseCopy), "DiagnoseCopy", BgButton);
+            _copy = MakeButton(Strings.Get(Strings.DiagnoseCopy), "DiagnoseCopy", primary: true);
             _copy.Click += (s, e) =>
             {
                 try
@@ -72,7 +66,7 @@ namespace VibeModel.UI
                     _status.Text = ex.Message;
                 }
             };
-            _save = MakeButton(Strings.Get(Strings.DiagnoseSave), "DiagnoseSave", BgButtonSecondary);
+            _save = MakeButton(Strings.Get(Strings.DiagnoseSave), "DiagnoseSave", primary: false);
             _save.Click += (s, e) =>
             {
                 try
@@ -86,7 +80,7 @@ namespace VibeModel.UI
                     _status.Text = ex.Message;
                 }
             };
-            var close = MakeButton(Strings.Get(Strings.DiagnoseClose), "DiagnoseClose", BgButtonSecondary);
+            var close = MakeButton(Strings.Get(Strings.DiagnoseClose), "DiagnoseClose", primary: false);
             close.Click += (s, e) => Close();
             _copy.IsEnabled = _save.IsEnabled = false;
             buttons.Children.Add(_copy);
@@ -133,20 +127,7 @@ namespace VibeModel.UI
             });
         }
 
-        private static Button MakeButton(string text, string automationId, Brush background)
-        {
-            var b = new Button
-            {
-                Content = text,
-                Foreground = FgPrimary,
-                Background = background,
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(12, 4, 12, 4),
-                Margin = new Thickness(0, 0, 6, 0),
-                FontSize = 12
-            };
-            AutomationProperties.SetAutomationId(b, automationId);
-            return b;
-        }
+        private static Button MakeButton(string text, string automationId, bool primary) =>
+            FlatButton(text, automationId, primary, new Thickness(12, 4, 12, 4), 12);
     }
 }

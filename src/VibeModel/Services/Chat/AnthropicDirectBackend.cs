@@ -129,8 +129,8 @@ namespace VibeModel.Services.Chat
             var context = GatherModelContext();
             var baseText = string.IsNullOrEmpty(context) ? prompt : context + "\n\n" + prompt;
 
-            // History edits happen here, between turns, never inside one: screenshots of earlier
-            // turns lose their image, and the system prompt is frozen for this turn. When either
+            // History edits happen here, between turns, never inside one: all but the newest
+            // screenshot lose their image, and the system prompt is frozen for this turn. When either
             // changes what came before, earlier thinking blocks no longer match their conversation
             // and are removed (the API would refuse them).
             _turnSystemPrompt = (SystemPromptSource ?? BuildSystemPrompt)();
@@ -183,7 +183,7 @@ namespace VibeModel.Services.Chat
             var fullResponse = new StringBuilder();
             bool lastWasText = false;
             var usage = new TurnUsage();
-            bool strippedAfterRefusal = false;
+            bool retriedWithoutThinking = false;
 
             for (int iteration = 0; iteration < MaxToolLoopIterations; iteration++)
             {
@@ -194,12 +194,13 @@ namespace VibeModel.Services.Chat
                 {
                     response = StreamRequest(apiKey, BuildRequestBody(apiKey), ct);
                 }
-                catch (ApiRequestException ex) when (ex.Status == 400 && !strippedAfterRefusal && MentionsThinking(ex.Message))
+                catch (ApiRequestException ex) when (ex.Status == 400 && !retriedWithoutThinking &&
+                                                     MentionsThinking(ex.Message) && HasThinkingBlocks(_conversationHistory))
                 {
                     // A thinking block the API no longer accepts (its conversation changed in a way
                     // this code did not foresee): the documented recovery is to remove every
                     // thinking block and send the turn once more. Text and tool calls stay.
-                    strippedAfterRefusal = true;
+                    retriedWithoutThinking = true;
                     var removed = StripThinkingBlocks(_conversationHistory);
                     Logger.Warn("Direct backend: API refused replayed thinking (" + ex.Message + "); removed " + removed + " block(s), retrying once");
                     response = StreamRequest(apiKey, BuildRequestBody(apiKey), ct);
@@ -437,8 +438,8 @@ namespace VibeModel.Services.Chat
              message.IndexOf("signature", StringComparison.OrdinalIgnoreCase) >= 0);
 
         /// <summary>
-        /// Removes every thinking / redacted_thinking block from the assistant messages (their text
-        /// and tool calls stay). Returns how many were removed.
+        /// The assistant message as it goes into the history: without empty text blocks (the API
+        /// refuses them when sent back) and internal fields; thinking blocks stay, even when empty.
         /// </summary>
         internal static object[] CleanAssistantContent(List<Dictionary<string, object>> blocks)
         {
@@ -454,21 +455,38 @@ namespace VibeModel.Services.Chat
             return clean.Length > 0 ? clean : PlaceholderContent();
         }
 
+        /// <summary>
+        /// Removes every thinking / redacted_thinking block from the assistant messages (their text
+        /// and tool calls stay). Returns how many were removed.
+        /// </summary>
         internal static int StripThinkingBlocks(List<Dictionary<string, object>> history)
         {
             var removed = 0;
-            foreach (var msg in history)
+            foreach (var blocks in AssistantContents(history))
             {
-                if (!(msg.TryGetValue("role", out var role) && (role as string) == "assistant")) continue;
-                if (!(msg.TryGetValue("content", out var c) && c is object[] blocks)) continue;
-                var kept = blocks.Where(b => !(b is Dictionary<string, object> d && d.TryGetValue("type", out var t) &&
-                                               ((t as string) == "thinking" || (t as string) == "redacted_thinking")))
-                                 .ToArray();
-                removed += blocks.Length - kept.Length;
-                if (kept.Length != blocks.Length) msg["content"] = kept.Length > 0 ? kept : PlaceholderContent();
+                var kept = blocks.Value.Where(b => !IsThinking(b)).ToArray();
+                removed += blocks.Value.Length - kept.Length;
+                if (kept.Length != blocks.Value.Length) blocks.Key["content"] = kept.Length > 0 ? kept : PlaceholderContent();
             }
             return removed;
         }
+
+        internal static bool HasThinkingBlocks(List<Dictionary<string, object>> history) =>
+            AssistantContents(history).Any(m => m.Value.Any(IsThinking));
+
+        // (assistant message, its content blocks) for every assistant message with a block array.
+        private static IEnumerable<KeyValuePair<Dictionary<string, object>, object[]>> AssistantContents(
+            List<Dictionary<string, object>> history)
+        {
+            foreach (var msg in history)
+                if (msg.TryGetValue("role", out var role) && (role as string) == "assistant" &&
+                    msg.TryGetValue("content", out var c) && c is object[] blocks)
+                    yield return new KeyValuePair<Dictionary<string, object>, object[]>(msg, blocks);
+        }
+
+        private static bool IsThinking(object block) =>
+            block is Dictionary<string, object> d && d.TryGetValue("type", out var t) &&
+            ((t as string) == "thinking" || (t as string) == "redacted_thinking");
 
         // Extracts args from the tool_use input Dictionary, then delegates to the shared
         // HTTP executor. (BuildToolResultContent handles inlining the screenshot image.)
@@ -673,6 +691,8 @@ namespace VibeModel.Services.Chat
         {
             base.ResetSession();
             _sentAttachments.Clear();
+            _turnSystemPrompt = null;
+            _lastTurnSystemPrompt = null;
         }
 
         // Builds the tool_result content. Default is the plain string (unchanged behavior).
@@ -728,42 +748,37 @@ namespace VibeModel.Services.Chat
             return null;
         }
 
-        // Replaces the image blocks of earlier turns' screenshots with a short text note, so a
-        // screenshot is re-sent only during the turn that took it. Runs at the start of a turn
-        // (never mid-turn: that would invalidate the turn's thinking blocks). True = it changed history.
-        private bool DropOldScreenshotImages()
+        // Keeps only the NEWEST screenshot as an image (a follow-up question can still refer to it)
+        // and turns older ones into a short text note, so images are not re-sent every turn. Runs at
+        // the start of a turn only — mid-turn it would invalidate that turn's thinking blocks, so
+        // screenshots taken within one turn all stay until the next. True = it changed history.
+        private bool DropOldScreenshotImages() => DropOldScreenshotImages(_conversationHistory);
+
+        internal static bool DropOldScreenshotImages(List<Dictionary<string, object>> history)
         {
-            var changed = false;
-            foreach (var msg in _conversationHistory)
+            var withImage = new List<Dictionary<string, object>>();
+            foreach (var msg in history)
             {
                 if (!msg.TryGetValue("content", out var contentObj) || !(contentObj is object[] blocks))
                     continue;
-
                 foreach (var b in blocks)
-                {
-                    if (!(b is Dictionary<string, object> block)) continue;
-                    if (!(block.TryGetValue("type", out var bt) && (bt as string) == "tool_result")) continue;
-                    if (!(block.TryGetValue("content", out var trContent) && trContent is object[] trBlocks)) continue;
-
-                    bool hasImage = false;
-                    string text = null;
-                    foreach (var ob in trBlocks)
-                    {
-                        if (!(ob is Dictionary<string, object> ib) || !ib.TryGetValue("type", out var it)) continue;
-                        var its = it as string;
-                        if (its == "image") hasImage = true;
-                        else if (its == "text" && ib.TryGetValue("text", out var tv)) text = tv as string;
-                    }
-
-                    if (hasImage)
-                    {
-                        block["content"] = (text ?? "[screenshot]") +
-                                           "\n[Earlier screenshot image dropped to save context.]";
-                        changed = true;
-                    }
-                }
+                    if (b is Dictionary<string, object> block && block.TryGetValue("type", out var bt) &&
+                        (bt as string) == "tool_result" && block.TryGetValue("content", out var tr) &&
+                        tr is object[] trBlocks && trBlocks.Any(o => o is Dictionary<string, object> ib &&
+                                                                       ib.TryGetValue("type", out var it) && (it as string) == "image"))
+                        withImage.Add(block);
             }
-            return changed;
+
+            for (var i = 0; i < withImage.Count - 1; i++)
+            {
+                var block = withImage[i];
+                var text = ((object[])block["content"]).OfType<Dictionary<string, object>>()
+                    .Where(ib => ib.TryGetValue("type", out var it) && (it as string) == "text")
+                    .Select(ib => ib.TryGetValue("text", out var tv) ? tv as string : null)
+                    .LastOrDefault();
+                block["content"] = (text ?? "[screenshot]") + "\n[Earlier screenshot image dropped to save context.]";
+            }
+            return withImage.Count > 1;
         }
 
         private Dictionary<string, object> BuildRequestBody(string apiKey)

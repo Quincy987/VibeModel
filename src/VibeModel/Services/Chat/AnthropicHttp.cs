@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using VibeModel.Infrastructure;
 
@@ -12,9 +13,9 @@ namespace VibeModel.Services.Chat
     /// <summary>
     /// Every call VibeModel makes to the Anthropic Messages API goes out through here: the
     /// configured endpoint (<see cref="SettingsManager.GetApiBaseUrl"/>), Windows' own proxy with
-    /// the user's Windows credentials (office proxies), TLS 1.2, and certificate validation against
-    /// the Windows store — so a TLS-inspecting proxy whose root IT installed just works, and
-    /// validation is never switched off.
+    /// the user's Windows credentials (office proxies, NTLM/Kerberos included), TLS 1.2 or newer,
+    /// and certificate validation against the Windows store — so a TLS-inspecting proxy whose root
+    /// IT installed just works, and validation is never switched off.
     /// </summary>
     public static class AnthropicHttp
     {
@@ -22,15 +23,28 @@ namespace VibeModel.Services.Chat
 
         static AnthropicHttp()
         {
-            // .NET Framework 4.8 still lets the OS pick, but Revit can be launched with older
-            // defaults; the API refuses anything below TLS 1.2.
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            EnsureTls12(ServicePointManager.SecurityProtocol, p => ServicePointManager.SecurityProtocol = p);
+        }
+
+        /// <summary>
+        /// The setting is process-wide (Revit and every other add-in share it). "SystemDefault" lets
+        /// Windows pick (TLS 1.2 and 1.3) and is left alone — OR-ing TLS 1.2 into it would pin the whole
+        /// process to TLS 1.2 only. Only an explicit list that lacks TLS 1.2 gets it added.
+        /// </summary>
+        internal static void EnsureTls12(SecurityProtocolType current, Action<SecurityProtocolType> set)
+        {
+            if (current == SecurityProtocolType.SystemDefault) return;
+            if ((current & SecurityProtocolType.Tls12) == SecurityProtocolType.Tls12) return;
+            set(current | SecurityProtocolType.Tls12);
         }
 
         /// <summary>The Messages URL in use (managed.json → settings.json → api.anthropic.com).</summary>
         public static string MessagesUrl => SettingsManager.MessagesUrl(SettingsManager.GetApiBaseUrl());
 
-        /// <summary>A handler that goes through the Windows proxy as the signed-in user.</summary>
+        /// <summary>
+        /// A handler that goes through the Windows proxy, authenticating to the PROXY as the signed-in
+        /// user. The API server itself never gets Windows credentials (UseDefaultCredentials off).
+        /// </summary>
         public static HttpClientHandler CreateHandler()
         {
             var proxy = WebRequest.GetSystemWebProxy();
@@ -39,7 +53,7 @@ namespace VibeModel.Services.Chat
             {
                 UseProxy = true,
                 Proxy = proxy,
-                UseDefaultCredentials = true
+                UseDefaultCredentials = false
             };
         }
 
@@ -48,25 +62,26 @@ namespace VibeModel.Services.Chat
             return new HttpClient(CreateHandler(), disposeHandler: true) { Timeout = timeout };
         }
 
-        /// <summary>A POST to the Messages endpoint with the key, the API version and optional beta headers.</summary>
-        public static HttpRequestMessage NewMessagesRequest(string apiKey, string jsonBody, IEnumerable<string> betas = null)
+        /// <summary>A POST to the Messages endpoint with the key and the API version.</summary>
+        public static HttpRequestMessage NewMessagesRequest(string apiKey, string jsonBody)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, MessagesUrl)
             {
                 Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
             };
-            AddHeaders(request, apiKey, betas);
+            AddHeaders(request, apiKey);
             return request;
         }
 
-        internal static void AddHeaders(HttpRequestMessage request, string apiKey, IEnumerable<string> betas = null)
+        internal static void AddHeaders(HttpRequestMessage request, string apiKey)
         {
             request.Headers.Add("x-api-key", apiKey);
             request.Headers.Add("anthropic-version", ApiVersion);
-            if (betas == null) return;
-            var list = string.Join(",", betas);
-            if (list.Length > 0) request.Headers.Add("anthropic-beta", list);
         }
+
+        /// <summary>The Models endpoint next to a Messages URL (".../v1/messages" -> ".../v1/models").</summary>
+        public static string ModelsUrl(string messagesUrl) =>
+            messagesUrl.Substring(0, messagesUrl.Length - "/messages".Length) + "/models";
 
         /// <summary>
         /// The proxy Windows uses for the API host, or null when it goes direct. Also handed to the
@@ -104,12 +119,14 @@ namespace VibeModel.Services.Chat
         /// Checks a key without spending a token: GET /v1/models/{model} answers 200 for a valid key
         /// and an available model, 401 for a wrong key, 403 for a key without access, 404 for an
         /// unknown model. A network failure (no route, proxy refused, TLS) is reported as such, with
-        /// the innermost exception text.
+        /// the innermost exception text. <paramref name="baseUrl"/>: test another endpoint than the
+        /// saved one (Settings validates what is typed); null = the configured one.
         /// </summary>
-        public static KeyTestResult TestKey(string apiKey, string model, TimeSpan timeout, CancellationToken ct = default(CancellationToken))
+        public static KeyTestResult TestKey(string apiKey, string model, TimeSpan timeout, string baseUrl = null,
+            CancellationToken ct = default(CancellationToken))
         {
-            var messages = MessagesUrl;
-            var modelsUrl = messages.Substring(0, messages.Length - "/messages".Length) + "/models/" + Uri.EscapeDataString(model ?? "");
+            var modelsUrl = ModelsUrl(baseUrl == null ? MessagesUrl : SettingsManager.MessagesUrl(baseUrl)) +
+                            "/" + Uri.EscapeDataString(model ?? "");
             try
             {
                 using (var client = CreateClient(timeout))
@@ -155,12 +172,16 @@ namespace VibeModel.Services.Chat
             return null;
         }
 
-        /// <summary>The innermost exception message — "The remote name could not be resolved", not "One or more errors occurred".</summary>
+        /// <summary>
+        /// The innermost exception message — "The remote name could not be resolved", not "One or more
+        /// errors occurred". An HttpClient timeout surfaces as "A task was canceled"; that is said as
+        /// what it is.
+        /// </summary>
         public static string Innermost(Exception ex)
         {
             var e = ex;
             while (e.InnerException != null) e = e.InnerException;
-            return e.Message;
+            return e is TaskCanceledException ? "no answer in time (timed out)" : e.Message;
         }
 
         private static string Truncate(string s, int max) =>

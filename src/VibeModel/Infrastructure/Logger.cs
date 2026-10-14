@@ -6,7 +6,7 @@ namespace VibeModel.Infrastructure
 {
     public static class Logger
     {
-        private static readonly string LogDir = Path.Combine(
+        private static string LogDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VibeModel",
             "logs"
@@ -30,6 +30,9 @@ namespace VibeModel.Infrastructure
         public static void Warn(string message) => Log("WARN", message);
         public static void Error(string message, Exception ex = null) =>
             Log("ERROR", ex != null ? message + "\n" + ex : message);
+
+        /// <summary>Tests: write to this folder instead of the user's log folder.</summary>
+        internal static void RedirectForTests(string directory) => LogDir = directory;
 
         /// <summary>This session's warnings and errors, oldest first (at most 40).</summary>
         public static IReadOnlyList<string> Recent()

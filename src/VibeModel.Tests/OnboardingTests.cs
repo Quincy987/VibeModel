@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Chat;
 using VibeModel.Services.Claude;
@@ -101,6 +103,19 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void PreferredBackend_EmptyOrMissing_IsAuto_ManagedWins()
+        {
+            Assert.Equal("auto", SettingsManager.GetPreferredBackend());
+            SettingsManager.SetPreferredBackend("");
+            Assert.Equal("auto", SettingsManager.GetPreferredBackend());
+            SettingsManager.SetPreferredBackend("claude-cli");
+            Assert.Equal("claude-cli", SettingsManager.GetPreferredBackend());
+            File.WriteAllText(Path.Combine(_dir, "managed.json"), "{\"PreferredBackend\":\"anthropic-api\"}");
+            ManagedSettings.Reload();
+            Assert.Equal("anthropic-api", SettingsManager.GetPreferredBackend());
+        }
+
+        [Fact]
         public void Model_DefaultsToCurrentSonnet_UserChoiceKept()
         {
             Assert.Equal("claude-sonnet-5-5", SettingsManager.GetModel());
@@ -141,10 +156,50 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void IsAnthropicEndpoint_OnlyTheRealHost()
+        public void Tls_SystemDefaultIsLeftAlone_AnOlderPinnedListGetsTls12()
         {
-            Assert.True(SettingsManager.IsAnthropicEndpoint("https://api.anthropic.com"));
-            Assert.False(SettingsManager.IsAnthropicEndpoint("https://gateway.example"));
+            SecurityProtocolType? set = null;
+            AnthropicHttp.EnsureTls12(SecurityProtocolType.SystemDefault, p => set = p);
+            Assert.Null(set);                                   // Windows keeps choosing (TLS 1.3 too)
+            AnthropicHttp.EnsureTls12(SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11, p => set = p);
+            Assert.Null(set);
+            AnthropicHttp.EnsureTls12(SecurityProtocolType.Tls11, p => set = p);
+            Assert.Equal(SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12, set);
+        }
+
+        [Fact]
+        public void ProxyForClaudeCode_HttpsOnly_LoopbackBypassed_ExplicitSettingsWin()
+        {
+            var proxy = new Uri("http://proxy.example:8080/");
+            var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Func<string, string> get = n => env.TryGetValue(n, out var v) ? v : null;
+
+            var add = ClaudeCodeBackend.ProxyVariables(get, proxy);
+            Assert.Equal("http://proxy.example:8080", add["HTTPS_PROXY"]);
+            Assert.Equal("127.0.0.1,localhost,::1", add["NO_PROXY"]);
+            // Never HTTP_PROXY: curl would send the CLI's calls to http://127.0.0.1 through it.
+            Assert.False(add.ContainsKey("HTTP_PROXY"));
+
+            Assert.Empty(ClaudeCodeBackend.ProxyVariables(get, null));
+            env["NO_PROXY"] = "corp.local";
+            Assert.False(ClaudeCodeBackend.ProxyVariables(get, proxy).ContainsKey("NO_PROXY"));
+            env["https_proxy"] = "http://other:3128";
+            Assert.Empty(ClaudeCodeBackend.ProxyVariables(get, proxy));
+        }
+
+        [Fact]
+        public void Timeout_IsSaidAsATimeout()
+        {
+            var ex = new AggregateException(new TaskCanceledException());
+            Assert.Contains("timed out", AnthropicHttp.Innermost(ex));
+            Assert.Equal("boom", AnthropicHttp.Innermost(new Exception("outer", new InvalidOperationException("boom"))));
+        }
+
+        [Fact]
+        public void ModelsUrl_SitsNextToMessages()
+        {
+            Assert.Equal("https://api.anthropic.com/v1/models", AnthropicHttp.ModelsUrl("https://api.anthropic.com/v1/messages"));
+            Assert.Equal("https://gw.example/x/v1/models", AnthropicHttp.ModelsUrl(SettingsManager.MessagesUrl("https://gw.example/x")));
         }
 
         [Fact]
@@ -245,6 +300,19 @@ namespace VibeModel.Tests
             Assert.Equal(2.0 + 1.0, ModelPricing.CostUsd(u).Value, 6);
         }
 
+        [Theory]
+        [InlineData(950, "950")]
+        [InlineData(12345, "12.3k")]
+        [InlineData(99949, "99.9k")]
+        [InlineData(99960, "100k")]
+        [InlineData(999499, "999k")]
+        [InlineData(999600, "1.0M")]
+        [InlineData(1234567, "1.2M")]
+        public void Tokens_NeverRoundIntoTheNextUnitsName(long n, string expected)
+        {
+            Assert.Equal(expected, ModelPricing.Tokens(n));
+        }
+
         [Fact]
         public void Price_DatedOrPrefixedIdMatchesItsBase_UnknownShowsTokensOnly()
         {
@@ -324,6 +392,49 @@ namespace VibeModel.Tests
             var second = (object[])history[2]["content"];
             Assert.Single(second);
             Assert.Equal("text", ((Dictionary<string, object>)second[0])["type"]);
+        }
+
+        private static Dictionary<string, object> Screenshot(string text) => new Dictionary<string, object>
+        {
+            { "type", "tool_result" },
+            { "tool_use_id", text },
+            { "content", new object[]
+                {
+                    new Dictionary<string, object> { { "type", "text" }, { "text", text } },
+                    new Dictionary<string, object> { { "type", "image" }, { "source", "…" } }
+                }
+            }
+        };
+
+        [Fact]
+        public void OlderScreenshots_LoseTheirImage_TheNewestKeepsIt()
+        {
+            var first = Screenshot("Path: a.png");
+            var second = Screenshot("Path: b.png");
+            var history = new List<Dictionary<string, object>>
+            {
+                new Dictionary<string, object> { { "role", "user" }, { "content", new object[] { first } } },
+                new Dictionary<string, object> { { "role", "user" }, { "content", new object[] { second } } }
+            };
+
+            Assert.True(AnthropicDirectBackend.DropOldScreenshotImages(history));
+            Assert.IsType<string>(first["content"]);
+            Assert.StartsWith("Path: a.png", (string)first["content"]);
+            Assert.IsType<object[]>(second["content"]);       // the newest stays an image
+            Assert.False(AnthropicDirectBackend.DropOldScreenshotImages(history));   // nothing more to drop
+        }
+
+        [Fact]
+        public void HasThinkingBlocks_OnlyAssistantThinkingCounts()
+        {
+            var history = new List<Dictionary<string, object>>
+            {
+                new Dictionary<string, object> { { "role", "user" }, { "content", "thinking about it" } },
+                new Dictionary<string, object> { { "role", "assistant" }, { "content", new object[] { new Dictionary<string, object> { { "type", "text" }, { "text", "x" } } } } }
+            };
+            Assert.False(AnthropicDirectBackend.HasThinkingBlocks(history));
+            ((object[])history[1]["content"])[0] = new Dictionary<string, object> { { "type", "redacted_thinking" }, { "data", "z" } };
+            Assert.True(AnthropicDirectBackend.HasThinkingBlocks(history));
         }
 
         [Fact]

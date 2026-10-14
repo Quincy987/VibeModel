@@ -587,18 +587,22 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language` override settings.json and are locked
   in Settings ("beheerd door IT").
 - **HTTP**: every Anthropic call (chat, quick replies, distiller, key test) uses `AnthropicHttp`:
-  `SettingsManager.MessagesUrl(GetApiBaseUrl())`, Windows proxy + default credentials, TLS 1.2, the
-  Windows certificate store (validation never relaxed).
+  `SettingsManager.MessagesUrl(GetApiBaseUrl())`, Windows proxy with the user's credentials for the
+  proxy only, the Windows certificate store (validation never relaxed). TLS: Revit's process-wide
+  `ServicePointManager.SecurityProtocol` is left at SystemDefault (TLS 1.2/1.3); only a pinned list
+  without TLS 1.2 gets it added (`EnsureTls12`).
 - **Claude Code discovery** (`ClaudeCliLocator`): explicit `ClaudeCliPath` (managed → `VIBEMODEL_CLAUDE_CLI`
   → settings; `none` = off — how a laptop without Claude Code is simulated) else
   `%USERPROFILE%\.local\bin\claude.exe`, the PATH as stored in the registry now (Revit's own PATH is
   from its start), the npm folders. `ClaudeCodeBackend.LastSearch` lists what was checked. The Windows
-  proxy is handed to the CLI as `HTTPS_PROXY`/`HTTP_PROXY` when neither is set.
+  proxy is handed to the CLI as `HTTPS_PROXY` (+ `NO_PROXY=127.0.0.1,localhost,::1`) when no proxy
+  variable is set — never `HTTP_PROXY`: curl would route the CLI's calls to http://127.0.0.1 through it
+  (`ClaudeCodeBackend.ProxyVariables`).
 - **Thinking models on the direct backend** (Sonnet 5.5 default): thinking/redacted_thinking blocks are
-  kept and sent back; the system prompt is built once per user turn (`_turnSystemPrompt`); screenshot
-  images of earlier turns and over-budget attachments are dropped only at a turn start, and then
+  kept and sent back; the system prompt is built once per user turn (`_turnSystemPrompt`); all but the
+  newest screenshot image and over-budget attachments are dropped only at a turn start, and then
   (or when the system prompt changed) earlier thinking blocks are removed (`StripThinkingBlocks`); a 400
-  mentioning thinking/signature is retried once without them. `refusal` → `Strings.ApiRefusal`;
+  mentioning thinking/signature is retried once without them (only when there are any). `refusal` → `Strings.ApiRefusal`;
   `max_tokens` → a note.
 - **Cost line**: `ChatActivityEvent.ForUsage(TurnUsage)` (API: `message_start`/`message_delta` usage;
   CLI: the result event's `usage` + `total_cost_usd`) → `TurnActivity.Usage` → one muted line under the

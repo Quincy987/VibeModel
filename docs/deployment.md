@@ -12,7 +12,7 @@ Measured on Revit 2023 / Windows 11 (2026-10-14). The verification report with s
 
 | Path | What |
 |---|---|
-| `%APPDATA%\Autodesk\Revit\Addins\<year>\VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` | The add-in (Revit loads every `.addin` in this folder) |
+| `%APPDATA%\Autodesk\Revit\Addins\<year>\VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` | The add-in, for the Revit year the zip is built for (`revit-year.txt`; Revit loads every `.addin` in this folder) |
 | `%APPDATA%\Autodesk\Revit\Addins\<year>\VibeModel.PdfText\` | Out-of-process PDF text helper (`VibeModel.PdfText.exe`) |
 | `%LOCALAPPDATA%\VibeModel\settings.json` | The user's settings; an API key in it is DPAPI-encrypted (`AnthropicApiKeyProtected`) |
 | `%LOCALAPPDATA%\VibeModel\logs\` | `log_<date>.txt` (warnings/errors always; everything with `VIBEMODEL_DEBUG=1`), `install.log`, saved Diagnose reports |
@@ -34,7 +34,10 @@ install.cmd -InstallClaudeCode   :: also install Claude Code (optional, see belo
 ```
 
 `-Quiet` exit codes: `0` installed or already up to date, `1` failed (see `install.log`),
-`2` Revit is running (the DLL would be locked — retry later), `3` no Revit add-in folder found.
+`2` Revit is running (the DLL would be locked — retry later), `3` the Revit this build is for is
+not installed for this user. A zip is built for one Revit year (`VibeModel-v<version>-Revit2023.zip`
+→ `revit-year.txt` = 2023): the installer installs only there and names other Revit versions it
+leaves alone — a build only loads in the Revit it was compiled against.
 The installer is idempotent: unchanged files are reported as "already up to date". It removes the
 "downloaded from the internet" mark (`Unblock-File`) and verifies every file afterwards.
 
@@ -54,7 +57,8 @@ VibeModel can talk to Claude three ways. In the default `auto` mode it takes the
    installer (`irm https://claude.ai/install.ps1 | iex`, no admin) — from the chat pane with one click,
    or `install.cmd -InstallClaudeCode`. Needs an interactive login once. Note: Claude Code supports
    proxies through `HTTPS_PROXY` with basic credentials only, **not NTLM/Kerberos**; VibeModel hands it
-   the Windows proxy address when none is set. Git for Windows is not required.
+   the Windows proxy address (`HTTPS_PROXY`, and `NO_PROXY` for 127.0.0.1/localhost) when none is
+   set. Git for Windows is not required.
 3. A local LLM server (llama.cpp, Ollama, LM Studio) — Settings → Local LLM.
 
 When nothing is configured, the chat pane shows **Connect to Claude**: the user pastes a key (checked
@@ -65,7 +69,8 @@ installs / logs in to Claude Code.
 
 Put a `managed.json` in `%ProgramData%\VibeModel\` (machine) or `%APPDATA%\VibeModel\` (user). The first
 one found wins; its keys override the user's settings and show as locked ("beheerd door IT") in
-Settings. VibeModel never writes it. Changes are picked up within a minute.
+Settings. VibeModel never writes it. Changes are read within a minute; which chat connection is
+used (`PreferredBackend`, a new key) is decided when Revit starts.
 
 ```json
 {

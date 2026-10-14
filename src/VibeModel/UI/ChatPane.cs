@@ -221,11 +221,10 @@ namespace VibeModel.UI
             // In the default ~460 px pane the buttons leave no room for the title, and an ellipsis
             // would leave a stray "V…". Revit's pane caption already says "VibeModel Chat", so the
             // title simply fades out when it does not fit (it stays in the UI-automation tree).
-            title.SizeChanged += (s, e) =>
-            {
-                title.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                title.Opacity = title.ActualWidth + 0.5 < title.DesiredSize.Width ? 0 : 1;
-            };
+            var titleWidth = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentUICulture,
+                FlowDirection.LeftToRight, new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
+                title.FontSize, Brushes.White, 1.0).WidthIncludingTrailingWhitespace;
+            title.SizeChanged += (s, e) => title.Opacity = e.NewSize.Width + 0.5 < titleWidth ? 0 : 1;
 
             _statusText = new TextBlock
             {

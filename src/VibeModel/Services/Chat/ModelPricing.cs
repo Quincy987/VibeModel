@@ -152,12 +152,13 @@ namespace VibeModel.Services.Chat
             return parts.Count == 0 ? null : string.Join(" · ", parts);
         }
 
-        /// <summary>"950", "12.3k", "1.2M".</summary>
+        /// <summary>"950", "12.3k", "1.2M" (never "1000k": the boundaries follow the rounding).</summary>
         public static string Tokens(long n)
         {
             var inv = CultureInfo.InvariantCulture;
             if (n < 1000) return n.ToString(inv);
-            if (n < 1000000) return (n / 1000.0).ToString(n < 100000 ? "0.0" : "0", inv) + "k";
+            if (n < 99950) return (n / 1000.0).ToString("0.0", inv) + "k";
+            if (n < 999500) return (n / 1000.0).ToString("0", inv) + "k";
             return (n / 1000000.0).ToString("0.0", inv) + "M";
         }
     }

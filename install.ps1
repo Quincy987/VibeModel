@@ -5,9 +5,11 @@
 
 .DESCRIPTION
     Copies VibeModel.dll, VibeModel.addin, Markdig.dll and the VibeModel.PdfText helper to the
-    add-in folder of every Revit version found under %APPDATA%\Autodesk\Revit\Addins, removes
-    the "downloaded from the internet" block, and checks the result. Connecting to Claude is not
-    done here: Revit's chat pane shows a "Connect to Claude" card the first time.
+    add-in folder of the Revit version this build is for (revit-year.txt in the release zip;
+    %APPDATA%\Autodesk\Revit\Addins\<year>), removes the "downloaded from the internet" mark,
+    and checks the result. Other Revit versions are named and left alone: a build only loads in
+    the Revit it was compiled against. Connecting to Claude is not done here: Revit's chat
+    pane shows a "Connect to Claude" card the first time.
 
     Double-click install.cmd, or run this script with PowerShell. The window stays open at the
     end (and after an error) so the result can be read. Every line is also written to
@@ -19,7 +21,7 @@
 
 .PARAMETER Quiet
     For IT deployment: no questions, no pause, a running Revit is an error (exit 2) instead of
-    a prompt. Output still goes to install.log.
+    a prompt, and so is a missing Revit for this build (exit 3). Output still goes to install.log.
 
 .PARAMETER InstallClaudeCode
     Also install Claude Code with Anthropic's official per-user installer
@@ -146,35 +148,49 @@ if ($revitProcs.Count -gt 0) {
     }
 }
 
-# --- Detect Revit versions ---
+# --- Which Revit: the one this build is for ---
 
 $addinsBase = Join-Path $env:APPDATA "Autodesk\Revit\Addins"
-$revitVersions = @()
-
+$detected = @()
 if (Test-Path $addinsBase) {
-    Get-ChildItem $addinsBase -Directory | ForEach-Object {
-        if ($_.Name -match '^\d{4}$') {
-            $year = [int]$_.Name
-            if ($year -ge 2022 -and $year -le 2030) {
-                $revitVersions += $_.Name
-            }
+    $detected = @(Get-ChildItem $addinsBase -Directory | Where-Object { $_.Name -match '^20(2[2-9]|30)$' } | ForEach-Object { $_.Name })
+}
+
+# The release zip names its Revit year in revit-year.txt; a build folder in its path (bin\Release\Revit2023).
+$buildYear = $null
+$yearFile = Join-Path $scriptDir "revit-year.txt"
+if (Test-Path $yearFile) { $buildYear = (Get-Content $yearFile -Raw).Trim() }
+elseif ($resolvedFiles["VibeModel.dll"] -match 'Revit(20\d\d)') { $buildYear = $Matches[1] }
+
+if ($buildYear) {
+    $revitExe = Join-Path $env:ProgramFiles "Autodesk\Revit $buildYear\Revit.exe"
+    if (-not ($detected -contains $buildYear) -and -not (Test-Path $revitExe)) {
+        Fail @("This build is for Revit $buildYear, which is not installed for this user",
+               "(no $addinsBase\$buildYear and no $revitExe).",
+               "Download the zip for your Revit version.") 3
+    }
+    $revitVersions = @($buildYear)
+    $others = @($detected | Where-Object { $_ -ne $buildYear })
+    if ($others.Count -gt 0) {
+        Say ("Also found Revit " + ($others -join ', ') + " - not touched: this build is for Revit $buildYear only.") "Yellow"
+    }
+} else {
+    # A build folder without a year: the old behaviour, every detected version.
+    $revitVersions = $detected
+    if ($revitVersions.Count -eq 0) {
+        Say "No Revit add-in folder found under $addinsBase." "Yellow"
+        if ($Quiet) { Fail @("No Revit version detected - start Revit once, or create $addinsBase\<year>.") 3 }
+        Write-Host ""
+        $manualYear = Read-Host "  Enter your Revit version year (e.g. 2023)"
+        if ($manualYear -match '^\d{4}$') {
+            $revitVersions = @($manualYear)
+        } else {
+            Fail @("Invalid input. Exiting.")
         }
     }
 }
 
-if ($revitVersions.Count -eq 0) {
-    Say "No Revit add-in folder found under $addinsBase." "Yellow"
-    if ($Quiet) { Fail @("No Revit version detected - start Revit once, or create $addinsBase\<year>.") 3 }
-    Write-Host ""
-    $manualYear = Read-Host "  Enter your Revit version year (e.g. 2023)"
-    if ($manualYear -match '^\d{4}$') {
-        $revitVersions = @($manualYear)
-    } else {
-        Fail @("Invalid input. Exiting.")
-    }
-}
-
-Say "Revit versions: $($revitVersions -join ', ')" "Green"
+Say "Installing for Revit $($revitVersions -join ', ')" "Green"
 Write-Host ""
 
 # --- Copy files (unchanged files are left alone) ---
@@ -259,7 +275,7 @@ $sig = Get-AuthenticodeSignature -FilePath $dllForSignature
 # ("Always Load" remembers it); signed but untrusted -> "Invalid Signature" on every start.
 switch ($sig.Status) {
     "Valid" { Say ("Signed by " + $sig.SignerCertificate.Subject + " (trusted) - Revit loads it without asking.") "Green" }
-    "NotSigned" { Say "The add-in is not signed: the first time, Revit asks whether to load it - choose 'Always Load'." "Yellow" }
+    "NotSigned" { Say "The add-in is not signed: Revit asks once whether to load it (again after each update) - choose 'Always Load'." "Yellow" }
     default {
         $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "?" }
         Say ("Signed by " + $subject + ", but this computer does not trust that certificate (" + $sig.Status + ").") "Yellow"
@@ -272,11 +288,10 @@ switch ($sig.Status) {
 if ($InstallClaudeCode) {
     Write-Host ""
     Say "Installing Claude Code (Anthropic's per-user installer)..." "White"
-    try {
-        Invoke-Expression (Invoke-RestMethod -Uri "https://claude.ai/install.ps1" -UseBasicParsing)
-    } catch {
-        Say ("Claude Code installer failed: " + $_.Exception.Message) "Red"
-    }
+    # In its own PowerShell: an `exit` (or a changed error preference) in Anthropic's script must
+    # not end or alter this installer.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"
+    if ($LASTEXITCODE -ne 0) { Say ("Claude Code installer exited with code " + $LASTEXITCODE) "Red" }
     $claude = Join-Path $env:USERPROFILE ".local\bin\claude.exe"
     if (Test-Path $claude) {
         $claudeVersion = & $claude --version 2>$null

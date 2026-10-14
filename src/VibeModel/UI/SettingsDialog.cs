@@ -757,6 +757,12 @@ namespace VibeModel.UI
         private void OnValidateApiClick(object sender, RoutedEventArgs e)
         {
             var key = _apiKeyBox.Password?.Trim();
+            // Box empty (or locked) while IT's or the environment's key is in use: test that one.
+            if (string.IsNullOrEmpty(key))
+            {
+                var inUse = SettingsManager.GetApiKey(out var source);
+                if (source == ApiKeySource.Managed || source == ApiKeySource.Environment) key = inUse;
+            }
             if (string.IsNullOrEmpty(key))
             {
                 _statusText.Text = "Please enter an API key";
@@ -769,12 +775,14 @@ namespace VibeModel.UI
             _validateApiButton.IsEnabled = false;
 
             var model = string.IsNullOrWhiteSpace(_apiModelBox.Text) ? SettingsManager.DefaultModel : _apiModelBox.Text.Trim();
+            // What is typed now, not what was saved before (an empty box = the default endpoint).
+            var baseUrl = _apiBaseUrlBox.IsEnabled ? _apiBaseUrlBox.Text : SettingsManager.GetApiBaseUrl();
             var language = Strings.Current;
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 // Same check as the connect wizard: GET /v1/models/{model} through the Windows
-                // proxy; costs no tokens. (It uses the endpoint already saved.)
-                var result = AnthropicHttp.TestKey(key, model, TimeSpan.FromSeconds(15));
+                // proxy; costs no tokens.
+                var result = AnthropicHttp.TestKey(key, model, TimeSpan.FromSeconds(15), baseUrl);
                 var message = ClaudeSetup.DescribeKeyTest(language, result, model);
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
