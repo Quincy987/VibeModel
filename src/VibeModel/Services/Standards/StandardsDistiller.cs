@@ -202,18 +202,17 @@ namespace VibeModel.Services.Standards
 
         private static string CallApi(string apiKey, string prompt)
         {
-            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(4) })
+            using (var http = Chat.AnthropicHttp.CreateClient(TimeSpan.FromMinutes(4)))
             {
+                // Current models think by default and the thinking counts toward max_tokens: the
+                // ~2,500-token answer needs room on top of it. Only text blocks are read below.
                 var body = PackJson.Serializer.Serialize(new Dictionary<string, object>
                 {
                     { "model", SettingsManager.GetModel() },
-                    { "max_tokens", 2500 },
+                    { "max_tokens", 16000 },
                     { "messages", new List<object> { new Dictionary<string, object> { { "role", "user" }, { "content", prompt } } } }
                 });
-                var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
-                { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-                req.Headers.Add("x-api-key", apiKey);
-                req.Headers.Add("anthropic-version", "2023-06-01");
+                var req = Chat.AnthropicHttp.NewMessagesRequest(apiKey, body);
                 var resp = http.SendAsync(req).Result;
                 var json = resp.Content.ReadAsStringAsync().Result;
                 if (!resp.IsSuccessStatusCode) throw new Exception("API " + (int)resp.StatusCode + ": " + json);

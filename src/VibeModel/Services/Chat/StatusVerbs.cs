@@ -41,6 +41,7 @@ namespace VibeModel.Services.Chat
                 { "forget", "Forgetting a project fact…" },
                 { "journal", "Reading the project journal…" },
                 { "chatlog", "Reading the chat history…" },
+                { "diagnose", "Checking the setup…" },
 
                 // Modify
                 { "wall", "Creating wall…" },
@@ -142,6 +143,7 @@ namespace VibeModel.Services.Chat
                 { "forget", "Projectfeit vergeten…" },
                 { "journal", "Projectjournaal lezen…" },
                 { "chatlog", "Chatgeschiedenis lezen…" },
+                { "diagnose", "Installatie controleren…" },
 
                 // Wijzigen
                 { "wall", "Wand maken…" },

@@ -20,8 +20,10 @@ namespace VibeModel.Services.Chat
         // "Irreversible Local Destruction" — workshop 2026-10-12. "dontAsk" makes --allowedTools
         // the whole policy: Bash, Read and the read-only Grep/Glob run without a prompt, every other tool (Write, Edit,
         // WebFetch, …) is denied outright. Nothing the CLI does through VibeModel is irreversible:
-        // every command is one Revit undo step.
-        internal const string PermissionArgs = "--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob";
+        // every command is one Revit undo step. PowerShell: on a laptop without Git for Windows the
+        // CLI has no Bash and shells out through its PowerShell tool instead — without it here every
+        // command would be denied there.
+        internal const string PermissionArgs = "--permission-mode dontAsk --allowedTools Bash,PowerShell,Read,Grep,Glob";
 
         private const int DetectTimeoutMs = 2000;
         // Pre-flight /health probe before spawning the CLI: fail fast with a clear
@@ -139,68 +141,81 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        /// <summary>Where the Claude Code CLI may live: the bare name (PATH) plus the common install locations.</summary>
-        private static List<string> CliCandidates()
-        {
-            var candidates = new List<string>();
-
-            // Bare name — resolved via PATH
-            candidates.Add("claude");
-
-            // Common install locations
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-
-            candidates.Add(Path.Combine(appData, "npm", "claude.cmd"));
-            candidates.Add(Path.Combine(appData, "npm", "claude"));
-            candidates.Add(Path.Combine(localAppData, "Programs", "claude", "claude.exe"));
-            candidates.Add(Path.Combine(userProfile, ".claude", "local", "claude.exe"));
-            return candidates;
-        }
+        /// <summary>What the last search checked, one line per candidate (Diagnose shows it).</summary>
+        internal static IReadOnlyList<string> LastSearch { get; private set; } = new string[0];
 
         /// <summary>
-        /// The first candidate that answers `--version`, or null. Shared with the office-standards
-        /// distiller, which runs one-shot CLI calls.
+        /// The first candidate (<see cref="ClaudeCliLocator"/>) that answers `--version`, or null.
+        /// Shared with the office-standards distiller, which runs one-shot CLI calls.
         /// </summary>
         internal static string LocateCli(out string version)
         {
             version = null;
-            foreach (var candidate in CliCandidates())
+            var search = new List<string>();
+            try
             {
-                // Skip file-path candidates that don't exist on disk
-                if (candidate != "claude" && !File.Exists(candidate))
-                    continue;
-
-                try
+                if (SettingsManager.IsClaudeCodeDisabled())
                 {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = candidate,
-                        Arguments = "--version",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
+                    search.Add("switched off by IT (managed.json DisableClaudeCode)");
+                    return null;
+                }
+                var explicitPath = SettingsManager.GetClaudeCliPath();
+                if (ClaudeCliLocator.IsDisabled(explicitPath))
+                {
+                    search.Add("discovery switched off (ClaudeCliPath / VIBEMODEL_CLAUDE_CLI = none)");
+                    return null;
+                }
 
-                    using (var proc = Process.Start(psi))
+                foreach (var candidate in ClaudeCliLocator.CandidatesForThisMachine())
+                {
+                    if (!File.Exists(candidate)) continue;
+                    var answer = ProbeVersion(candidate);
+                    search.Add(candidate + " -> " + (answer ?? "no answer to --version"));
+                    if (answer != null)
                     {
-                        var output = proc.StandardOutput.ReadToEnd().Trim();
-                        proc.WaitForExit(DetectTimeoutMs);
-                        if (proc.ExitCode == 0)
-                        {
-                            version = output;
-                            return candidate;
-                        }
+                        version = answer;
+                        return candidate;
                     }
                 }
-                catch
+                if (search.Count == 0) search.Add("no claude.exe in %USERPROFILE%\\.local\\bin, on the PATH or in the npm folders");
+                return null;
+            }
+            finally
+            {
+                LastSearch = search;
+            }
+        }
+
+        // `claude --version` with a deadline (a hung CLI must not hang Revit's startup).
+        private static string ProbeVersion(string path)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
                 {
-                    // Not found at this location — try next
+                    FileName = path,
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                using (var proc = Process.Start(psi))
+                {
+                    var output = proc.StandardOutput.ReadToEndAsync();
+                    if (!proc.WaitForExit(DetectTimeoutMs * 3))
+                    {
+                        try { proc.Kill(); } catch { }
+                        return null;
+                    }
+                    return proc.ExitCode == 0 ? output.Result.Trim() : null;
                 }
             }
-            return null;
+            catch
+            {
+                // Not runnable at this location (blocked by policy, broken install) — try the next one.
+                return null;
+            }
         }
 
         private void DetectClaude()
@@ -216,8 +231,46 @@ namespace VibeModel.Services.Chat
             }
 
             _isAvailable = false;
-            _statusMessage = Strings.Get(Strings.ClaudeNotFound);
-            Logger.Warn("Claude Code CLI not found in any known location");
+            _statusMessage = Strings.Get(SettingsManager.IsClaudeCodeDisabled() ? Strings.ClaudeDisabledByIt : Strings.ClaudeNotFound);
+            Logger.Warn("Claude Code CLI not found: " + string.Join(" | ", LastSearch));
+        }
+
+        private static bool _loggedProxy;
+
+        /// <summary>
+        /// The CLI does not read Windows' proxy settings: when Windows routes the API through a
+        /// proxy and the environment names none, hand it over as HTTPS_PROXY / HTTP_PROXY.
+        /// NODE_EXTRA_CA_CERTS (a TLS-inspecting proxy's root) passes through untouched.
+        /// </summary>
+        internal static void ApplyProxyEnvironment(ProcessStartInfo psi)
+        {
+            var env = psi.EnvironmentVariables;
+            if (!string.IsNullOrEmpty(env["HTTPS_PROXY"]) || !string.IsNullOrEmpty(env["HTTP_PROXY"]) ||
+                !string.IsNullOrEmpty(env["https_proxy"])) return;
+            var proxy = AnthropicHttp.SystemProxyFor("https://api.anthropic.com/");
+            if (proxy == null) return;
+            var value = proxy.GetLeftPart(UriPartial.Authority);
+            env["HTTPS_PROXY"] = value;
+            env["HTTP_PROXY"] = value;
+            if (!_loggedProxy) Logger.Info("Claude Code: Windows proxy handed over as HTTPS_PROXY=" + value);
+            _loggedProxy = true;
+        }
+
+        /// <summary>The usage of a CLI result event: total_cost_usd and the token counts; null when absent.</summary>
+        internal static TurnUsage UsageFromResult(Dictionary<string, object> result, string model)
+        {
+            var usage = new TurnUsage { Model = model };
+            if (result.TryGetValue("usage", out var u) && u is Dictionary<string, object> counts)
+            {
+                usage.AddMessageStart(model, counts);
+                usage.EndMessage();
+            }
+            if (result.TryGetValue("total_cost_usd", out var c) && c != null)
+            {
+                try { usage.ReportedCostUsd = Convert.ToDouble(c, System.Globalization.CultureInfo.InvariantCulture); }
+                catch { /* unparsable: tokens only */ }
+            }
+            return usage.IsEmpty ? null : usage;
         }
 
         // Rewritten before every message (not just at startup) so the file always
@@ -244,6 +297,12 @@ namespace VibeModel.Services.Chat
         internal const string ArgsRule =
             "Arguments always go in ?args=, URL-encoded, or in a POST /batch body; never in the path.";
 
+        // A laptop without Git for Windows has no Bash: the CLI shells out through PowerShell, where
+        // plain `curl` is an alias of Invoke-WebRequest and $'..' strings do not exist.
+        internal const string PowerShellRule =
+            "If your shell tool is PowerShell (no Git Bash on this machine): call curl.exe, not curl (an alias of Invoke-WebRequest there), with the same URLs; " +
+            "for a POST body write it to a file with Set-Content first, then curl.exe -s -X POST <url> --data-binary \"@C:\\path\\file.txt\".";
+
         /// <summary>
         /// The argument part of a command's Usage: "wall &lt;x1&gt; … | wall …" → "&lt;x1&gt; … | …".
         /// Empty for a command without arguments.
@@ -268,7 +327,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("You are inside Autodesk Revit via the VibeModel add-in.");
             sb.AppendLine("You can control Revit by running curl commands against the embedded HTTP server.");
             sb.AppendLine();
-            sb.AppendLine("IMPORTANT: Always use bash with curl to execute commands. The server is at " + RevitHttpServer.BaseUrl(httpPort));
+            sb.AppendLine("IMPORTANT: Always use your shell tool with curl to execute commands (Bash, or PowerShell with curl.exe). The server is at " + RevitHttpServer.BaseUrl(httpPort));
             sb.AppendLine();
             if (authToken != null)
             {
@@ -287,6 +346,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("    curl -s \"" + baseUrl + "/color?args=12345%20255%200%200\"");
             sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (curl encodes ?args= for you - use this for code and free text)");
             sb.AppendLine("    curl -s -X POST \"" + baseUrl + "/batch\" --data-binary $'wall 0 0 5000 0\\nwall 5000 0 5000 5000'   (plain text, one command per line, one undo step)");
+            sb.AppendLine("- " + PowerShellRule);
             sb.AppendLine();
             sb.AppendLine("Available commands (ARGS = what goes in ?args=, before encoding; [..] optional, a | b alternatives):");
             sb.AppendLine();
@@ -476,6 +536,7 @@ namespace VibeModel.Services.Chat
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
+            ApplyProxyEnvironment(psi);
 
             Logger.Info("Starting claude: " + _claudePath + " " + args);
 
@@ -669,6 +730,8 @@ namespace VibeModel.Services.Chat
                         _sessionId = sid;
                         Logger.Info("Session ID: " + _sessionId);
                     }
+                    var usage = UsageFromResult(obj, _lastSeenModel);
+                    if (usage != null) ReportActivity(ChatActivityEvent.ForUsage(usage));
                     return;
                 }
 

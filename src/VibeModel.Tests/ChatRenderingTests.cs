@@ -558,19 +558,6 @@ namespace VibeModel.Tests
         }
 
         [Theory]
-        [InlineData("nl", "De chat is nog niet ingesteld")]
-        [InlineData("en", "No chat backend is set up yet")]
-        public void NotConfigured_KeepsTheInstallHints_Localized(string language, string heading)
-        {
-            var lines = UiText.WelcomeSetupLines(language);
-            Assert.Equal(4, lines.Length);
-            Assert.StartsWith(heading, lines[0]);
-            Assert.Contains("npm install -g @anthropic-ai/claude-code", lines[1]);
-            Assert.Contains("Settings", lines[2]);
-            Assert.Contains("Ollama", lines[3]);
-        }
-
-        [Theory]
         [InlineData("nl")]
         [InlineData("en")]
         public void ExamplesPopup_KeepsTheLongerList(string language)

@@ -174,9 +174,10 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void ClaudeCode_RunsInDontAskMode_WithOnlyBashAndRead()
+        public void ClaudeCode_RunsInDontAskMode_WithOnlyShellAndRead()
         {
-            Assert.Equal("--permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob", ClaudeCodeBackend.PermissionArgs);
+            // PowerShell: a laptop without Git for Windows has no Bash; the CLI shells out through it.
+            Assert.Equal("--permission-mode dontAsk --allowedTools Bash,PowerShell,Read,Grep,Glob", ClaudeCodeBackend.PermissionArgs);
         }
 
         [Theory]

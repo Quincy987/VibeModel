@@ -33,7 +33,7 @@ namespace VibeModel
         public Result OnStartup(UIControlledApplication application)
         {
             Logger.Info("========================================");
-            Logger.Info("VibeModel v1.0 - AI Integration for Revit");
+            Logger.Info("VibeModel v" + typeof(VibeModelApp).Assembly.GetName().Version + " - AI Integration for Revit");
             Logger.Info("Revit version: " + application.ControlledApplication.VersionNumber);
             Logger.Info("========================================");
 
@@ -72,6 +72,10 @@ namespace VibeModel
 
                 // Create chat backend with the actual HTTP port and inject into pane
                 _chatBackend = CreateChatBackend(registry.GetCommands(), _httpPort);
+                Services.Diagnostics.DiagnoseReport.RevitVersion = application.ControlledApplication.VersionNumber;
+                Services.Diagnostics.DiagnoseReport.HttpPort = _httpPort;
+                Services.Diagnostics.DiagnoseReport.FileFallback = _usingFallback;
+                Services.Diagnostics.DiagnoseReport.Backend = _chatBackend;
                 _chatPane.InitializeBackend(_chatBackend);
                 _chatPane.BackendChangeRequested += OnBackendChangeRequested;
 
@@ -165,7 +169,16 @@ namespace VibeModel
             if (preferred == "local-llm")
                 return new LocalLlmBackend(commands, httpPort);
 
-            // Auto mode: try CLI â†’ API â†’ Local â†’ default
+            // Auto mode: API key → Claude Code → Local → not configured (the connect wizard).
+            // A configured key wins: it is what an office hands out (managed.json, the
+            // ANTHROPIC_API_KEY variable or the wizard) and it needs nothing else on the laptop.
+            var apiKey = SettingsManager.GetApiKey(out var keySource);
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                Logger.Info("Using AnthropicDirectBackend (API key from " + keySource + ")");
+                return new AnthropicDirectBackend(commands, httpPort);
+            }
+
             var forceDirect = Environment.GetEnvironmentVariable("VIBEMODEL_FORCE_DIRECT") == "1";
 
             if (!forceDirect)
@@ -176,13 +189,6 @@ namespace VibeModel
             else
             {
                 Logger.Info("VIBEMODEL_FORCE_DIRECT=1, skipping Claude Code CLI detection");
-            }
-
-            var apiKey = SettingsManager.GetApiKey();
-            if (!string.IsNullOrWhiteSpace(apiKey))
-            {
-                Logger.Info("Using AnthropicDirectBackend (API key configured)");
-                return new AnthropicDirectBackend(commands, httpPort);
             }
 
             // Check if local LLM endpoint is reachable
@@ -230,6 +236,7 @@ namespace VibeModel
                 var commands = Registry.GetCommands();
                 _chatBackend?.Dispose();
                 _chatBackend = CreateChatBackend(commands, _httpPort);
+                Services.Diagnostics.DiagnoseReport.Backend = _chatBackend;
                 _chatPane.InitializeBackend(_chatBackend);
                 Logger.Info("Backend switched to: " + _chatBackend.GetType().Name);
             }

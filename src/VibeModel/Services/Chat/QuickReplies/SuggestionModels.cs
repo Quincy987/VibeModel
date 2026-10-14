@@ -36,13 +36,16 @@ namespace VibeModel.Services.Chat.QuickReplies
         public const string HaikuModel = "claude-haiku-5-5";
 
         private static readonly HttpClient Http = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+        // The Anthropic API goes through the Windows proxy (office networks); the local LLM does not.
+        internal static HttpClient Anthropic => AnthropicClient;
+        private static readonly HttpClient AnthropicClient = AnthropicHttp.CreateClient(System.Threading.Timeout.InfiniteTimeSpan);
 
         /// <summary>
         /// POST a JSON body (the caller's token sets the deadline); the response text, or null on an
         /// HTTP error — logged once here for every transport.
         /// </summary>
         internal static string PostJson(string url, string body, IDictionary<string, string> headers, string label,
-            CancellationToken ct, out int status)
+            CancellationToken ct, out int status, HttpClient client = null)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
@@ -50,7 +53,7 @@ namespace VibeModel.Services.Chat.QuickReplies
             };
             if (headers != null)
                 foreach (var h in headers) request.Headers.Add(h.Key, h.Value);
-            var response = Http.SendAsync(request, ct).GetAwaiter().GetResult();
+            var response = (client ?? Http).SendAsync(request, ct).GetAwaiter().GetResult();
             status = (int)response.StatusCode;
             var text = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             if (response.IsSuccessStatusCode) return text;
@@ -91,10 +94,10 @@ namespace VibeModel.Services.Chat.QuickReplies
             if (string.IsNullOrWhiteSpace(apiKey)) return null;
 
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            var text = SuggestionModels.PostJson("https://api.anthropic.com/v1/messages",
+            var text = SuggestionModels.PostJson(AnthropicHttp.MessagesUrl,
                 json.Serialize(BuildRequest(systemPrompt, userInput, json)),
-                new Dictionary<string, string> { { "x-api-key", apiKey }, { "anthropic-version", "2023-06-01" } },
-                "Anthropic API", ct, out _);
+                new Dictionary<string, string> { { "x-api-key", apiKey }, { "anthropic-version", AnthropicHttp.ApiVersion } },
+                "Anthropic API", ct, out _, SuggestionModels.Anthropic);
             return text == null ? null : ToolInput(text, json);
         }
 

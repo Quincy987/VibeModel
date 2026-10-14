@@ -10,7 +10,9 @@ namespace VibeModel.Services.Chat
     public enum ChatActivityKind
     {
         ToolStarted,
-        ToolFinished
+        ToolFinished,
+        /// <summary>The turn's token usage (and cost when known) — the line under the answer.</summary>
+        Usage
     }
 
     /// <summary>
@@ -51,6 +53,12 @@ namespace VibeModel.Services.Chat
 
         public static ChatActivityEvent Finished(string toolId, string errorLine) =>
             new ChatActivityEvent { Kind = ChatActivityKind.ToolFinished, ToolId = toolId, ErrorLine = errorLine };
+
+        /// <summary>Usage: the turn's tokens/cost so far (the last one reported wins).</summary>
+        public TurnUsage Usage { get; set; }
+
+        public static ChatActivityEvent ForUsage(TurnUsage usage) =>
+            new ChatActivityEvent { Kind = ChatActivityKind.Usage, Usage = usage };
     }
 
     /// <summary>A backend that reports tool activity. The pane sets the sink before each turn.</summary>
@@ -348,6 +356,9 @@ namespace VibeModel.Services.Chat
         public DateTime? FinishedUtc { get; private set; }
         public bool IsFinished => FinishedUtc.HasValue;
 
+        /// <summary>The turn's tokens and cost as the backend last reported them (null = none).</summary>
+        public TurnUsage Usage { get; private set; }
+
         /// <summary>Set by <see cref="Finish"/>: the text to render as the assistant's answer.</summary>
         public string Answer { get; private set; } = "";
 
@@ -390,7 +401,14 @@ namespace VibeModel.Services.Chat
 
         public void Apply(ChatActivityEvent e, DateTime nowUtc)
         {
-            if (IsFinished || e == null) return;
+            if (e == null) return;
+            // Usage may land just after the answer (the CLI's result event): kept even when finished.
+            if (e.Kind == ChatActivityKind.Usage)
+            {
+                if (e.Usage != null) Usage = e.Usage;
+                return;
+            }
+            if (IsFinished) return;
             LastProgressUtc = nowUtc;
 
             if (e.Kind == ChatActivityKind.ToolStarted)

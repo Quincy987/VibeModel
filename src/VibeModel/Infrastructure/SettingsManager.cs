@@ -1,50 +1,203 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Web.Script.Serialization;
 
 namespace VibeModel.Infrastructure
 {
+    /// <summary>Where the API key in use came from (shown masked in Settings and Diagnose).</summary>
+    public enum ApiKeySource { None, Managed, Environment, Settings }
+
     public static class SettingsManager
     {
-        private static readonly string SettingsDir = Path.Combine(
+        private static string SettingsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VibeModel");
 
-        private static readonly string SettingsPath = Path.Combine(SettingsDir, "settings.json");
+        private static string SettingsPath = Path.Combine(SettingsDir, "settings.json");
 
         private static readonly object Lock = new object();
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
 
         private static Dictionary<string, object> _cache;
 
-        public static string GetApiKey()
+        /// <summary>The model the direct API backend uses when nobody chose one.</summary>
+        public const string DefaultModel = "claude-sonnet-5-5";
+
+        /// <summary>The Anthropic API; a gateway that speaks the Messages API can replace it (ApiBaseUrl).</summary>
+        public const string DefaultApiBaseUrl = "https://api.anthropic.com";
+
+        /// <summary>The user's settings.json (Diagnose names it).</summary>
+        public static string FilePath => SettingsPath;
+
+        // --- API key: DPAPI at rest, never plain text on disk ---------------------------------
+
+        // Older builds (and the old installer) wrote the key in plain text under this name.
+        private const string LegacyKeyName = "AnthropicApiKey";
+        private const string ProtectedKeyName = "AnthropicApiKeyProtected";
+        private static readonly byte[] KeyEntropy = Encoding.UTF8.GetBytes("VibeModel.AnthropicApiKey.v1");
+
+        public static string GetApiKey() => GetApiKey(out _);
+
+        /// <summary>
+        /// The key to use, first match wins: IT's managed.json, the ANTHROPIC_API_KEY environment
+        /// variable, then the user's own key (DPAPI-encrypted for this Windows user). A plain-text key
+        /// left by an older build is encrypted on first read and removed from settings.json.
+        /// </summary>
+        public static string GetApiKey(out ApiKeySource source)
         {
+            var managed = ManagedSettings.GetString(ManagedSettings.AnthropicApiKey);
+            if (managed != null) { source = ApiKeySource.Managed; return managed; }
+
+            var env = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+            if (!string.IsNullOrWhiteSpace(env)) { source = ApiKeySource.Environment; return env.Trim(); }
+
             var settings = Load();
             object val;
-            if (settings.TryGetValue("AnthropicApiKey", out val) && val is string key && !string.IsNullOrWhiteSpace(key))
-                return key;
+            if (settings.TryGetValue(LegacyKeyName, out val) && val is string legacy && !string.IsNullOrWhiteSpace(legacy))
+            {
+                SetApiKey(legacy.Trim());
+                Logger.Info("API key moved from plain text to DPAPI-encrypted storage (" + MaskKey(legacy) + ")");
+                source = ApiKeySource.Settings;
+                return legacy.Trim();
+            }
+
+            if (settings.TryGetValue(ProtectedKeyName, out val) && val is string blob && !string.IsNullOrWhiteSpace(blob))
+            {
+                var key = Unprotect(blob);
+                if (key != null) { source = ApiKeySource.Settings; return key; }
+            }
+
+            source = ApiKeySource.None;
             return null;
         }
 
+        /// <summary>Stores the user's key encrypted (DPAPI, this Windows user only); empty clears it.</summary>
         public static void SetApiKey(string key)
         {
             var settings = Load();
-            settings["AnthropicApiKey"] = key ?? "";
+            settings.Remove(LegacyKeyName);
+            if (string.IsNullOrWhiteSpace(key)) settings.Remove(ProtectedKeyName);
+            else settings[ProtectedKeyName] = Protect(key.Trim());
             Save(settings);
         }
 
+        internal static string Protect(string plain)
+        {
+            var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), KeyEntropy, DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(bytes);
+        }
+
+        internal static string Unprotect(string blob)
+        {
+            try
+            {
+                var bytes = ProtectedData.Unprotect(Convert.FromBase64String(blob), KeyEntropy, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(bytes);
+            }
+            catch (Exception ex)
+            {
+                // Another Windows user's (or another machine's) blob: unreadable here, so no key.
+                Logger.Warn("Stored API key could not be decrypted for this Windows user: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>"sk-ant-…1234" — enough to recognise a key, never enough to use it.</summary>
+        public static string MaskKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return "";
+            var k = key.Trim();
+            if (k.Length <= 12) return new string('*', k.Length);
+            var prefixEnd = k.StartsWith("sk-ant-", StringComparison.Ordinal) ? 7 : 3;
+            return k.Substring(0, prefixEnd) + "…" + k.Substring(k.Length - 4);
+        }
+
+        // --- Model, endpoint, backend (managed.json overrides settings.json) ------------------
+
         public static string GetModel()
         {
+            var managed = ManagedSettings.GetString(ManagedSettings.Model);
+            if (managed != null) return managed;
             var settings = Load();
             object val;
             if (settings.TryGetValue("Model", out val) && val is string model && !string.IsNullOrWhiteSpace(model))
                 return model;
-            return "claude-sonnet-4-5-20250929";
+            return DefaultModel;
+        }
+
+        /// <summary>The model the user chose; empty = the default (<see cref="DefaultModel"/>).</summary>
+        public static string GetModelSetting() => GetString("Model", "");
+
+        public static void SetModel(string model)
+        {
+            var settings = Load();
+            if (string.IsNullOrWhiteSpace(model)) settings.Remove("Model");
+            else settings["Model"] = model.Trim();
+            Save(settings);
+        }
+
+        /// <summary>The Messages API host: managed.json, settings.json, else api.anthropic.com.</summary>
+        public static string GetApiBaseUrl()
+        {
+            var managed = ManagedSettings.GetString(ManagedSettings.ApiBaseUrl);
+            if (managed != null) return managed;
+            var configured = GetString("ApiBaseUrl", "");
+            return string.IsNullOrWhiteSpace(configured) ? DefaultApiBaseUrl : configured.Trim();
+        }
+
+        public static void SetApiBaseUrl(string url)
+        {
+            var settings = Load();
+            if (string.IsNullOrWhiteSpace(url) || url.Trim().TrimEnd('/') == DefaultApiBaseUrl) settings.Remove("ApiBaseUrl");
+            else settings["ApiBaseUrl"] = url.Trim();
+            Save(settings);
+        }
+
+        /// <summary>
+        /// The full Messages URL for a base: "https://api.anthropic.com" → ".../v1/messages"; a base
+        /// that already ends in /v1 or /v1/messages is completed, not doubled.
+        /// </summary>
+        public static string MessagesUrl(string baseUrl)
+        {
+            var b = (string.IsNullOrWhiteSpace(baseUrl) ? DefaultApiBaseUrl : baseUrl.Trim()).TrimEnd('/');
+            if (b.EndsWith("/v1/messages", StringComparison.OrdinalIgnoreCase)) return b;
+            if (b.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) return b + "/messages";
+            return b + "/v1/messages";
+        }
+
+        /// <summary>True for the Anthropic API itself (beta headers a gateway may reject are only sent there).</summary>
+        public static bool IsAnthropicEndpoint(string baseUrl)
+        {
+            Uri uri;
+            return Uri.TryCreate(MessagesUrl(baseUrl), UriKind.Absolute, out uri)
+                   && uri.Host.Equals("api.anthropic.com", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>IT can switch the Claude Code backend off entirely (managed DisableClaudeCode).</summary>
+        public static bool IsClaudeCodeDisabled() => ManagedSettings.GetBool(ManagedSettings.DisableClaudeCode) == true;
+
+        /// <summary>
+        /// Where the Claude Code CLI lives when set explicitly: managed.json, the
+        /// VIBEMODEL_CLAUDE_CLI environment variable, then settings.json. "none" switches discovery
+        /// off (simulates a laptop without Claude Code). Null = discover it.
+        /// </summary>
+        public static string GetClaudeCliPath()
+        {
+            var managed = ManagedSettings.GetString(ManagedSettings.ClaudeCliPath);
+            if (managed != null) return managed;
+            var env = Environment.GetEnvironmentVariable("VIBEMODEL_CLAUDE_CLI");
+            if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+            var configured = GetString("ClaudeCliPath", "");
+            return string.IsNullOrWhiteSpace(configured) ? null : configured.Trim();
         }
 
         public static string GetPreferredBackend()
         {
+            var managed = ManagedSettings.GetString(ManagedSettings.PreferredBackend);
+            if (managed != null) return managed;
             var settings = Load();
             object val;
             if (settings.TryGetValue("PreferredBackend", out val) && val is string backend)
@@ -136,7 +289,8 @@ namespace VibeModel.Infrastructure
         /// Chat language: "nl" (default) or "en". Picks the pane's fixed texts and the reply
         /// language the model falls back to when the user's own language is unclear.
         /// </summary>
-        public static string GetLanguage() => Services.Chat.Strings.Normalize(GetString("Language", Services.Chat.Strings.Dutch));
+        public static string GetLanguage() => Services.Chat.Strings.Normalize(
+            ManagedSettings.GetString(ManagedSettings.Language) ?? GetString("Language", Services.Chat.Strings.Dutch));
 
         public static void SetLanguage(string language) => SetValue("Language", Services.Chat.Strings.Normalize(language));
 
@@ -312,6 +466,19 @@ namespace VibeModel.Infrastructure
         {
             lock (Lock)
             {
+                _cache = null;
+            }
+            ManagedSettings.Reload();
+        }
+
+        /// <summary>Tests: read and write this settings file instead of the user's (null restores it).</summary>
+        internal static void OverridePathForTests(string settingsPath)
+        {
+            lock (Lock)
+            {
+                SettingsPath = settingsPath ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VibeModel", "settings.json");
+                SettingsDir = Path.GetDirectoryName(SettingsPath);
                 _cache = null;
             }
         }

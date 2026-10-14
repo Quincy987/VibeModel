@@ -204,6 +204,7 @@ namespace VibeModel.UI
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
 
             var title = new TextBlock
             {
@@ -253,6 +254,14 @@ namespace VibeModel.UI
             _settingsButton.Click += OnSettingsClick;
             Grid.SetColumn(_settingsButton, 5);
             headerGrid.Children.Add(_settingsButton);
+
+            // The support report: what VibeModel sees of this computer, ready to send to IT.
+            var diagnoseButton = CreateHeaderButton("Diagnose");
+            diagnoseButton.ToolTip = Strings.Get(Strings.DiagnoseTip);
+            diagnoseButton.Click += (s, e) => DiagnoseWindow.ShowFor(this);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(diagnoseButton, "DiagnoseButton");
+            Grid.SetColumn(diagnoseButton, 6);
+            headerGrid.Children.Add(diagnoseButton);
 
             return new Border
             {
@@ -510,32 +519,14 @@ namespace VibeModel.UI
             }
             else
             {
-                var lines = UiText.WelcomeSetupLines(language);
-                panel.Children.Add(new TextBlock
+                // Not connected: the connect wizard (API key, or install / log in to Claude Code).
+                var wizard = new ConnectWizardView(language);
+                wizard.BackendChosen += backend =>
                 {
-                    Text = lines[0],
-                    Foreground = FgPrimary,
-                    FontSize = 12,
-                    FontWeight = FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 4)
-                });
-                for (int i = 1; i < lines.Length; i++)
-                {
-                    // Selectable, so the npm line can be copied.
-                    panel.Children.Add(new TextBox
-                    {
-                        Text = "• " + lines[i],
-                        IsReadOnly = true,
-                        BorderThickness = new Thickness(0),
-                        Background = Brushes.Transparent,
-                        Foreground = FgSecondary,
-                        FontSize = 11,
-                        TextWrapping = TextWrapping.Wrap,
-                        Padding = new Thickness(0),
-                        Margin = new Thickness(0, 1, 0, 1)
-                    });
-                }
+                    Logger.Info("Chat pane: connect wizard chose " + backend);
+                    BackendChangeRequested?.Invoke(this, EventArgs.Empty);
+                };
+                panel.Children.Add(wizard);
             }
 
             return new Border
@@ -1181,6 +1172,26 @@ namespace VibeModel.UI
             turn.AnswerPanel.Children.Remove(turn.AnswerText);
             AddRenderedContent(turn.AnswerPanel, answer);
             turn.AnswerBorder.Visibility = Visibility.Visible;
+            AddUsageLine(turn);
+        }
+
+        // "12.3k tokens · ≈ €0,04" under the answer — UI only, never stored with the chat.
+        private void AddUsageLine(TurnUi turn)
+        {
+            var text = ModelPricing.Describe(turn.Model.Usage, Strings.Current);
+            if (string.IsNullOrEmpty(text)) return;
+            var line = new TextBlock
+            {
+                Text = text,
+                Foreground = FgSecondary,
+                FontSize = 10,
+                Margin = new Thickness(12, 0, 0, 4),
+                ToolTip = Strings.Get(Strings.UsageTip)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(line, "TurnUsage");
+            var index = turn.AnswerBorder != null ? _messagePanel.Children.IndexOf(turn.AnswerBorder) : -1;
+            if (index >= 0) _messagePanel.Children.Insert(index + 1, line);
+            else _messagePanel.Children.Add(line);
         }
 
         private void EnsureAnswerBubble(TurnUi turn)
