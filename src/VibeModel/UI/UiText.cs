@@ -98,15 +98,6 @@ namespace VibeModel.UI
         /// <summary>The four example chips.</summary>
         public static string[] WelcomeExamples(string language) => Starters.Defaults(language).ToArray();
 
-        /// <summary>The not-configured card: a heading line and three install hints.</summary>
-        public static string[] WelcomeSetupLines(string language) => new[]
-        {
-            Strings.For(language, Strings.WelcomeSetup),
-            Strings.For(language, Strings.WelcomeSetupCli),
-            Strings.For(language, Strings.WelcomeSetupApi),
-            Strings.For(language, Strings.WelcomeSetupLocal),
-        };
-
         /// <summary>The longer list behind the header's "?" button.</summary>
         public static string[] ExampleList(string language) =>
             Strings.For(language, Strings.ExamplesList).Split('\n');

@@ -1,33 +1,67 @@
 <#
 .SYNOPSIS
-    Installs VibeModel add-in for Autodesk Revit.
+    Installs the VibeModel add-in for Autodesk Revit - for the current Windows user, no
+    administrator rights needed.
 
 .DESCRIPTION
-    Copies VibeModel.dll, VibeModel.addin, Markdig.dll and the VibeModel.PdfText helper
-    to every detected Revit add-in folder, unblocks them, and optionally saves your
-    Anthropic API key. Double-click install.cmd, or run this script with PowerShell.
+    Copies VibeModel.dll, VibeModel.addin, Markdig.dll and the VibeModel.PdfText helper to the
+    add-in folder of the Revit version this build is for (revit-year.txt in the release zip;
+    %APPDATA%\Autodesk\Revit\Addins\<year>), removes the "downloaded from the internet" mark,
+    and checks the result. Other Revit versions are named and left alone: a build only loads in
+    the Revit it was compiled against. Connecting to Claude is not done here: Revit's chat
+    pane shows a "Connect to Claude" card the first time.
 
-    The window stays open at the end (and after an error) so the result can be read.
-
-.PARAMETER SkipApiKey
-    Skip the API key prompt.
+    Double-click install.cmd, or run this script with PowerShell. The window stays open at the
+    end (and after an error) so the result can be read. Every line is also written to
+    %LOCALAPPDATA%\VibeModel\logs\install.log. Running it again is safe: unchanged files are
+    reported as up to date.
 
 .PARAMETER NoPause
-    Do not wait for Enter at the end (for scripted use).
+    Do not wait for Enter at the end (scripted use).
+
+.PARAMETER Quiet
+    For IT deployment: no questions, no pause, a running Revit is an error (exit 2) instead of
+    a prompt, and so is a missing Revit for this build (exit 3). Output still goes to install.log.
+
+.PARAMETER InstallClaudeCode
+    Also install Claude Code with Anthropic's official per-user installer
+    (irm https://claude.ai/install.ps1 | iex) and check `claude --version`. Optional: the chat
+    works with an API key alone, and the chat pane can install Claude Code too.
 
 .EXAMPLE
     .\install.ps1
-    .\install.ps1 -SkipApiKey -NoPause
+    .\install.ps1 -Quiet
+    .\install.ps1 -InstallClaudeCode
 #>
 
 param(
-    [switch]$SkipApiKey,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [switch]$Quiet,
+    [switch]$InstallClaudeCode
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Quiet) { $NoPause = $true }
+
+$logDir = Join-Path $env:LOCALAPPDATA "VibeModel\logs"
+$logFile = Join-Path $logDir "install.log"
+$script:installerVersion = "?"
+
+function Log([string]$text) {
+    try {
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        Add-Content -Path $logFile -Value ("{0} [installer {1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $script:installerVersion, $text) -Encoding UTF8
+    } catch { }
+}
+
+# Every user-facing line goes to the screen and to install.log.
+function Say([string]$text, [string]$color = "Gray") {
+    Write-Host "  $text" -ForegroundColor $color
+    Log $text
+}
 
 function Finish([int]$code) {
+    Log ("exit " + $code)
     if (-not $NoPause) {
         Write-Host ""
         Read-Host "  Press Enter to close this window" | Out-Null
@@ -35,10 +69,10 @@ function Finish([int]$code) {
     exit $code
 }
 
-function Fail([string[]]$lines) {
+function Fail([string[]]$lines, [int]$code = 1) {
     Write-Host ""
-    foreach ($line in $lines) { Write-Host "  $line" -ForegroundColor Red }
-    Finish 1
+    foreach ($line in $lines) { Say $line "Red" }
+    Finish $code
 }
 
 try {
@@ -53,7 +87,7 @@ Write-Host ""
 $scriptDir = $PSScriptRoot
 $sourceFiles = @("VibeModel.dll", "VibeModel.addin", "Markdig.dll")
 
-# Search directories — build output dirs + script dir + repo root
+# Search directories - the release zip (next to this script), else build output dirs
 $searchDirs = @(
     $scriptDir,
     (Join-Path $scriptDir "bin\Release\Revit2023"),
@@ -78,7 +112,7 @@ foreach ($file in $sourceFiles) {
 
 if (-not $resolvedFiles.ContainsKey("VibeModel.dll")) {
     if (Test-Path (Join-Path $scriptDir "src\VibeModel\VibeModel.csproj")) {
-        # GitHub's automatic "Source code (zip)" — no compiled add-in in it.
+        # GitHub's automatic "Source code (zip)" - no compiled add-in in it.
         Fail @(
             "This folder is the SOURCE CODE of VibeModel, not the add-in.",
             "The add-in (VibeModel.dll) is not in it.",
@@ -96,17 +130,17 @@ if (-not $resolvedFiles.ContainsKey("VibeModel.dll")) {
     )
 }
 
-Write-Host "  Found $($resolvedFiles.Count)/$($sourceFiles.Count) files:" -ForegroundColor Gray
-foreach ($entry in $resolvedFiles.GetEnumerator()) {
-    Write-Host "    $($entry.Key) -> $($entry.Value)" -ForegroundColor Gray
-}
+$script:installerVersion = (Get-Item $resolvedFiles["VibeModel.dll"]).VersionInfo.FileVersion
+Log ("start in " + $scriptDir + " as " + $env:USERNAME + (@("", " (quiet)")[[int][bool]$Quiet]))
+Say ("VibeModel " + $script:installerVersion) "White"
 
 # --- Revit must be closed: it keeps VibeModel.dll locked, so the copy would fail ---
 
 $revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
 if ($revitProcs.Count -gt 0) {
+    if ($Quiet) { Fail @("Revit is running - close it and run the installer again.") 2 }
     Write-Host ""
-    Write-Host "  Revit is running ($($revitProcs.Count) window(s)). Close Revit first - it keeps the add-in files locked." -ForegroundColor Yellow
+    Say "Revit is running ($($revitProcs.Count) window(s)). Close Revit first - it keeps the add-in files locked." "Yellow"
     Read-Host "  Close Revit, then press Enter here to continue" | Out-Null
     $revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
     if ($revitProcs.Count -gt 0) {
@@ -114,39 +148,64 @@ if ($revitProcs.Count -gt 0) {
     }
 }
 
-# --- Detect Revit versions ---
+# --- Which Revit: the one this build is for ---
 
 $addinsBase = Join-Path $env:APPDATA "Autodesk\Revit\Addins"
-$revitVersions = @()
-
+$detected = @()
 if (Test-Path $addinsBase) {
-    Get-ChildItem $addinsBase -Directory | ForEach-Object {
-        if ($_.Name -match '^\d{4}$') {
-            $year = [int]$_.Name
-            if ($year -ge 2022 -and $year -le 2030) {
-                $revitVersions += $_.Name
-            }
+    $detected = @(Get-ChildItem $addinsBase -Directory | Where-Object { $_.Name -match '^20(2[2-9]|30)$' } | ForEach-Object { $_.Name })
+}
+
+# The release zip names its Revit year in revit-year.txt; a build folder in its path (bin\Release\Revit2023).
+$buildYear = $null
+$yearFile = Join-Path $scriptDir "revit-year.txt"
+if (Test-Path $yearFile) { $buildYear = (Get-Content $yearFile -Raw).Trim() }
+elseif ($resolvedFiles["VibeModel.dll"] -match 'Revit(20\d\d)') { $buildYear = $Matches[1] }
+
+if ($buildYear) {
+    $revitExe = Join-Path $env:ProgramFiles "Autodesk\Revit $buildYear\Revit.exe"
+    if (-not ($detected -contains $buildYear) -and -not (Test-Path $revitExe)) {
+        Fail @("This build is for Revit $buildYear, which is not installed for this user",
+               "(no $addinsBase\$buildYear and no $revitExe).",
+               "Download the zip for your Revit version.") 3
+    }
+    $revitVersions = @($buildYear)
+    $others = @($detected | Where-Object { $_ -ne $buildYear })
+    if ($others.Count -gt 0) {
+        Say ("Also found Revit " + ($others -join ', ') + " - not touched: this build is for Revit $buildYear only.") "Yellow"
+    }
+} else {
+    # A build folder without a year: the old behaviour, every detected version.
+    $revitVersions = $detected
+    if ($revitVersions.Count -eq 0) {
+        Say "No Revit add-in folder found under $addinsBase." "Yellow"
+        if ($Quiet) { Fail @("No Revit version detected - start Revit once, or create $addinsBase\<year>.") 3 }
+        Write-Host ""
+        $manualYear = Read-Host "  Enter your Revit version year (e.g. 2023)"
+        if ($manualYear -match '^\d{4}$') {
+            $revitVersions = @($manualYear)
+        } else {
+            Fail @("Invalid input. Exiting.")
         }
     }
 }
 
-if ($revitVersions.Count -eq 0) {
-    Write-Host "  No Revit installations detected." -ForegroundColor Yellow
-    Write-Host "  Searching for: $addinsBase\{2022-2025}\" -ForegroundColor Gray
-    Write-Host ""
-
-    $manualYear = Read-Host "  Enter your Revit version year (e.g. 2023)"
-    if ($manualYear -match '^\d{4}$') {
-        $revitVersions = @($manualYear)
-    } else {
-        Fail @("Invalid input. Exiting.")
-    }
-}
-
-Write-Host "  Detected Revit versions: $($revitVersions -join ', ')" -ForegroundColor Green
+Say "Installing for Revit $($revitVersions -join ', ')" "Green"
 Write-Host ""
 
-# --- Copy files ---
+# --- Copy files (unchanged files are left alone) ---
+
+function Copy-IfChanged([string]$source, [string]$targetDir) {
+    $target = Join-Path $targetDir (Split-Path $source -Leaf)
+    if ((Test-Path $target) -and ((Get-FileHash $source).Hash -eq (Get-FileHash $target).Hash)) {
+        Unblock-File -Path $target -ErrorAction SilentlyContinue
+        return $false
+    }
+    Copy-Item $source $targetDir -Force
+    # Remove Windows' "downloaded from the internet" block that stops .NET loading the DLL
+    Unblock-File -Path $target -ErrorAction SilentlyContinue
+    return $true
+}
 
 foreach ($version in $revitVersions) {
     $targetDir = Join-Path $addinsBase $version
@@ -155,20 +214,21 @@ foreach ($version in $revitVersions) {
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
     }
 
-    Write-Host "  Installing to Revit $version..." -ForegroundColor White
+    Say "Revit ${version}: $targetDir" "White"
 
     foreach ($file in $sourceFiles) {
         if ($resolvedFiles.ContainsKey($file)) {
-            Copy-Item $resolvedFiles[$file] $targetDir -Force
-            # Remove Windows "downloaded from internet" block that prevents .NET from loading the DLL
-            Unblock-File -Path (Join-Path $targetDir $file) -ErrorAction SilentlyContinue
-            Write-Host "    Copied $file" -ForegroundColor Gray
+            if (Copy-IfChanged $resolvedFiles[$file] $targetDir) {
+                Say "  installed $file"
+            } else {
+                Say "  $file already up to date (v$($script:installerVersion))"
+            }
         } else {
-            Write-Host "    WARNING: $file not found, skipping" -ForegroundColor Yellow
+            Say "  WARNING: $file not found, skipped" "Yellow"
         }
     }
 
-    # Optional: PDF text helper for the office-standards document index (own subfolder so its
+    # PDF text helper for the office-standards document index (own subfolder so its
     # dependencies never load into Revit). Without it only .txt sources can be indexed.
     $pdfTextSource = @(
         (Join-Path $scriptDir "VibeModel.PdfText"),
@@ -177,11 +237,12 @@ foreach ($version in $revitVersions) {
     if ($pdfTextSource) {
         $pdfTextTarget = Join-Path $targetDir "VibeModel.PdfText"
         New-Item -ItemType Directory -Path $pdfTextTarget -Force | Out-Null
+        $changed = 0
         Get-ChildItem $pdfTextSource -File | Where-Object { $_.Extension -in ".exe", ".dll", ".config" } | ForEach-Object {
-            Copy-Item $_.FullName $pdfTextTarget -Force
-            Unblock-File -Path (Join-Path $pdfTextTarget $_.Name) -ErrorAction SilentlyContinue
+            if (Copy-IfChanged $_.FullName $pdfTextTarget) { $changed++ }
         }
-        Write-Host "    Copied VibeModel.PdfText helper" -ForegroundColor Gray
+        if ($changed -gt 0) { Say "  installed the VibeModel.PdfText helper ($changed files)" }
+        else { Say "  VibeModel.PdfText helper already up to date" }
     }
 }
 
@@ -204,66 +265,45 @@ if ($problems.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "  Files installed and unblocked successfully!" -ForegroundColor Green
+Say "Files installed and unblocked." "Green"
 
-# --- API key ---
+# --- Signature: what Revit will see when it loads the add-in ---
 
-if (-not $SkipApiKey) {
+$dllForSignature = Join-Path (Join-Path $addinsBase $revitVersions[0]) "VibeModel.dll"
+$sig = Get-AuthenticodeSignature -FilePath $dllForSignature
+# What Revit 2023 does (measured): trusted signature -> loads silently; unsigned -> asks once
+# ("Always Load" remembers it); signed but untrusted -> "Invalid Signature" on every start.
+switch ($sig.Status) {
+    "Valid" { Say ("Signed by " + $sig.SignerCertificate.Subject + " (trusted) - Revit loads it without asking.") "Green" }
+    "NotSigned" { Say "The add-in is not signed: Revit asks once whether to load it (again after each update) - choose 'Always Load'." "Yellow" }
+    default {
+        $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "?" }
+        Say ("Signed by " + $subject + ", but this computer does not trust that certificate (" + $sig.Status + ").") "Yellow"
+        Say "Revit will warn 'Invalid Signature' on every start. Ask your administrator for the official build." "Yellow"
+    }
+}
+
+# --- Optional: Claude Code (per user, no administrator rights) ---
+
+if ($InstallClaudeCode) {
     Write-Host ""
-
-    $settingsDir = Join-Path $env:LOCALAPPDATA "VibeModel"
-    $settingsPath = Join-Path $settingsDir "settings.json"
-
-    # Check for existing key
-    $existingKey = $null
-    if (Test-Path $settingsPath) {
-        try {
-            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            if ($settings.AnthropicApiKey) {
-                $existingKey = $settings.AnthropicApiKey
-            }
-        } catch { }
-    }
-
-    $askKey = $true
-    if ($existingKey) {
-        $masked = $existingKey.Substring(0, [Math]::Min(10, $existingKey.Length)) + "..."
-        Write-Host "  API key already configured: $masked" -ForegroundColor Green
-        $changeKey = Read-Host "  Change it? (y/N)"
-        if ($changeKey -ne 'y' -and $changeKey -ne 'Y') { $askKey = $false }
-    }
-
-    if ($askKey) {
-        Write-Host "  Using Claude Code (logged in with 'claude')? Just press Enter." -ForegroundColor White
-        Write-Host "  Otherwise enter your Anthropic API key (from console.anthropic.com):" -ForegroundColor White
-        $apiKey = Read-Host "  API Key (Enter to skip)"
-
-        if ($apiKey) {
-            if (-not (Test-Path $settingsDir)) {
-                New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
-            }
-
-            # Keep whatever else is in settings.json; only the key and backend change. The model
-            # is left to the add-in's default.
-            $settingsObj = @{}
-            if (Test-Path $settingsPath) {
-                try {
-                    (Get-Content $settingsPath -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $settingsObj[$_.Name] = $_.Value }
-                } catch { }
-            }
-            $settingsObj["AnthropicApiKey"] = $apiKey
-            $settingsObj["PreferredBackend"] = "direct"
-            $settingsObj | ConvertTo-Json | Set-Content $settingsPath -Encoding UTF8
-
-            Write-Host "  API key saved!" -ForegroundColor Green
-        } else {
-            Write-Host "  Skipped. Claude Code is detected automatically; an API key can be set later via Settings in the chat pane." -ForegroundColor Gray
-        }
+    Say "Installing Claude Code (Anthropic's per-user installer)..." "White"
+    # In its own PowerShell: an `exit` (or a changed error preference) in Anthropic's script must
+    # not end or alter this installer.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"
+    if ($LASTEXITCODE -ne 0) { Say ("Claude Code installer exited with code " + $LASTEXITCODE) "Red" }
+    $claude = Join-Path $env:USERPROFILE ".local\bin\claude.exe"
+    if (Test-Path $claude) {
+        $claudeVersion = & $claude --version 2>$null
+        Say ("Claude Code ready: " + $claudeVersion + " (" + $claude + ")") "Green"
+        Say "Log in once: the chat pane's 'Log in' button, or run 'claude' in a terminal." "Gray"
+    } else {
+        Say "Claude Code was not found after the installer ran - see the messages above." "Red"
     }
 }
 
 Write-Host ""
-Write-Host "  Done! Start Revit - the VibeModel tab is in the ribbon." -ForegroundColor Cyan
+Say "Done! Start Revit -> tab VibeModel -> Chat. The first time, the chat asks how to connect to Claude." "Cyan"
 Finish 0
 
 } catch {

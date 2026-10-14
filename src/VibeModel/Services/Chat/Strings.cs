@@ -69,10 +69,6 @@ namespace VibeModel.Services.Chat
         public const string WelcomeExample3 = "WelcomeExample3";
         public const string WelcomeExample4 = "WelcomeExample4";
         public const string WelcomeChipTip = "WelcomeChipTip";
-        public const string WelcomeSetup = "WelcomeSetup";
-        public const string WelcomeSetupCli = "WelcomeSetupCli";
-        public const string WelcomeSetupApi = "WelcomeSetupApi";
-        public const string WelcomeSetupLocal = "WelcomeSetupLocal";
         public const string ExamplesTitle = "ExamplesTitle";
         public const string ExamplesList = "ExamplesList";                     // one example per line
         public const string ExamplesTip = "ExamplesTip";
@@ -87,6 +83,51 @@ namespace VibeModel.Services.Chat
         // Settings (plan 08, project part).
         public const string SettingProjectMemory = "SettingProjectMemory";
         public const string SettingProjectMemoryHint = "SettingProjectMemoryHint";
+        public const string SettingManaged = "SettingManaged";
+        // Direct API backend.
+        public const string ApiRefusal = "ApiRefusal";
+        public const string ApiMaxTokens = "ApiMaxTokens";
+        public const string ApiUnreachable = "ApiUnreachable";                 // {0} = url, {1} = reason
+        public const string ClaudeDisabledByIt = "ClaudeDisabledByIt";
+        public const string UsageTip = "UsageTip";
+        public const string StatusNotConnected = "StatusNotConnected";
+        // Connect wizard (the not-configured welcome card).
+        public const string WizardTitle = "WizardTitle";
+        public const string WizardIntro = "WizardIntro";
+        public const string WizardApiHeading = "WizardApiHeading";
+        public const string WizardApiHint = "WizardApiHint";
+        public const string WizardApiTest = "WizardApiTest";
+        public const string WizardApiSave = "WizardApiSave";
+        public const string WizardApiEmpty = "WizardApiEmpty";
+        public const string WizardApiTesting = "WizardApiTesting";
+        public const string WizardApiOk = "WizardApiOk";                       // {0} = model
+        public const string WizardApiInvalid = "WizardApiInvalid";
+        public const string WizardApiNoAccess = "WizardApiNoAccess";
+        public const string WizardApiModelUnknown = "WizardApiModelUnknown";   // {0} = model
+        public const string WizardApiNetwork = "WizardApiNetwork";             // {0} = host, {1} = reason
+        public const string WizardApiOther = "WizardApiOther";                 // {0} = status, {1} = detail
+        public const string WizardCliHeading = "WizardCliHeading";
+        public const string WizardCliChecking = "WizardCliChecking";
+        public const string WizardCliFound = "WizardCliFound";                 // {0} = version
+        public const string WizardCliNotFound = "WizardCliNotFound";
+        public const string WizardCliInstall = "WizardCliInstall";
+        public const string WizardCliInstallStarted = "WizardCliInstallStarted";
+        public const string WizardCliLogin = "WizardCliLogin";
+        public const string WizardCliLoginHint = "WizardCliLoginHint";
+        public const string WizardCliUse = "WizardCliUse";
+        public const string WizardRecheck = "WizardRecheck";
+        public const string WizardLocal = "WizardLocal";
+        public const string WizardFailedToStart = "WizardFailedToStart";       // {0} = reason
+        // Diagnose (header button, `diagnose` command).
+        public const string DiagnoseTitle = "DiagnoseTitle";
+        public const string DiagnoseTip = "DiagnoseTip";
+        public const string DiagnoseRunning = "DiagnoseRunning";
+        public const string DiagnoseCopy = "DiagnoseCopy";
+        public const string DiagnoseCopied = "DiagnoseCopied";
+        public const string DiagnoseSave = "DiagnoseSave";
+        public const string DiagnoseSaved = "DiagnoseSaved";                   // {0} = path
+        public const string DiagnoseClose = "DiagnoseClose";
+        public const string DiagnoseSendHint = "DiagnoseSendHint";
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -94,14 +135,14 @@ namespace VibeModel.Services.Chat
                 { BackendNotInitialized, "Chat backend not initialized. Click Settings to configure your API key." },
                 { MessageInProgress, "A message is already being processed. Please wait or cancel first." },
                 { ServerNotResponding, "VibeModel's HTTP server isn't responding on port {0}. Restart Revit (or check whether another program is blocking the port), then try again." },
-                { ClaudeNotFound, "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code" },
+                { ClaudeNotFound, "Claude Code is not installed on this computer. Use \"Connect to Claude\" in the chat, or run in PowerShell: irm https://claude.ai/install.ps1 | iex" },
                 { ProcessStartFailed, "Failed to start Claude Code process" },
                 { ProcessExitCode, "Claude Code exited with code {0}" },
                 { CliTooOld, "This Claude Code version does not support the permission mode VibeModel needs (--permission-mode dontAsk). Update it with: claude update" },
                 { StaleResume, "[Resumed session was stale - starting fresh chat.]" },
                 { IdleStoppedMidTool, "[Stopped: task went idle for 3 min mid-tool. Session was reset to avoid a broken transcript - please rephrase your request.]" },
                 { IdleStopped, "[Stopped: task went idle for 3 min. Say \"continue\" to resume.]" },
-                { ApiKeyMissing, "API key not configured. Click Settings to add your Anthropic API key." },
+                { ApiKeyMissing, "Not connected to Claude yet. Use the Connect to Claude card in the chat (New Chat shows it), or Settings → Anthropic API." },
                 { LocalEndpointMissing, "Local LLM endpoint not configured. Click Settings to set it up." },
                 { LocalNotReachable, "Local LLM not reachable at {0}. Is the server running?" },
                 { LocalError, "Local LLM error {0}: {1}" },
@@ -138,10 +179,6 @@ namespace VibeModel.Services.Chat
                 { WelcomeExample3, "Make a section across this wall" },
                 { WelcomeExample4, "Fit these views onto an A0 sheet" },
                 { WelcomeChipTip, "Put this question in the input box" },
-                { WelcomeSetup, "No chat backend is set up yet. Pick one:" },
-                { WelcomeSetupCli, "Claude Code (recommended): npm install -g @anthropic-ai/claude-code" },
-                { WelcomeSetupApi, "API key: Settings → Anthropic API key" },
-                { WelcomeSetupLocal, "Local model: Settings → Local LLM (llama.cpp, Ollama, LM Studio)" },
                 { ExamplesTitle, "Examples" },
                 { ExamplesList, "What is in this model?\nList the 5 longest walls in a table with length, height and phase\nWhy can't I see element 12345 in this view?\nMake a section across this wall\nFit these views onto an A0 sheet\nWhich phase should a new section get according to the leidraad?\nWhich documents are in the project folder?\nCheck this model against the office standard\nCreate 4 walls forming a 5 x 5 m room\nColour the selected elements red" },
                 { ExamplesTip, "Every change the chat makes is one Ctrl+Z. Click an example to use it." },
@@ -154,6 +191,48 @@ namespace VibeModel.Services.Chat
                 { QuickReplySendsTip, "{0}\n(sends right away)" },
                 { SettingProjectMemory, "Keep project memory and journal" },
                 { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
+                { SettingManaged, "managed by IT" },
+                { ApiRefusal, "Claude declined to answer this request. Rephrase it, or split it into smaller steps." },
+                { ApiMaxTokens, "[The answer was cut off at the length limit - ask \"continue\" for the rest.]" },
+                { ApiUnreachable, "Cannot reach {0}: {1}. Check the network or proxy, or press Diagnose and send the report to your administrator." },
+                { ClaudeDisabledByIt, "Claude Code is switched off on this computer by IT." },
+                { StatusNotConnected, "Not connected" },
+                { UsageTip, "Tokens this answer used, and an estimate of its cost at Anthropic's list price (the Console has the real bill)." },
+                { WizardTitle, "Connect to Claude" },
+                { WizardIntro, "The chat needs a connection to Claude. Pick one way - you only do this once." },
+                { WizardApiHeading, "1. API key (recommended at the office)" },
+                { WizardApiHint, "Paste the key you got from your administrator (starts with sk-ant-). It is stored encrypted, for your Windows account only." },
+                { WizardApiTest, "Test" },
+                { WizardApiSave, "Save and start" },
+                { WizardApiEmpty, "Paste a key first." },
+                { WizardApiTesting, "Testing the key…" },
+                { WizardApiOk, "Works - model {0} is available." },
+                { WizardApiInvalid, "This key is not accepted (wrong, expired or revoked). Check it with your administrator." },
+                { WizardApiNoAccess, "The key is valid but has no access to the API. Ask your administrator." },
+                { WizardApiModelUnknown, "The key works, but model {0} is not available to it. Pick another model in Settings or ask your administrator." },
+                { WizardApiNetwork, "Cannot reach {0}: {1}. The network or the office proxy blocks it - press Diagnose and send the report to IT." },
+                { WizardApiOther, "Unexpected answer (HTTP {0}): {1}" },
+                { WizardCliHeading, "2. Claude Code (your own Claude subscription)" },
+                { WizardCliChecking, "Looking for Claude Code…" },
+                { WizardCliFound, "Found: Claude Code {0}" },
+                { WizardCliNotFound, "Not installed on this computer. Installing needs no administrator rights." },
+                { WizardCliInstall, "Install" },
+                { WizardCliInstallStarted, "A PowerShell window installs Claude Code. When it says it is done, press Check again." },
+                { WizardCliLogin, "Log in" },
+                { WizardCliLoginHint, "Log in opens a window: follow the steps (a browser opens for your Claude account), then close it and press Use Claude Code." },
+                { WizardCliUse, "Use Claude Code" },
+                { WizardRecheck, "Check again" },
+                { WizardLocal, "Local model (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
+                { WizardFailedToStart, "Could not start it: {0}" },
+                { DiagnoseTitle, "VibeModel diagnosis" },
+                { DiagnoseTip, "What VibeModel sees of this computer: versions, connection, proxy, recent errors. Secrets are masked." },
+                { DiagnoseRunning, "Checking (network checks take up to 5 s each)…" },
+                { DiagnoseCopy, "Copy" },
+                { DiagnoseCopied, "Copied" },
+                { DiagnoseSave, "Save" },
+                { DiagnoseSaved, "Saved: {0}" },
+                { DiagnoseClose, "Close" },
+                { DiagnoseSendHint, "Something not working? Copy this report and send it to your VibeModel administrator." },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -162,14 +241,14 @@ namespace VibeModel.Services.Chat
                 { BackendNotInitialized, "De chat is nog niet ingesteld. Klik op Settings om je API-sleutel in te vullen." },
                 { MessageInProgress, "Er wordt al een bericht verwerkt. Wacht even of annuleer eerst." },
                 { ServerNotResponding, "De HTTP-server van VibeModel reageert niet op poort {0}. Start Revit opnieuw (of kijk of een ander programma de poort bezet houdt) en probeer het nog eens." },
-                { ClaudeNotFound, "Claude Code is niet gevonden. Installeer het met: npm install -g @anthropic-ai/claude-code" },
+                { ClaudeNotFound, "Claude Code staat niet op deze computer. Gebruik \"Verbind met Claude\" in de chat, of voer in PowerShell uit: irm https://claude.ai/install.ps1 | iex" },
                 { ProcessStartFailed, "Claude Code kon niet worden gestart" },
                 { ProcessExitCode, "Claude Code is gestopt met code {0}" },
                 { CliTooOld, "Deze versie van Claude Code kent de permissiemodus niet die VibeModel nodig heeft (--permission-mode dontAsk). Werk hem bij met: claude update" },
                 { StaleResume, "[De vorige sessie was verlopen - er is een nieuwe chat gestart.]" },
                 { IdleStoppedMidTool, "[Gestopt: de taak stond 3 minuten stil midden in een stap. De sessie is opnieuw gestart om een kapot gesprek te voorkomen - formuleer je vraag opnieuw.]" },
                 { IdleStopped, "[Gestopt: de taak stond 3 minuten stil. Typ \"ga door\" om verder te gaan.]" },
-                { ApiKeyMissing, "Er is geen API-sleutel ingesteld. Klik op Settings om je Anthropic API-sleutel toe te voegen." },
+                { ApiKeyMissing, "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude in de chat (New Chat toont hem), of Settings → Anthropic API." },
                 { LocalEndpointMissing, "Er is geen adres voor het lokale taalmodel ingesteld. Klik op Settings om het in te stellen." },
                 { LocalNotReachable, "Het lokale taalmodel is niet bereikbaar op {0}. Draait de server?" },
                 { LocalError, "Fout van het lokale taalmodel {0}: {1}" },
@@ -206,10 +285,6 @@ namespace VibeModel.Services.Chat
                 { WelcomeExample3, "Maak een doorsnede dwars op deze wand" },
                 { WelcomeExample4, "Zet deze views passend op een A0" },
                 { WelcomeChipTip, "Zet deze vraag in het invoerveld" },
-                { WelcomeSetup, "De chat is nog niet ingesteld. Kies één:" },
-                { WelcomeSetupCli, "Claude Code (aanbevolen): npm install -g @anthropic-ai/claude-code" },
-                { WelcomeSetupApi, "API-sleutel: Settings → Anthropic API key" },
-                { WelcomeSetupLocal, "Lokaal model: Settings → Local LLM (llama.cpp, Ollama, LM Studio)" },
                 { ExamplesTitle, "Voorbeelden" },
                 { ExamplesList, "Wat zit er in dit model?\nGeef een tabel van de 5 langste wanden met lengte, hoogte en fase\nWaarom zie ik element 12345 niet in deze view?\nMaak een doorsnede dwars op deze wand\nZet deze views passend op een A0\nWelke fase hoort een nieuwe doorsnede te krijgen volgens de leidraad?\nWelke documenten zitten in de projectmap?\nControleer dit model tegen de kantoorstandaard\nMaak 4 wanden die een ruimte van 5 x 5 m vormen\nKleur de geselecteerde elementen rood" },
                 { ExamplesTip, "Elke wijziging van de chat is één keer Ctrl+Z. Klik op een voorbeeld om het te gebruiken." },
@@ -222,6 +297,48 @@ namespace VibeModel.Services.Chat
                 { QuickReplySendsTip, "{0}\n(wordt meteen verstuurd)" },
                 { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
                 { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
+                { SettingManaged, "beheerd door IT" },
+                { ApiRefusal, "Claude wil op deze vraag geen antwoord geven. Formuleer hem anders, of splits hem op in kleinere stappen." },
+                { ApiMaxTokens, "[Het antwoord is afgebroken op de maximale lengte - vraag \"ga door\" voor de rest.]" },
+                { ApiUnreachable, "{0} is niet bereikbaar: {1}. Controleer het netwerk of de proxy, of klik op Diagnose en stuur het rapport naar je beheerder." },
+                { ClaudeDisabledByIt, "Claude Code is op deze computer uitgeschakeld door IT." },
+                { StatusNotConnected, "Niet verbonden" },
+                { UsageTip, "Tokens die dit antwoord gebruikte, en een schatting van de kosten tegen de prijslijst van Anthropic (de echte rekening staat in de Console)." },
+                { WizardTitle, "Verbind met Claude" },
+                { WizardIntro, "De chat heeft een verbinding met Claude nodig. Kies één manier - dit doe je maar één keer." },
+                { WizardApiHeading, "1. API-sleutel (aanbevolen op kantoor)" },
+                { WizardApiHint, "Plak de sleutel die je van je beheerder kreeg (begint met sk-ant-). Hij wordt versleuteld bewaard, alleen voor jouw Windows-account." },
+                { WizardApiTest, "Testen" },
+                { WizardApiSave, "Opslaan en starten" },
+                { WizardApiEmpty, "Plak eerst een sleutel." },
+                { WizardApiTesting, "Sleutel testen…" },
+                { WizardApiOk, "Werkt - model {0} is beschikbaar." },
+                { WizardApiInvalid, "Deze sleutel wordt niet geaccepteerd (onjuist, verlopen of ingetrokken). Controleer hem bij je beheerder." },
+                { WizardApiNoAccess, "De sleutel is geldig maar heeft geen toegang tot de API. Vraag het je beheerder." },
+                { WizardApiModelUnknown, "De sleutel werkt, maar model {0} is er niet voor beschikbaar. Kies een ander model in Settings of vraag het je beheerder." },
+                { WizardApiNetwork, "{0} is niet bereikbaar: {1}. Het netwerk of de kantoorproxy houdt het tegen - klik op Diagnose en stuur het rapport naar IT." },
+                { WizardApiOther, "Onverwacht antwoord (HTTP {0}): {1}" },
+                { WizardCliHeading, "2. Claude Code (je eigen Claude-abonnement)" },
+                { WizardCliChecking, "Claude Code zoeken…" },
+                { WizardCliFound, "Gevonden: Claude Code {0}" },
+                { WizardCliNotFound, "Niet geïnstalleerd op deze computer. Installeren kan zonder beheerdersrechten." },
+                { WizardCliInstall, "Installeren" },
+                { WizardCliInstallStarted, "Een PowerShell-venster installeert Claude Code. Klik op Opnieuw controleren als het klaar is." },
+                { WizardCliLogin, "Inloggen" },
+                { WizardCliLoginHint, "Inloggen opent een venster: volg de stappen (er opent een browser voor je Claude-account), sluit het daarna en klik op Claude Code gebruiken." },
+                { WizardCliUse, "Claude Code gebruiken" },
+                { WizardRecheck, "Opnieuw controleren" },
+                { WizardLocal, "Lokaal taalmodel (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
+                { WizardFailedToStart, "Kon het niet starten: {0}" },
+                { DiagnoseTitle, "VibeModel-diagnose" },
+                { DiagnoseTip, "Wat VibeModel van deze computer ziet: versies, verbinding, proxy, recente fouten. Geheimen zijn afgeschermd." },
+                { DiagnoseRunning, "Bezig met controleren (netwerkcontroles duren elk tot 5 s)…" },
+                { DiagnoseCopy, "Kopiëren" },
+                { DiagnoseCopied, "Gekopieerd" },
+                { DiagnoseSave, "Opslaan" },
+                { DiagnoseSaved, "Opgeslagen: {0}" },
+                { DiagnoseClose, "Sluiten" },
+                { DiagnoseSendHint, "Werkt er iets niet? Kopieer dit rapport en stuur het naar je VibeModel-beheerder." },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

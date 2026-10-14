@@ -566,9 +566,64 @@ curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday
   on). Off: no block, no header, nothing written, and the four commands (`IProjectMemoryCommand`)
   are left out of the prompt file, the tool lists and `help` — the exact prompt as before.
 
+### Connecting to Claude (wizard, keys, managed settings, Diagnose)
+Built for modellers without admin rights or a terminal; IT rollout is in `docs/deployment.md`.
+- **Backend choice** (`VibeModelApp.CreateChatBackend`, `PreferredBackend` = `auto`): a configured API
+  key wins → `AnthropicDirectBackend`; else Claude Code when found and not disabled; else a reachable
+  local LLM; else the not-configured direct backend, whose welcome card is the **connect wizard**
+  (`UI/ConnectWizardView.cs`): paste a key → `AnthropicHttp.TestKey` (`GET /v1/models/{model}`, free;
+  200 ok / 401 wrong key / 403 no access / 404 unknown model / network) → stored only when accepted;
+  or Claude Code → **Install** (`ClaudeSetup.InstallStartInfo`: visible PowerShell running
+  `irm https://claude.ai/install.ps1 | iex`; `VIBEMODEL_DRY_RUN_INSTALL=1` logs it instead), **Log in**
+  (opens `claude` in `%LOCALAPPDATA%\VibeModel`), **Use Claude Code**. Choosing raises
+  `BackendChangeRequested`; no restart. AutomationIds: `WizardApiKeyBox`, `WizardApiTest`, `WizardApiSave`,
+  `WizardApiStatus`, `WizardCliStatus`, `WizardCliInstall`, `WizardCliLogin`, `WizardCliUse`, `WizardRecheck`.
+- **API key** (`SettingsManager.GetApiKey(out source)`): managed.json → `ANTHROPIC_API_KEY` → settings,
+  where it is DPAPI-encrypted for the Windows user (`AnthropicApiKeyProtected`); a plain-text
+  `AnthropicApiKey` from an older build is encrypted on first read and removed. Shown only masked
+  (`MaskKey`: `sk-ant-…1234`). Settings never copies a managed/environment key into settings.json.
+- **managed.json** (`Infrastructure/ManagedSettings.cs`, read-only, `%ProgramData%\VibeModel\` then
+  `%APPDATA%\VibeModel\`, re-read at most once a minute): `PreferredBackend`, `Model`, `ApiBaseUrl`,
+  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language` override settings.json and are locked
+  in Settings ("beheerd door IT").
+- **HTTP**: every Anthropic call (chat, quick replies, distiller, key test) uses `AnthropicHttp`:
+  `SettingsManager.MessagesUrl(GetApiBaseUrl())`, Windows proxy with the user's credentials for the
+  proxy only, the Windows certificate store (validation never relaxed). TLS: Revit's process-wide
+  `ServicePointManager.SecurityProtocol` is left at SystemDefault (TLS 1.2/1.3); only a pinned list
+  without TLS 1.2 gets it added (`EnsureTls12`).
+- **Claude Code discovery** (`ClaudeCliLocator`): explicit `ClaudeCliPath` (managed → `VIBEMODEL_CLAUDE_CLI`
+  → settings; `none` = off — how a laptop without Claude Code is simulated) else
+  `%USERPROFILE%\.local\bin\claude.exe`, the PATH as stored in the registry now (Revit's own PATH is
+  from its start), the npm folders. `ClaudeCodeBackend.LastSearch` lists what was checked. The Windows
+  proxy is handed to the CLI as `HTTPS_PROXY` (+ `NO_PROXY=127.0.0.1,localhost,::1`) when no proxy
+  variable is set — never `HTTP_PROXY`: curl would route the CLI's calls to http://127.0.0.1 through it
+  (`ClaudeCodeBackend.ProxyVariables`).
+- **Thinking models on the direct backend** (Sonnet 5.5 default): thinking/redacted_thinking blocks are
+  kept and sent back; the system prompt is built once per user turn (`_turnSystemPrompt`); all but the
+  newest screenshot image and over-budget attachments are dropped only at a turn start, and then
+  (or when the system prompt changed) earlier thinking blocks are removed (`StripThinkingBlocks`); a 400
+  mentioning thinking/signature is retried once without them (only when there are any). `refusal` → `Strings.ApiRefusal`;
+  `max_tokens` → a note.
+- **Cost line**: `ChatActivityEvent.ForUsage(TurnUsage)` (API: `message_start`/`message_delta` usage;
+  CLI: the result event's `usage` + `total_cost_usd`) → `TurnActivity.Usage` → one muted line under the
+  answer (`ModelPricing.Describe`, AutomationId `TurnUsage`), never stored. Prices: `ModelPricing` table.
+- **Diagnose** (header button → `UI/DiagnoseWindow.cs`; `diagnose` command): `Services/Diagnostics/
+  DiagnoseReport.Build()` — version, add-in path, Authenticode (WinVerifyTrust, cache-only), Revit,
+  port, backend + key source (masked), CLI search, managed.json, proxy, DNS + HTTPS to the API host and
+  claude.ai with the certificate issuer, this session's warnings/errors (`Logger.Recent()`), settings
+  with secrets masked. Probes run in parallel under one 6 s deadline (the command runs on Revit's
+  main thread; measured 0.6 s). `Logger` now always writes WARN/ERROR; INFO only with `VIBEMODEL_DEBUG=1`.
+- **Signing, measured in Revit 2023**: unsigned → "Security - Unsigned Add-In" once per new DLL
+  (*Always Load* is remembered per build in `HKCU\Software\Autodesk\Revit\Autodesk Revit 2023\CodeSigning`
+  under the add-in's ClientId); trusted signature → no dialog; self-signed/untrusted → "Security -
+  Invalid Signature" (Load / Do Not Load, every start). `scripts/sign.ps1`, `package-release.ps1 -Sign
+  -Thumbprint …` (refuses a self-signed signature without `-AllowSelfSigned`).
+
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:
-`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,Read,Grep,Glob [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
+`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,PowerShell,Read,Grep,Glob [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
+`PowerShell`: on a laptop without Git for Windows the CLI has no Bash and shells out through its
+PowerShell tool; the prompt file says to call `curl.exe` there (`ClaudeCodeBackend.PowerShellRule`).
 `--permission-mode dontAsk` is deliberate: without it the CLI inherits the user's `defaultMode`,
 and in `auto` mode the safety classifier refused approved `delete`/`select` curls as
 "Irreversible Local Destruction". `dontAsk` makes `--allowedTools` the whole policy (Bash, Read and the read-only Grep/Glob

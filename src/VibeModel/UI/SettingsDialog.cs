@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using VibeModel.Infrastructure;
+using VibeModel.Services.Chat;
 
 namespace VibeModel.UI
 {
@@ -41,6 +42,11 @@ namespace VibeModel.UI
 
         // Anthropic API fields
         private PasswordBox _apiKeyBox;
+        private string _initialApiKey;
+        private TextBox _apiModelBox;
+        private TextBox _apiBaseUrlBox;
+        private string _originalBackend;
+        private bool _tabClicked;
         private Button _validateApiButton;
 
         // Local LLM fields
@@ -92,6 +98,7 @@ namespace VibeModel.UI
             Background = BgDark;
 
             _selectedBackend = SettingsManager.GetPreferredBackend();
+            _originalBackend = _selectedBackend == "direct" ? "anthropic-api" : _selectedBackend;
             // Normalize legacy/default values to a valid tab key
             if (_selectedBackend == "direct" || _selectedBackend == "auto")
                 _selectedBackend = "anthropic-api";
@@ -110,6 +117,8 @@ namespace VibeModel.UI
 
             // Tab bar
             mainPanel.Children.Add(CreateTabBar());
+            if (ManagedSettings.IsManaged(ManagedSettings.PreferredBackend))
+                mainPanel.Children.Add(CreateLabel("Backend: " + SettingsManager.GetPreferredBackend() + " - " + Strings.Get(Strings.SettingManaged)));
 
             // Config panels (stacked, visibility toggled)
             _cliPanel = CreateCliPanel();
@@ -197,6 +206,7 @@ namespace VibeModel.UI
             btn.Click += (s, e) =>
             {
                 _selectedBackend = backendKey;
+                _tabClicked = true;
                 UpdateTabVisuals();
             };
             return btn;
@@ -232,44 +242,40 @@ namespace VibeModel.UI
 
             panel.Children.Add(new TextBlock
             {
-                Text = "Uses the Claude Code CLI for full agentic capabilities.\n" +
-                       "Install with: npm install -g @anthropic-ai/claude-code\n" +
-                       "Set ANTHROPIC_API_KEY environment variable.",
+                Text = "Uses the Claude Code CLI (your own Claude subscription) for full agentic capabilities.\n" +
+                       "Install it without administrator rights: the chat's Connect to Claude card, or in PowerShell:\n" +
+                       ClaudeSetup.InstallCommand,
                 Foreground = FgSecondary,
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12)
             });
 
-            // Detection status
-            var cliStatus = "Not detected";
-            try
+            // Detection status: the same search the backend uses (.local\bin, a fresh PATH, the npm
+            // folders). It spawns `claude --version`, so it runs off the UI thread.
+            var status = new TextBlock
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "claude",
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                };
-                using (var proc = System.Diagnostics.Process.Start(psi))
-                {
-                    var ver = proc.StandardOutput.ReadToEnd().Trim();
-                    proc.WaitForExit(2000);
-                    if (proc.ExitCode == 0)
-                        cliStatus = "Detected: Claude Code " + ver;
-                }
-            }
-            catch { }
-
-            var detected = cliStatus.StartsWith("Detected");
-            panel.Children.Add(new TextBlock
-            {
-                Text = cliStatus,
-                Foreground = detected ? FgSuccess : FgError,
+                Text = "Looking for Claude Code…",
+                Foreground = FgSecondary,
                 FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 4)
+            };
+            panel.Children.Add(status);
+            if (SettingsManager.IsClaudeCodeDisabled())
+            {
+                status.Text = "Switched off on this computer (" + Strings.Get(Strings.SettingManaged) + ")";
+                status.Foreground = FgError;
+                return panel;
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var path = ClaudeCodeBackend.LocateCli(out var version);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    status.Text = path != null ? "Detected: Claude Code " + version + "\n" + path : "Not detected";
+                    status.Foreground = path != null ? FgSuccess : FgError;
+                }));
             });
 
             return panel;
@@ -302,6 +308,11 @@ namespace VibeModel.UI
             _languageCombo.Items.Add(new ComboBoxItem { Content = "English", Tag = Services.Chat.Strings.English });
             _languageCombo.SelectedIndex = Services.Chat.Strings.IsEnglish(SettingsManager.GetLanguage()) ? 1 : 0;
             panel.Children.Add(_languageCombo);
+            if (ManagedSettings.IsManaged(ManagedSettings.Language))
+            {
+                _languageCombo.IsEnabled = false;
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
+            }
             return panel;
         }
 
@@ -504,9 +515,10 @@ namespace VibeModel.UI
 
             panel.Children.Add(new TextBlock
             {
-                Text = "Get your key from console.anthropic.com",
+                Text = "Get your key from console.anthropic.com (or from your administrator). It is stored encrypted for your Windows account.",
                 Foreground = FgSecondary,
                 FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             });
 
@@ -521,11 +533,26 @@ namespace VibeModel.UI
                 MaxLength = 200
             };
 
-            var existingKey = SettingsManager.GetApiKey();
-            if (!string.IsNullOrEmpty(existingKey))
+            // Only the user's own key goes in the box. A key from IT (managed.json) or from the
+            // ANTHROPIC_API_KEY variable is named, masked, and never copied into settings.json.
+            var existingKey = SettingsManager.GetApiKey(out var keySource);
+            if (keySource == ApiKeySource.Settings && !string.IsNullOrEmpty(existingKey))
                 _apiKeyBox.Password = existingKey;
+            _initialApiKey = _apiKeyBox.Password;
+            if (keySource == ApiKeySource.Managed)
+                _apiKeyBox.IsEnabled = false;
 
             panel.Children.Add(_apiKeyBox);
+            if (keySource == ApiKeySource.Managed || keySource == ApiKeySource.Environment)
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "In use: " + SettingsManager.MaskKey(existingKey) + " - " +
+                           (keySource == ApiKeySource.Managed ? Strings.Get(Strings.SettingManaged) + " (managed.json)" : "from the ANTHROPIC_API_KEY variable"),
+                    Foreground = FgSecondary,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 4, 0, 0)
+                });
 
             var btnRow = new StackPanel
             {
@@ -541,8 +568,23 @@ namespace VibeModel.UI
             btnRow.Children.Add(_validateApiButton);
             panel.Children.Add(btnRow);
 
+            // Model: empty = the default. Endpoint: a gateway that speaks the Messages API.
+            panel.Children.Add(CreateLabel("Model (empty = " + SettingsManager.DefaultModel + ")" + ManagedNote(ManagedSettings.Model)));
+            _apiModelBox = CreateTextBox(ManagedSettings.IsManaged(ManagedSettings.Model) ? SettingsManager.GetModel() : SettingsManager.GetModelSetting());
+            _apiModelBox.IsEnabled = !ManagedSettings.IsManaged(ManagedSettings.Model);
+            panel.Children.Add(_apiModelBox);
+
+            panel.Children.Add(CreateLabel("API endpoint (advanced; empty = " + SettingsManager.DefaultApiBaseUrl + ")" + ManagedNote(ManagedSettings.ApiBaseUrl)));
+            var baseUrl = SettingsManager.GetApiBaseUrl();
+            _apiBaseUrlBox = CreateTextBox(baseUrl == SettingsManager.DefaultApiBaseUrl ? "" : baseUrl);
+            _apiBaseUrlBox.IsEnabled = !ManagedSettings.IsManaged(ManagedSettings.ApiBaseUrl);
+            panel.Children.Add(_apiBaseUrlBox);
+
             return panel;
         }
+
+        private static string ManagedNote(string key) =>
+            ManagedSettings.IsManaged(key) ? " - " + Strings.Get(Strings.SettingManaged) : "";
 
         // --- Local LLM panel ---
 
@@ -715,6 +757,12 @@ namespace VibeModel.UI
         private void OnValidateApiClick(object sender, RoutedEventArgs e)
         {
             var key = _apiKeyBox.Password?.Trim();
+            // Box empty (or locked) while IT's or the environment's key is in use: test that one.
+            if (string.IsNullOrEmpty(key))
+            {
+                var inUse = SettingsManager.GetApiKey(out var source);
+                if (source == ApiKeySource.Managed || source == ApiKeySource.Environment) key = inUse;
+            }
             if (string.IsNullOrEmpty(key))
             {
                 _statusText.Text = "Please enter an API key";
@@ -726,67 +774,20 @@ namespace VibeModel.UI
             _statusText.Foreground = FgSecondary;
             _validateApiButton.IsEnabled = false;
 
+            var model = string.IsNullOrWhiteSpace(_apiModelBox.Text) ? SettingsManager.DefaultModel : _apiModelBox.Text.Trim();
+            // What is typed now, not what was saved before (an empty box = the default endpoint).
+            var baseUrl = _apiBaseUrlBox.IsEnabled ? _apiBaseUrlBox.Text : SettingsManager.GetApiBaseUrl();
+            var language = Strings.Current;
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                bool valid = false;
-                string message = "";
-
-                try
-                {
-                    using (var client = new HttpClient())
-                    {
-                        client.Timeout = TimeSpan.FromSeconds(15);
-
-                        var body = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
-                        {
-                            { "model", SettingsManager.GetModel() },
-                            { "max_tokens", 1 },
-                            { "messages", new[] { new Dictionary<string, object>
-                                {
-                                    { "role", "user" },
-                                    { "content", "Hi" }
-                                }
-                            }}
-                        });
-
-                        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
-                        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-                        request.Headers.Add("x-api-key", key);
-                        request.Headers.Add("anthropic-version", "2023-06-01");
-
-                        var response = client.SendAsync(request).Result;
-                        if (response.IsSuccessStatusCode)
-                        {
-                            valid = true;
-                            message = "API key is valid!";
-                        }
-                        else
-                        {
-                            var responseBody = response.Content.ReadAsStringAsync().Result;
-                            try
-                            {
-                                var errorObj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(responseBody);
-                                var error = errorObj.ContainsKey("error") ? errorObj["error"] as Dictionary<string, object> : null;
-                                message = error != null && error.ContainsKey("message")
-                                    ? (string)error["message"]
-                                    : "Invalid key (HTTP " + (int)response.StatusCode + ")";
-                            }
-                            catch
-                            {
-                                message = "Invalid key (HTTP " + (int)response.StatusCode + ")";
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    message = "Connection error: " + (ex.InnerException?.Message ?? ex.Message);
-                }
-
+                // Same check as the connect wizard: GET /v1/models/{model} through the Windows
+                // proxy; costs no tokens.
+                var result = AnthropicHttp.TestKey(key, model, TimeSpan.FromSeconds(15), baseUrl);
+                var message = ClaudeSetup.DescribeKeyTest(language, result, model);
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     _statusText.Text = message;
-                    _statusText.Foreground = valid ? FgSuccess : FgError;
+                    _statusText.Foreground = result.Ok ? FgSuccess : FgError;
                     _validateApiButton.IsEnabled = true;
                 }));
             });
@@ -894,19 +895,26 @@ namespace VibeModel.UI
             if (previousBackend == "direct" || previousBackend == "auto")
                 previousBackend = "anthropic-api";
 
-            // Save backend selection
-            SettingsManager.SetPreferredBackend(_selectedBackend);
+            // Save backend selection ("auto" stays automatic unless a tab was picked)
+            var savedBackend = _originalBackend == "auto" && !_tabClicked ? "auto" : _selectedBackend;
+            SettingsManager.SetPreferredBackend(savedBackend);
 
-            // Always save all backend settings so nothing is lost when switching tabs
-            var key = _apiKeyBox.Password?.Trim();
-            SettingsManager.SetApiKey(key ?? "");
+            // Always save all backend settings so nothing is lost when switching tabs. The key only
+            // when the user edited it: a key from IT or the environment never lands in settings.json.
+            var key = _apiKeyBox.Password?.Trim() ?? "";
+            var keyChanged = _apiKeyBox.IsEnabled && key != (_initialApiKey ?? "").Trim();
+            if (keyChanged)
+                SettingsManager.SetApiKey(key);
+            if (_apiModelBox.IsEnabled) SettingsManager.SetModel(_apiModelBox.Text);
+            if (_apiBaseUrlBox.IsEnabled) SettingsManager.SetApiBaseUrl(_apiBaseUrlBox.Text);
 
             SettingsManager.SetLocalLlmEndpoint(_endpointBox.Text?.Trim() ?? "http://localhost:8080");
             SettingsManager.SetLocalLlmModel(_modelBox.Text?.Trim() ?? "");
             SettingsManager.SetLocalLlmToolUse(_toolUseCheck.IsChecked == true);
             SettingsManager.SetLocalLlmTimeout((int)_timeoutSlider.Value);
 
-            SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
+            if (_languageCombo.IsEnabled)
+                SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
 
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
             SettingsManager.SetProjectMemoryEnabled(_projectMemoryCheck.IsChecked == true);
@@ -920,7 +928,9 @@ namespace VibeModel.UI
             // Pick up a new pack location / switch immediately (no Revit API involved).
             Services.Standards.StandardsContext.Reset();
 
-            BackendChanged = _selectedBackend != previousBackend;
+            // A new or removed key changes what "auto" picks (a key wins), so the backend is rebuilt too.
+            BackendChanged = _selectedBackend != previousBackend || savedBackend != _originalBackend ||
+                             (keyChanged && savedBackend == "auto");
 
             _statusText.Text = "Settings saved!";
             _statusText.Foreground = FgSuccess;

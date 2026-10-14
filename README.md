@@ -30,11 +30,13 @@ Revit work is full of small questions with slow answers: *why can't I see this b
 
 ## Quick start
 
-1. **Download** `VibeModel-v<version>-Revit2023.zip` from the [latest release](https://github.com/Quincy987/VibeModel/releases/latest) (under *Assets* — not *Source code*) and unzip it.
-2. **Close Revit and double-click `install.cmd`.** It finds your Revit versions, copies the files, unblocks them and checks the result. Press Enter at the API-key question if you use Claude Code.
-3. **Open Revit**, click **VibeModel → Chat**, and type. An empty chat shows the open model, its project folder and four starter prompts.
+No administrator rights, no terminal, no Node.js.
 
-Connect it to Claude in one of two ways: a **Claude Code** subscription (recommended, auto-detected) or an **Anthropic API key** pasted into *Settings*. A local LLM works too. Details under [Installation](#installation).
+1. **Download** `VibeModel-v<version>-Revit2023.zip` from the [latest release](https://github.com/Quincy987/VibeModel/releases/latest) (under *Assets* — not *Source code*) and unzip it.
+2. **Close Revit and double-click `install.cmd`.** It installs the add-in for your Windows account, unblocks the files and checks the result. Nothing to fill in.
+3. **Open Revit**, click **VibeModel → Chat**. The first time, the chat shows **Connect to Claude**: paste the API key you got from your administrator (tested on the spot, stored encrypted), or install and log in to Claude Code with one click.
+
+Something not working? **Diagnose** in the chat header produces a report to send to whoever supports you. Rolling it out to a whole office is in [docs/deployment.md](docs/deployment.md).
 
 
 ## What you can say
@@ -147,25 +149,24 @@ A pack only switches on for models that match its **fingerprint** (your phases a
 ### Requirements
 
 - Autodesk Revit 2022 or newer (Windows)
-- One way to reach Claude: a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subscription, an [Anthropic API key](https://console.anthropic.com/), or a local LLM server ([setup notes](docs/LOCAL_LLM_SETUP.md))
+- One way to reach Claude: an [Anthropic API key](https://console.anthropic.com/) (what an office hands out), a [Claude Code](https://code.claude.com/docs/en/setup) subscription, or a local LLM server ([setup notes](docs/LOCAL_LLM_SETUP.md))
+- No administrator rights: everything installs for the signed-in Windows user
 
 <details>
-<summary><b>Option A — Claude Code (recommended)</b></summary>
+<summary><b>Option A — API key (recommended for an office)</b></summary>
 
-1. Install Node.js, then `npm install -g @anthropic-ai/claude-code`
-2. Run `claude` once in a terminal and log in
-3. Start Revit. VibeModel detects Claude Code automatically.
+1. Get a key from your administrator (or [console.anthropic.com](https://console.anthropic.com/))
+2. In Revit: **VibeModel → Chat** → *Connect to Claude* → paste it → **Save and start**
 
-This gives the chat file access to the project folder, cost tracking and the longest context.
+The key is checked against the API before it is stored (no tokens spent), then kept DPAPI-encrypted for your Windows account only — never as plain text. The chat goes through the Windows proxy with your Windows credentials. Under each answer a muted line shows the tokens it used and an estimate of the cost (`12.3k tokens · ≈ €0,04`).
 </details>
 
 <details>
-<summary><b>Option B — Anthropic API key (pay-per-use)</b></summary>
+<summary><b>Option B — Claude Code (your own Claude subscription)</b></summary>
 
-1. Get a key from [console.anthropic.com](https://console.anthropic.com/)
-2. In Revit, open the chat panel → **Settings** → paste the key
+In the *Connect to Claude* card: **Install** runs Anthropic's per-user installer (`irm https://claude.ai/install.ps1 | iex`, no administrator rights) in a visible window; **Log in** opens Claude Code once so you can sign in with your Claude account in the browser; **Use Claude Code** switches the chat over. Already installed? It is found in `%USERPROFILE%\.local\bin`, on the PATH (read fresh, so no restart is needed after installing) or in the old npm folders. Git for Windows is not needed — without it Claude Code uses PowerShell, which VibeModel allows.
 
-No Node.js needed. Some extras (project-folder file access, cost tracking) are Claude Code only.
+Claude Code adds file access to the project folder and the longest context.
 </details>
 
 <details>
@@ -181,6 +182,8 @@ No Node.js needed. Some extras (project-folder file access, cost tracking) are C
    Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll" -Recurse | Unblock-File
    ```
 3. Restart Revit. A **VibeModel** tab appears in the ribbon.
+
+An unsigned build makes Revit ask once per version whether to load it (*Always Load*). A build signed with a certificate your computer trusts loads without asking; see [docs/deployment.md](docs/deployment.md#signing).
 </details>
 
 <details>
@@ -220,7 +223,7 @@ The most common cause: the downloaded zip was GitHub's *Source code (zip)*, whic
 <details>
 <summary><b>The chat says it is not connected</b></summary>
 
-Claude Code: run `claude --version` in a terminal; if it fails, reinstall and log in. API key: open **Settings** and check the key. Logs are in `%LOCALAPPDATA%\VibeModel\logs\`.
+Click **Diagnose** in the chat header: it shows which connection is in use, where the key comes from (masked), where Claude Code was looked for, the proxy, and whether `api.anthropic.com` answers — including who issued the certificate it presented, which reveals a TLS-inspecting proxy. **Copy** and send it to whoever supports you. New Chat shows the *Connect to Claude* card again. Warnings and errors are always logged in `%LOCALAPPDATA%\VibeModel\logs\` (everything with `VIBEMODEL_DEBUG=1`); the installer writes `install.log` there.
 </details>
 
 <details>
