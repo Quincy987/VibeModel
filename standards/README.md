@@ -81,6 +81,15 @@ Derived data (library index, document index, generated core, check log, addition
   "coordinates": { "roundToMm": 1000 },
   "linkCad": { "pinAfterLink": true, "correctOffAxisLines": false, "orientToView": false, "refuseFirstDgnReason": "..." },
   "export": { "dwgSetup": "EX_DWG export" },          // `export dwg` uses this saved DWG export setup (--setup overrides)
+  "profiles": {                                        // profile / extrude / sweep / lwall (plan 12); every key optional
+    "familyPrefix": "EX_",                             // generated family names (default VM_)
+    "category": { "lwall": "generic|foundation", "extrude": "...", "sweep": "...", "<profile name>": "..." },
+    "familyTemplates": { "lineBased": "<file.rft>", "generic": "...", "foundation": "...", "framing": "...", "profile": "..." },
+    "folder": "Model\\Project families\\Generated",    // .rfa files, relative to the project folder (default VibeModel\families)
+    "sharedParameters": { "file": "<office shared parameter file>", "length": "EX_Length", "objectCode": "EX_ObjectCode" },
+    "material": { "default": "<material>", "<profile name>": "<material>" },   // or "material": "<material>"
+    "typeName": "{stem}x{height} voet {foot}x{footThickness}"                   // lwall types; {toe} {slope} too
+  },
   "standardsFolder": "\\\\server\\revit\\standards\\",   // default for the Settings "source documents folder"
   "distill": { "sources": [                            // what `standards distill` reads, MOST IMPORTANT FIRST
     { "document": "modelling manual", "chapters": ["4.2", "2.1", "1"] },  // file-name part; a chapter includes its subchapters

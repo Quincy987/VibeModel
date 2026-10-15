@@ -215,9 +215,11 @@ namespace VibeModel.Services.Claude.FamilyGen
                     return CommandResult.FromTransactionError(error, "PLACE_FAILED", "Nothing was changed. 'profile <name>' shows the profile; check the line and the level.");
                 }
 
-                if (!_a.NoJoin && !movedExisting)
+                var candidates = !_a.NoJoin && !movedExisting ? JoinCandidates(inst) : new List<Element>();
+                if (candidates.Count > 0)
                 {
-                    var jerr = TransactionHelper.Execute(_doc, "VibeModel: " + _command + " join", () => Join(inst, joined, joinRefused));
+                    // Its own transaction: a join Revit refuses at commit must not undo the element.
+                    var jerr = TransactionHelper.Execute(_doc, "VibeModel: " + _command + " join", () => Join(inst, candidates, joined, joinRefused));
                     if (jerr != null)
                     {
                         joinRollback = jerr.StartsWith("ERROR: ", StringComparison.Ordinal) ? jerr.Substring(7) : jerr;
@@ -622,17 +624,22 @@ namespace VibeModel.Services.Claude.FamilyGen
         /// Join with what the new element really overlaps: walls, floors and other generated
         /// families (never library families such as piles — that would cut their heads).
         /// </summary>
-        private void Join(FamilyInstance inst, List<string> joined, List<string> refused)
+        private List<Element> JoinCandidates(FamilyInstance inst)
         {
             var cats = new ElementMulticategoryFilter(new List<BuiltInCategory>
             {
                 BuiltInCategory.OST_Walls, BuiltInCategory.OST_Floors, BuiltInCategory.OST_GenericModel, BuiltInCategory.OST_StructuralFoundation
             });
-            var hits = new FilteredElementCollector(_doc).WherePasses(cats).WherePasses(new ElementIntersectsElementFilter(inst))
-                .Where(e => e.Id != inst.Id).ToList();
-            foreach (var e in hits.Take(20))
+            return new FilteredElementCollector(_doc).WherePasses(cats).WherePasses(new ElementIntersectsElementFilter(inst))
+                .Where(e => e.Id != inst.Id)
+                .Where(e => !(e is FamilyInstance fi) || GeneratedFamilyStore.ReadStamp(_doc, fi.Symbol.Family) != null)
+                .Take(20).ToList();
+        }
+
+        private void Join(FamilyInstance inst, List<Element> candidates, List<string> joined, List<string> refused)
+        {
+            foreach (var e in candidates)
             {
-                if (e is FamilyInstance fi && GeneratedFamilyStore.ReadStamp(_doc, fi.Symbol.Family) == null) continue;
                 var label = (e.Category?.Name ?? "element") + " " + e.Id.IntegerValue;
                 try
                 {

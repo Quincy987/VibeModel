@@ -88,7 +88,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             {
                 using (var t = new Transaction(fd, "VibeModel: generate " + spec.FamilyName))
                 {
-                    TransactionHelper.Attach(t);
+                    var preprocessor = TransactionHelper.Attach(t);
                     t.Start();
                     var forms = new List<GenericForm>();
                     step = "geometry";
@@ -129,7 +129,7 @@ namespace VibeModel.Services.Claude.FamilyGen
                         if (src != null) fm.Set(src, FamilyNaming.Stamp(spec.SpecHash, result.StructureHash));
                     }
                     step = "commit";
-                    var err = TransactionHelper.CommitOrReport(t, null);
+                    var err = TransactionHelper.CommitOrReport(t, preprocessor);
                     if (err != null) throw new InvalidOperationException(err);
                 }
 

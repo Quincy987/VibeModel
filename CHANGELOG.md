@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Added — quay walls, capstones and curved runs as real families (`profile`, `extrude`, `sweep`, `lwall`)
+- Plan 12 phase 1. A composite cross-section used to be an `exec` DirectShape: no family or type,
+  no Volume in a schedule, `join` refused. Four commands now generate a real Revit family on the
+  fly, load it and place it as ONE undo step (also inside `batch`, atomic included):
+  - `lwall x1 y1 x2 y2 --stem 600x4000 --foot 2500x800 [--toe] [--side left|right] [--slope]` — an
+    L-shaped quay wall on one parametric line-based Generic Model (`VM_L-wand`, or `… SF` with
+    `--category foundation`): stem and foot sizes are type parameters on locked reference planes, each
+    size combination becomes a type named from its sizes, an existing type is reused. The line is the
+    stem's front face, the heel lies left of the line unless `--side right`.
+  - `profile <name> --points u,v …` — a named section stored as a Revit Profile family (also usable in
+    Revit's own Wall Sweep / Slab Edge tools) with its points in `VM_Profile`; `profile <name>` prints
+    points, area, box and centroid; `profile` lists them.
+  - `extrude <profile | --points …> --along <line/wall id | x1 y1 x2 y2>` — line-based Generic Model
+    (`--category foundation` = point-based Structural Foundation with Wall length, `framing` = a beam);
+    `extrude … --vertical <height> --at <x y>` stands a plan profile up (Height is a type parameter).
+  - `sweep <profile> --along <id,id,…>` — along a chain of lines and arcs (any order) or a wall; the
+    path is fixed in the family and the response says so.
+- Profiles are mm, u = left of the run direction (the side `section` looks to), v = up; outlines are
+  closed, cleaned and checked (a crossing outline names its segments).
+- Every generated family schedules by type with a correct Volume and a shared `VM_Length` (fixed
+  GUID, so all of them share one schedule column); `Material` is a type parameter (`--material`, or
+  the pack's default). The new element is joined with the walls, floors and generated elements it
+  overlaps (`--no-join` to skip; library families such as piles are never joined), gets the office
+  phase (`--phase`), runs the post-command check and is journaled with the `.rfa` it wrote.
+- Re-running updates instead of adding "(2)": the same profile reuses the loaded family, a changed one
+  is regenerated and reloaded keeping the project's type values; a family edited by hand in Revit
+  since (or one VibeModel did not make) is refused until `--replace`.
+- The `.rfa` files go to `<project folder>\VibeModel\families\` (3 s deadline; offline → a local copy,
+  said in the response). Revit's shared-parameter file setting is swapped for the build and always
+  restored.
+- Office packs get an optional `profiles` block (prefix, category per kind, templates, folder,
+  shared parameters, materials, type-name pattern) and the example pack a `kadeconstructie` topic
+  sheet: the questions an office answers about its quay walls, without values.
+
 
 ## v1.2.10 — Zero-Admin Onboarding, Annotations Survive Replacements (2026-10-14)
 
