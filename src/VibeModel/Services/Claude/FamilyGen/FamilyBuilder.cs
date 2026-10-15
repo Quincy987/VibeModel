@@ -45,6 +45,26 @@ namespace VibeModel.Services.Claude.FamilyGen
         public ExternalDefinition Length;       // instance, = the run's length
         public ExternalDefinition Source;       // type, hidden: the VM_Source stamp
         public ExternalDefinition ObjectCode;   // instance, the office's object code (only when the project does not bind it)
+
+        internal readonly Dictionary<Guid, string> Files = new Dictionary<Guid, string>();   // definition → the file it came from
+        internal Func<string, DefinitionFile> Open;                                         // makes that file current and opens it
+
+        /// <summary>
+        /// The definition read again from its own file, made current right now. Measured in Revit
+        /// 2023: AddParameter refuses ("Shared parameter creation failed") a definition whose file is
+        /// no longer SharedParametersFilename — and creating a document is enough to change it (the
+        /// "Revit To SCIA Engineer" add-in switches it back to its own file on every new document).
+        /// </summary>
+        public ExternalDefinition Current(ExternalDefinition d)
+        {
+            if (d == null || Open == null || !Files.TryGetValue(d.GUID, out var path)) return d;
+            var file = Open(path);
+            if (file == null) return d;
+            foreach (DefinitionGroup g in file.Groups)
+                foreach (Definition x in g.Definitions)
+                    if (x is ExternalDefinition e && e.GUID == d.GUID) return e;
+            return d;
+        }
     }
 
     /// <summary>What a build produced.</summary>
@@ -423,12 +443,12 @@ namespace VibeModel.Services.Claude.FamilyGen
             if (sh == null) return;
             var fm = fd.FamilyManager;
             if (sh.Source != null && fm.get_Parameter(sh.Source.GUID) == null)
-                fm.AddParameter(sh.Source, GroupTypeId.IdentityData, false);
+                fm.AddParameter(sh.Current(sh.Source), GroupTypeId.IdentityData, false);
             if (spec.Kind == GenKind.ProfileFamily) return;
 
             if (sh.Length != null && spec.Kind != GenKind.Framing && spec.Kind != GenKind.Vertical && fm.get_Parameter(sh.Length.GUID) == null)
             {
-                var len = fm.AddParameter(sh.Length, GroupTypeId.Geometry, true);
+                var len = fm.AddParameter(sh.Current(sh.Length), GroupTypeId.Geometry, true);
                 string formula = spec.Kind == GenKind.LineBased || spec.Kind == GenKind.LwallLineBased ? "Length"
                                : spec.Kind == GenKind.Foundation || spec.Kind == GenKind.LwallFoundation ? ParamWallLength : null;
                 if (formula != null)
@@ -439,7 +459,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             }
             if (sh.ObjectCode != null && fm.get_Parameter(sh.ObjectCode.GUID) == null)
             {
-                try { fm.AddParameter(sh.ObjectCode, GroupTypeId.IdentityData, true); }
+                try { fm.AddParameter(sh.Current(sh.ObjectCode), GroupTypeId.IdentityData, true); }
                 catch (Exception ex) { result.Notes.Add(sh.ObjectCode.Name + " not added: " + ex.Message); }
             }
         }

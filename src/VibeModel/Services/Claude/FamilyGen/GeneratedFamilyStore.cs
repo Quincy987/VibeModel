@@ -204,32 +204,42 @@ namespace VibeModel.Services.Claude.FamilyGen
             try
             {
                 var defs = new SharedDefinitions();
-                app.SharedParametersFilename = EnsureSharedFile();
-                var ours = app.OpenSharedParameterFile();
-                var group = ours?.Groups.get_Item("VibeModel");
-                defs.Length = group?.Definitions.get_Item(LengthName) as ExternalDefinition;
-                defs.Source = group?.Definitions.get_Item(SourceName) as ExternalDefinition;
-
-                if (pack?.SharedParameterFile != null && (pack.LengthParameter != null || pack.ObjectCodeParameter != null))
-                {
-                    if (PathProbe.FileExists(pack.SharedParameterFile) == true)
-                    {
-                        app.SharedParametersFilename = pack.SharedParameterFile;
-                        var office = app.OpenSharedParameterFile();
-                        var len = Find(office, pack.LengthParameter);
-                        if (len != null) defs.Length = len;
-                        else if (pack.LengthParameter != null) notes.Add("office length parameter '" + pack.LengthParameter + "' not in " + pack.SharedParameterFile + " — used " + LengthName);
-                        var code = Find(office, pack.ObjectCodeParameter);
-                        if (code != null && !IsBound(doc, code.GUID)) defs.ObjectCode = code;
-                    }
-                    else notes.Add("office shared-parameter file " + pack.SharedParameterFile + " not reachable — used " + LengthName);
-                }
+                Resolve(app, doc, pack, notes, defs);
+                defs.Open = path => { app.SharedParametersFilename = path; return app.OpenSharedParameterFile(); };
                 return build(defs);
             }
             finally
             {
                 try { app.SharedParametersFilename = previous ?? ""; }
                 catch (Exception ex) { Logger.Error("Could not restore SharedParametersFilename to '" + previous + "'", ex); }
+            }
+        }
+
+        /// <summary>Reads the definitions from our file (then the pack's) and notes which file each came from.</summary>
+        private static void Resolve(Application app, Document doc, ProfileDefaults pack, List<string> notes, SharedDefinitions defs)
+        {
+            var oursPath = EnsureSharedFile();
+            app.SharedParametersFilename = oursPath;
+            var ours = app.OpenSharedParameterFile();
+            var group = ours?.Groups.get_Item("VibeModel");
+            defs.Length = group?.Definitions.get_Item(LengthName) as ExternalDefinition;
+            defs.Source = group?.Definitions.get_Item(SourceName) as ExternalDefinition;
+            if (defs.Length != null) defs.Files[defs.Length.GUID] = oursPath;
+            if (defs.Source != null) defs.Files[defs.Source.GUID] = oursPath;
+
+            if (pack?.SharedParameterFile != null && (pack.LengthParameter != null || pack.ObjectCodeParameter != null))
+            {
+                if (PathProbe.FileExists(pack.SharedParameterFile) == true)
+                {
+                    app.SharedParametersFilename = pack.SharedParameterFile;
+                    var office = app.OpenSharedParameterFile();
+                    var len = Find(office, pack.LengthParameter);
+                    if (len != null) { defs.Length = len; defs.Files[len.GUID] = pack.SharedParameterFile; }
+                    else if (pack.LengthParameter != null) notes.Add("office length parameter '" + pack.LengthParameter + "' not in " + pack.SharedParameterFile + " — used " + LengthName);
+                    var code = Find(office, pack.ObjectCodeParameter);
+                    if (code != null && !IsBound(doc, code.GUID)) { defs.ObjectCode = code; defs.Files[code.GUID] = pack.SharedParameterFile; }
+                }
+                else notes.Add("office shared-parameter file " + pack.SharedParameterFile + " not reachable — used " + LengthName);
             }
         }
 
