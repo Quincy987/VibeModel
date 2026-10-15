@@ -110,8 +110,8 @@ namespace VibeModel.Tests
         [Fact]
         public void TurnLine_WithSources_None_Cancelled()
         {
-            Assert.Equal("- 2026-10-12 14:03:12 · chat t3f9a2c \"maak een muur van 5 m\" · sources: PRG1002- DO.pdf p.3; bestek §4.2",
-                ProjectJournal.FormatTurnLine(When, Turn, new List<string> { "PRG1002- DO.pdf p.3", "bestek §4.2" }, false));
+            Assert.Equal("- 2026-10-12 14:03:12 · chat t3f9a2c \"maak een muur van 5 m\" · sources: DEMO001- DO.pdf p.3; bestek §4.2",
+                ProjectJournal.FormatTurnLine(When, Turn, new List<string> { "DEMO001- DO.pdf p.3", "bestek §4.2" }, false));
             Assert.EndsWith("· sources: none", ProjectJournal.FormatTurnLine(When, Turn, new List<string>(), false));
             Assert.EndsWith("· cancelled", ProjectJournal.FormatTurnLine(When, Turn, null, true));
         }
@@ -128,9 +128,9 @@ namespace VibeModel.Tests
         [Fact]
         public void ParseSources_FindsBronMarkers_Distinct_InOrder()
         {
-            var answer = "Fase 2 [bron: PRG1002- DO.pdf p.3]. Zie ook [Bron:bestek §4.2] en nogmaals [bron: PRG1002- DO.pdf p.3]." +
+            var answer = "Fase 2 [bron: DEMO001- DO.pdf p.3]. Zie ook [Bron:bestek §4.2] en nogmaals [bron: DEMO001- DO.pdf p.3]." +
                          " English [source: memo.txt] [bronnen: leidraad 4.1]. Not a marker: [bronze] [bron:] [bron: open";
-            Assert.Equal(new[] { "PRG1002- DO.pdf p.3", "bestek §4.2", "memo.txt", "leidraad 4.1" }, ProjectJournal.ParseSources(answer));
+            Assert.Equal(new[] { "DEMO001- DO.pdf p.3", "bestek §4.2", "memo.txt", "leidraad 4.1" }, ProjectJournal.ParseSources(answer));
             Assert.Empty(ProjectJournal.ParseSources("geen bronnen"));
             Assert.Empty(ProjectJournal.ParseSources(null));
         }
@@ -169,7 +169,7 @@ namespace VibeModel.Tests
 
         private static readonly string[] Lines =
         {
-            "# VibeModel journal — PRG1002",
+            "# VibeModel journal — DEMO001",
             "",
             "- 2026-10-11 09:00:00 · wall 0 0 1 0 · created 1",
             "- 2026-10-12 14:03:12 · wall 0 0 5000 0 · created 2",
@@ -199,11 +199,11 @@ namespace VibeModel.Tests
         [Fact]
         public void AppendNow_WritesHeaderOnce_ThenLines()
         {
-            ProjectJournal.AppendNow(_dir, "PRG1002", new[] { "- a" }, When);
-            ProjectJournal.AppendNow(_dir, "PRG1002", new[] { "- b", "- c" }, When);
+            ProjectJournal.AppendNow(_dir, "DEMO001", new[] { "- a" }, When);
+            ProjectJournal.AppendNow(_dir, "DEMO001", new[] { "- b", "- c" }, When);
 
             var text = File.ReadAllText(Journal, Encoding.UTF8);
-            Assert.Equal("# VibeModel journal — PRG1002\r\n\r\n- a\r\n- b\r\n- c\r\n", text);
+            Assert.Equal("# VibeModel journal — DEMO001\r\n\r\n- a\r\n- b\r\n- c\r\n", text);
         }
 
         [Fact]

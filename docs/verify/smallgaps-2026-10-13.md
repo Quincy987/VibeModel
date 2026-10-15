@@ -4,7 +4,7 @@ Base: `development` b716df4 (v1.2.8). Branch: `claude-bot/research-smallgaps`.
 Tests: 1004 green before, 1017 green after (`dotnet test VibeModel.sln -p:RevitVersion=2023`).
 
 Live checks ran in a **separate Revit 2023 instance** (port 18886) on a copy of
-`demo_out/plan12/prg1002_sheet_test.rvt` (never saved). `build.ps1` was NOT run: it closes every
+`demo_out/plan12/demo001_sheet_test.rvt` (never saved). `build.ps1` was NOT run: it closes every
 Revit process, and at the time the user's instance had an unsaved model open and three other
 sessions were booting their own instances. The new code was loaded next to the deployed add-in
 with `Assembly.LoadFile` inside `exec`; the shared add-in folder still holds the build that was
@@ -22,7 +22,7 @@ the phase.
 
 Measured on the copy (whole model, deployed build, before the change): 510 pile instances
 (`Ø240` 390 + `Ø200` 120) + 64 sheet-pile elements = 574 `IfcSlab.BASESLAB`, 0 IfcPile/IfcFooting/IfcColumn.
-The sheets2 file `prg1002_sheets2 - Detail palen 1-50.ifc` holds 36 piles the same way.
+The sheets2 file `demo001_sheets2 - Detail palen 1-50.ifc` holds 36 piles the same way.
 
 **Change.** `export ifc` now reads its own file back (`IfcContents`, Revit-free, unit-tested):
 

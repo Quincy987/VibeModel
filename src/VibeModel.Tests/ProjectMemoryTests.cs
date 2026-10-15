@@ -33,7 +33,7 @@ namespace VibeModel.Tests
 
         private ProjectMemory.RememberResult Remember(string text, DateTime? when = null)
         {
-            var r = ProjectMemory.Remember(_dir, "PRG1002", text, when ?? Day, "nl", out var error);
+            var r = ProjectMemory.Remember(_dir, "DEMO001", text, when ?? Day, "nl", out var error);
             Assert.Null(error);
             return r;
         }
@@ -43,7 +43,7 @@ namespace VibeModel.Tests
         [Fact]
         public void Parse_ReadsDatedAndUndatedBullets_IgnoresProse()
         {
-            var text = "# Projectgeheugen — PRG1002\r\n\r\nFeiten die VibeModel onthoudt.\r\n\r\n" +
+            var text = "# Projectgeheugen — DEMO001\r\n\r\nFeiten die VibeModel onthoudt.\r\n\r\n" +
                        "- 2026-10-01 — deksteen = NLCS Prefab Beton hoek\r\n" +
                        "* handgeschreven feit zonder datum\n" +
                        "- 2026-10-12 - doorsnedes krijgen fase 2. Bouwfase\n" +
@@ -64,13 +64,13 @@ namespace VibeModel.Tests
         {
             var entries = new List<MemoryEntry>
             {
-                new MemoryEntry { Date = "2026-10-12", Text = "Karen wil de 3D naast de noordelijke op blad 0031" },
+                new MemoryEntry { Date = "2026-10-12", Text = "Een collega wil de 3D naast de noordelijke op blad 0031" },
                 new MemoryEntry { Date = null, Text = "zonder datum" }
             };
-            var text = ProjectMemory.Render(entries, "PRG1002", "nl");
+            var text = ProjectMemory.Render(entries, "DEMO001", "nl");
 
-            Assert.StartsWith("# Projectgeheugen — PRG1002", text);
-            Assert.Contains("- 2026-10-12 — Karen wil de 3D naast de noordelijke op blad 0031\r\n", text);
+            Assert.StartsWith("# Projectgeheugen — DEMO001", text);
+            Assert.Contains("- 2026-10-12 — Een collega wil de 3D naast de noordelijke op blad 0031\r\n", text);
             var back = ProjectMemory.Parse(text);
             Assert.Equal(entries.Select(e => e.Display), back.Select(e => e.Display));
             Assert.StartsWith("# Project memory", ProjectMemory.Render(entries, "X", "en"));
@@ -88,7 +88,7 @@ namespace VibeModel.Tests
             Assert.Equal(0, first.Index);
             Assert.Equal(1, second.Index);
             var text = FileText;
-            Assert.StartsWith("# Projectgeheugen — PRG1002", text);
+            Assert.StartsWith("# Projectgeheugen — DEMO001", text);
             Assert.Contains("- 2026-10-12 — doorsnedes krijgen fase 2. Bouwfase\r\n", text);
             Assert.Contains("- 2026-10-13 — deksteen = NLCS Prefab Beton hoek\r\n", text);
         }
@@ -152,19 +152,19 @@ namespace VibeModel.Tests
         {
             Remember("deksteen = NLCS Prefab Beton hoek");
             Remember("doorsnedes krijgen fase 2. Bouwfase");
-            Remember("Karen wil de 3D naast de noordelijke op blad 0031");
+            Remember("Een collega wil de 3D naast de noordelijke op blad 0031");
         }
 
         [Fact]
         public void Forget_ByNumber_RemovesThatFact()
         {
             Seed();
-            var removed = ProjectMemory.Forget(_dir, "PRG1002", "2", "nl", out var error, out var failed);
+            var removed = ProjectMemory.Forget(_dir, "DEMO001", "2", "nl", out var error, out var failed);
 
             Assert.Null(error);
             Assert.False(failed);
             Assert.Equal("doorsnedes krijgen fase 2. Bouwfase", Assert.Single(removed).Text);
-            Assert.Equal(new[] { "deksteen = NLCS Prefab Beton hoek", "Karen wil de 3D naast de noordelijke op blad 0031" },
+            Assert.Equal(new[] { "deksteen = NLCS Prefab Beton hoek", "Een collega wil de 3D naast de noordelijke op blad 0031" },
                 ProjectMemory.Parse(FileText).Select(e => e.Text));
         }
 
@@ -175,7 +175,7 @@ namespace VibeModel.Tests
         public void Forget_ByTextOrFragment(string arg)
         {
             Seed();
-            var removed = ProjectMemory.Forget(_dir, "PRG1002", arg, "nl", out var error, out _);
+            var removed = ProjectMemory.Forget(_dir, "DEMO001", arg, "nl", out var error, out _);
             Assert.Null(error);
             Assert.Single(removed);
             Assert.Equal(2, ProjectMemory.Parse(FileText).Count);
@@ -193,7 +193,7 @@ namespace VibeModel.Tests
             Remember("fase 4 voor tijdelijke werken");
             var before = FileText;
 
-            var removed = ProjectMemory.Forget(_dir, "PRG1002", arg, "nl", out var error, out var failed);
+            var removed = ProjectMemory.Forget(_dir, "DEMO001", arg, "nl", out var error, out var failed);
 
             Assert.Null(removed);
             Assert.False(failed);
@@ -206,7 +206,7 @@ namespace VibeModel.Tests
         {
             Seed();
             Remember("fase 4 voor tijdelijke werken");
-            ProjectMemory.Forget(_dir, "PRG1002", "fase", "nl", out var error, out _);
+            ProjectMemory.Forget(_dir, "DEMO001", "fase", "nl", out var error, out _);
             Assert.Contains("#2", error);
             Assert.Contains("#4", error);
         }
@@ -215,7 +215,7 @@ namespace VibeModel.Tests
         public void Clear_KeepsHeader_DropsFacts()
         {
             Seed();
-            var dropped = ProjectMemory.Clear(_dir, "PRG1002", "nl", out var error);
+            var dropped = ProjectMemory.Clear(_dir, "DEMO001", "nl", out var error);
             Assert.Null(error);
             Assert.Equal(3, dropped.Count);
             Assert.Empty(ProjectMemory.Parse(FileText));
@@ -296,8 +296,8 @@ namespace VibeModel.Tests
         [Fact]
         public void Locate_ProjectFolder_UsesItsVibeModelSubfolder()
         {
-            var loc = ProjectData.Locate(new ProjectFolder { Path = @"K:\Proj\PRG", Source = ProjectFolderSource.Configured }, "PRG1002");
-            Assert.Equal(@"K:\Proj\PRG\VibeModel", loc.Directory);
+            var loc = ProjectData.Locate(new ProjectFolder { Path = @"K:\Proj\DEMO", Source = ProjectFolderSource.Configured }, "DEMO001");
+            Assert.Equal(@"K:\Proj\DEMO\VibeModel", loc.Directory);
             Assert.False(loc.IsFallback);
             Assert.Equal("(ingesteld)", loc.SourceLabel);
         }

@@ -302,7 +302,7 @@ The gaps the werkvoorbereiders workshop (2026-10-12) listed for sheet work, as c
 
 ## v1.2.7 — Orientation Checks, Revit/IFC Links & Chat Workshop Fixes (2026-10-12)
 
-### Added — Maikel review: orientation rules and links by shared coordinates
+### Added — reviewer feedback: orientation rules and links by shared coordinates
 - **`project-north-true` check** — the project base point's *Angle to True North* must be 0:
   Project North never rotates; a straight view comes from the scope box or crop region. `coords`
   prints a WARN next to the angle when it is not 0 (JSON: `baseAngleZero`).
@@ -459,7 +459,7 @@ build and check a sheet from the conversation.
   block's own text parameters; patterns like `NL_META_*` and `X_1..5` expand, filled fields are listed
   and empty ones counted), viewports with paper outlines, text and schedules on the sheet, and overlap /
   off-paper checks (a ≤ 30 mm overlap strip is INFO, anything bigger WARN — the crop-margin overlaps on a
-  finished IB A0 were 10–27 mm strips).
+  finished Office A0 were 10–27 mm strips).
 - **Extended:** `sheet --number --name --set "Param=Value"` (sheet or title-block field); `tag --leader
   --at x y`; `screenshot --view <id|name|sheet number>` (sheets were refused before; now exported, and
   without having to activate them); `list dimensions|text` with values; `list sheets` with view counts;

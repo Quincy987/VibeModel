@@ -359,7 +359,7 @@ namespace VibeModel.Tests
         public void ShareRoot_IsTheReachabilityUnit()
         {
             Assert.Equal(@"\\server\share", PathProbe.ShareRoot(@"\\server\share\revit\a.pdf"));
-            Assert.Equal(@"K:\", PathProbe.ShareRoot(@"K:\ALG\a.pdf"));
+            Assert.Equal(@"K:\", PathProbe.ShareRoot(@"K:\lib\a.pdf"));
         }
 
         [Fact]

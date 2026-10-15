@@ -118,7 +118,7 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// Column width on the sheet for a longest cell of n characters, 14–150 mm. Measured on the
-        /// IB A0 schedule text: 2 mm a character still wrapped "1094850"; 2.6 mm + 6 mm padding does not.
+        /// Office A0 schedule text: 2 mm a character still wrapped "1094850"; 2.6 mm + 6 mm padding does not.
         /// </summary>
         public static double ColumnWidthMm(int longestChars) => Math.Max(14, Math.Min(150, longestChars * 2.6 + 6));
 

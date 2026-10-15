@@ -213,9 +213,9 @@ namespace VibeModel.Tests
         [Fact]
         public void Sheet_Flags()
         {
-            var a = SheetCreateArgs.Parse("IB A0 --number 0001 --name Situatie 0 demo --set \"Opsteller=Q. de Klerk\" --set Status=Concept");
+            var a = SheetCreateArgs.Parse("Office A0 --number 0001 --name Situatie 0 demo --set \"Opsteller=Q. de Klerk\" --set Status=Concept");
             Assert.Null(a.Error);
-            Assert.Equal("IB A0", a.Remaining);
+            Assert.Equal("Office A0", a.Remaining);
             Assert.Equal("0001", a.Number);
             Assert.Equal("Situatie 0 demo", a.Name);
             Assert.Equal(2, a.Sets.Count);

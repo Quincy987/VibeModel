@@ -84,7 +84,7 @@ namespace VibeModel.UI
                 ? Strings.For(language, Strings.DefaultModel)
                 : modelName.Trim());
 
-        /// <summary>"Prinsengracht.rvt · Projectmap: C:\…" or "Geen model open".</summary>
+        /// <summary>"Demogracht.rvt · Projectmap: C:\…" or "Geen model open".</summary>
         public static string WelcomeModelLine(string documentTitle, string projectFolder, string language)
         {
             if (string.IsNullOrWhiteSpace(documentTitle))

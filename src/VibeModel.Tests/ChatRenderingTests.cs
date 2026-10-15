@@ -110,9 +110,9 @@ namespace VibeModel.Tests
             Assert.Equal(CitationKind.Leidraad, l.Kind);
             Assert.Equal("4.2", l.Chapter);
 
-            var d = CitationParser.Describe("document PRG1002- DO.pdf p.3");
+            var d = CitationParser.Describe("document DEMO001- DO.pdf p.3");
             Assert.Equal(CitationKind.Document, d.Kind);
-            Assert.Equal("PRG1002- DO.pdf", d.Target);
+            Assert.Equal("DEMO001- DO.pdf", d.Target);
             Assert.Equal(3, d.Page);
 
             var s = CitationParser.Describe("document bestek.pdf §2.1.4");
@@ -535,8 +535,8 @@ namespace VibeModel.Tests
         {
             Assert.Equal("Claude Code · claude-opus-4-1", UiText.WelcomeBackendLine("Claude Code", "claude-opus-4-1", "nl"));
             Assert.Equal("Claude Code · standaardmodel", UiText.WelcomeBackendLine("Claude Code", null, "nl"));
-            Assert.Equal("prg1002.rvt · Projectmap: C:\\proj", UiText.WelcomeModelLine("prg1002.rvt", "C:\\proj", "nl"));
-            Assert.Equal("prg1002.rvt · geen projectmap", UiText.WelcomeModelLine("prg1002.rvt", null, "nl"));
+            Assert.Equal("demo001.rvt · Projectmap: C:\\proj", UiText.WelcomeModelLine("demo001.rvt", "C:\\proj", "nl"));
+            Assert.Equal("demo001.rvt · geen projectmap", UiText.WelcomeModelLine("demo001.rvt", null, "nl"));
             Assert.Equal("Geen model open", UiText.WelcomeModelLine("", null, "nl"));
             Assert.Equal(new[]
             {

@@ -320,8 +320,8 @@ namespace VibeModel.Tests
         public void Expand_TokensAndInvalidCharacters()
         {
             var d = new DateTime(2026, 10, 12);
-            Assert.Equal("0001 - Situatie_ A_B", ExportNaming.Expand(ExportNaming.SheetPattern, "0001", "Situatie: A/B", "PRG1002", d, "pdf"));
-            Assert.Equal("PRG1002_2026-10-12_dwg", ExportNaming.Expand("{project}_{date}_{format}", "", "", "PRG1002", d, "dwg"));
+            Assert.Equal("0001 - Situatie_ A_B", ExportNaming.Expand(ExportNaming.SheetPattern, "0001", "Situatie: A/B", "DEMO001", d, "pdf"));
+            Assert.Equal("DEMO001_2026-10-12_dwg", ExportNaming.Expand("{project}_{date}_{format}", "", "", "DEMO001", d, "dwg"));
             Assert.Equal("export", ExportNaming.Expand("{name}", "", "...", "", d, "pdf"));
         }
 
@@ -346,7 +346,7 @@ namespace VibeModel.Tests
 
     public class IfcContentsTests
     {
-        // Lines as Revit 2023's IFC2x3 exporter writes them (from a real PRG1002 export).
+        // Lines as Revit 2023's IFC2x3 exporter writes them (from a real DEMO001 export).
         private const string Sample =
             "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n" +
             "#18=IFCOWNERHISTORY(#17,#2,$,.NOCHANGE.,$,$,$,1791822376);\n" +

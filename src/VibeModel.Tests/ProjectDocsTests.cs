@@ -43,27 +43,27 @@ namespace VibeModel.Tests
         [Fact]
         public void Resolve_NoOverride_UsesTheModelsFolder()
         {
-            var f = ProjectDocs.Resolve(null, @"C:\Projects\PRG1002\model.rvt");
+            var f = ProjectDocs.Resolve(null, @"C:\Projects\DEMO001\model.rvt");
             Assert.Equal(ProjectFolderSource.ModelFolder, f.Source);
-            Assert.Equal(@"C:\Projects\PRG1002", f.Path);
+            Assert.Equal(@"C:\Projects\DEMO001", f.Path);
             Assert.Equal("(map van het model)", f.SourceLabel);
         }
 
         [Fact]
         public void Resolve_Override_WinsOverTheModelFolder()
         {
-            var f = ProjectDocs.Resolve(@" D:\Docs\PRG ", @"C:\Projects\PRG1002\model.rvt");
+            var f = ProjectDocs.Resolve(@" D:\Docs\DEMO ", @"C:\Projects\DEMO001\model.rvt");
             Assert.Equal(ProjectFolderSource.Configured, f.Source);
-            Assert.Equal(@"D:\Docs\PRG", f.Path);
+            Assert.Equal(@"D:\Docs\DEMO", f.Path);
             Assert.Equal("(ingesteld)", f.SourceLabel);
         }
 
         [Fact]
         public void Resolve_UncModel_UsesItsShareFolder()
         {
-            var f = ProjectDocs.Resolve("", @"\\server\projects\PRG\central.rvt");
+            var f = ProjectDocs.Resolve("", @"\\server\projects\DEMO\central.rvt");
             Assert.Equal(ProjectFolderSource.ModelFolder, f.Source);
-            Assert.Equal(@"\\server\projects\PRG", f.Path);
+            Assert.Equal(@"\\server\projects\DEMO", f.Path);
         }
 
         [Theory]
@@ -95,7 +95,7 @@ namespace VibeModel.Tests
         [Fact]
         public void ProjectKey_IsTheAttachmentStoreKey()
         {
-            Assert.Equal(AttachmentStore.SanitizeName("PRG 1002: rakdeel B"), ProjectDocs.ProjectKey("PRG 1002: rakdeel B"));
+            Assert.Equal(AttachmentStore.SanitizeName("DEMO 001: rakdeel B"), ProjectDocs.ProjectKey("DEMO 001: rakdeel B"));
         }
 
         // --- Boundary --------------------------------------------------------------------
@@ -188,7 +188,7 @@ namespace VibeModel.Tests
         public void List_OneLevelDeep_SkipsRevitFilesAndFolders()
         {
             Touch("memo.txt");
-            Touch("PRG1002- DO.pdf");
+            Touch("DEMO001- DO.pdf");
             Touch("model.rvt");
             Touch("model.0001.rvt");
             Touch("lib.rfa");
@@ -200,7 +200,7 @@ namespace VibeModel.Tests
 
             var listing = ProjectDocs.List(_root);
             var names = listing.Entries.Select(e => e.RelativePath).ToList();
-            Assert.Equal(new[] { "memo.txt", "PRG1002- DO.pdf", @"survey\levels.csv" }, names);
+            Assert.Equal(new[] { "memo.txt", "DEMO001- DO.pdf", @"survey\levels.csv" }, names);
             Assert.Equal(new[] { "survey" }, listing.Subfolders);
             Assert.Equal("pdf", listing.Entries[1].Tag);
             Assert.Equal("text", listing.Entries[0].Tag);

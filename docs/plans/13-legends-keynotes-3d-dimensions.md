@@ -6,7 +6,7 @@
 
 > **STATUS (research, nothing built).** Every claim below comes from probes run through `exec`
 > on Revit 2023.1 (23.1.20.70) with the v1.2.8 add-in (b716df4), on three documents: a copy of
-> the PRG1002 sheet-test model (built on the pilot office's template; never saved), a fresh
+> the DEMO001 sheet-test model (built on the pilot office's template; never saved), a fresh
 > project from Autodesk's `DefaultMetric.rte`, and — for legend components — Autodesk's sample
 > project `BIM_Projekt_Golden_Nugget-Architektur_und_Ingenieurbau.rvt`. The office template
 > itself was opened read-only for the keynote/legend inventory. Probe scripts and the full log:
@@ -32,7 +32,7 @@
   `ViewSheet.Create`/`CreatePlaceholder`. **No** `Legend.Create`, no `Creation.Document.*Legend*`,
   no public `LegendComponent` class (`ViewFamily.Legend` exists only as a view-family-type value).
   Confirmed: a legend can never be made from nothing.
-- PRG1002 (from the office template) holds four legends, all at **1:1**, none with a legend
+- DEMO001 (from the office template) holds four legends, all at **1:1**, none with a legend
   component: a materials legend (5 texts, 4 filled regions, 5 detail lines, 4 reference planes,
   on sheet 0001), a site legend, a steel legend (34 lines, 26 regions, 14 dimensions) and a
   pile-symbol legend (110 lines, 27 arcs, 48 regions). The template itself has the same four,
@@ -62,10 +62,10 @@ sheet, the refusal says "a view can be on one sheet only", which is wrong for le
 ### 1.3 Legend components — copy and retarget (probes `p3*_*.cs`)
 
 - **Cross-document copy works.** `ElementTransformUtils.CopyElements(sourceLegend, ids, targetLegend, …)`
-  copied a legend component from the Autodesk sample into PRG1002. Copying within a legend
+  copied a legend component from the Autodesk sample into DEMO001. Copying within a legend
   (`CopyElement`) works too.
 - **Whole legend views copy across documents.** `CopyElements(srcDoc, {legendId}, dstDoc, …)`
-  brought both a PRG1002 legend and a 6-component sample legend into the fresh project; the
+  brought both a DEMO001 legend and a 6-component sample legend into the fresh project; the
   components' wall types came along. Reference planes were not copied.
 - **Blocker to handle:** when a copied type already exists but differs, Revit raises the modal
   **"Duplicate Types"** dialog and the external event hangs (the HTTP call timed out at 30 s
@@ -164,7 +164,7 @@ legend <existing name> --add-row "…"                    # append rows to a leg
 - Headless: `LegendArgsTests` (row kinds, `@view` suffixes, quoting, conflicting flags) and
   `LegendLayoutTests` (pitch, columns, scale conversion, `--keep` below existing content);
   `StandardsPackTests` for the `legends` block.
-- Live (`.verify`): PRG1002 copy — `legend Test --from <materials legend> --keep --row fill:…`;
+- Live (`.verify`): DEMO001 copy — `legend Test --from <materials legend> --keep --row fill:…`;
   `legend Palen --from seed --scale 50 --row type:"Betonpaal 320x320"@plan=… --row type:…@front=…`;
   place it on two sheets; screenshot both sheets; fresh `DefaultMetric` project — `--from seed`
   with no legend in the document.
@@ -177,7 +177,7 @@ legend <existing name> --add-row "…"                    # append rows to a leg
 ### 2.1 Measured (probes `p4*_*.cs`)
 
 - **Table access works.** `KeynoteTable.GetKeynoteTable(doc).GetKeyBasedTreeEntries()` →
-  3840 `KeynoteEntry` items (key, parent, text) in PRG1002, the office template *and* the
+  3840 `KeynoteEntry` items (key, parent, text) in DEMO001, the office template *and* the
   fresh project — even though the referenced file is **not on disk** (`GetLinkedFileStatus() =
   NotFound`). The model keeps a cached copy of the last load.
 - **What the template carries**: a reference to Autodesk's default `RevitKeynotes_Metric.txt`
@@ -241,7 +241,7 @@ keynote <id…> <key> [--material] # set the type (or the element's first-layer/
   table for the whole model, so it must be undoable and announced. The cached table can be
   stale.
 - Tests: `KeynoteFileTests` (CRLF/LF, UTF‑16/UTF‑8, missing parent, duplicate keys) and
-  `KeynoteArgsTests`. Live: PRG1002 copy — load the probe file, `keynote 1561017 03300`,
+  `KeynoteArgsTests`. Live: DEMO001 copy — load the probe file, `keynote 1561017 03300`,
   `keynotes 03`.
 - Size **S**: 4 new files, ~300–400 lines including tests. Worth building only if the office
   starts keynoting. Today the template carries no keys, so it is the lowest priority of the three.
@@ -268,7 +268,7 @@ Fresh project, two parallel 200 mm walls 3000 mm apart, an isometric 3D view:
 | `SetOrientation` on the locked view | ❌ "View is locked and cannot be reoriented." |
 | unlock + re-aim | ✅ all 10 dimensions survive, but the text is foreshortened in the new angle |
 
-On PRG1002 (real model, duplicated `{3D}` + section box, locked): wall thickness via the
+On DEMO001 (real model, duplicated `{3D}` + section box, locked): wall thickness via the
 wall's two side faces ✅ 650 mm; pile spacing via the family's `CenterLeftRight` planes ✅
 778 mm. The pile families expose **no Top/Bottom references**. A pile-length dimension from
 instance-geometry faces was reported created (8960 mm) inside the transaction but **was gone
@@ -322,7 +322,7 @@ dimension --levels --view <3d> --at <id>     # level string next to an element (
   commit (measured), hence the re-read. Locking blocks `look` on that view (documented above).
 - Tests: `DimensionMath` gets the work-plane normal function (*d* parallel to the view → null)
   and the 3D direction resolution. `SheetAssemblyTests` get the new args. Live: fresh project
-  (walls, levels) and PRG1002 copy (wall thickness, pile spacing), then a sheet with the 3D
+  (walls, levels) and DEMO001 copy (wall thickness, pile spacing), then a sheet with the 3D
   view and `screenshot --view <sheet>`.
 - Size **M** (smaller than legends): one command extended, ~300–450 lines including tests.
 

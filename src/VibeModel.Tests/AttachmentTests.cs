@@ -116,11 +116,11 @@ namespace VibeModel.Tests
             File.WriteAllText(source, "spec content");
             try
             {
-                var stored = AttachmentStore.StoreFile(source, "Prinsengracht", _root);
+                var stored = AttachmentStore.StoreFile(source, "Demogracht", _root);
 
                 Assert.True(File.Exists(stored));
                 Assert.Equal("spec content", File.ReadAllText(stored));
-                Assert.StartsWith(Path.Combine(_root, "Prinsengracht"), stored);
+                Assert.StartsWith(Path.Combine(_root, "Demogracht"), stored);
                 Assert.True(File.Exists(source)); // copy, not move
             }
             finally { File.Delete(source); }

@@ -132,7 +132,7 @@ namespace VibeModel.Services.Claude
         /// <summary>
         /// One line per overlapping pair. Viewport boxes include empty crop margin, so a thin
         /// overlap strip (≤ 30 mm across) is graded INFO and anything bigger WARN. Measured on a
-        /// finished IB A0: its harmless crop-margin overlaps were 10–27 mm strips.
+        /// finished Office A0: its harmless crop-margin overlaps were 10–27 mm strips.
         /// </summary>
         public static List<string> OverlapLines(IList<KeyValuePair<string, MmRect>> rects)
             => OverlapPairs(rects).Select(t =>
@@ -152,7 +152,7 @@ namespace VibeModel.Services.Claude
         /// The elements a `crop --fit` should show: the largest cluster of boxes, where boxes within
         /// <paramref name="gapMm"/> of each other belong together. Scattered context (trees, street
         /// furniture, site objects tens to hundreds of metres out) then cannot blow a quay-wall plan
-        /// up: measured on PRG1002, a plain union was 395×219 m and a 2–98% percentile trim still
+        /// up: measured on DEMO001, a plain union was 395×219 m and a 2–98% percentile trim still
         /// 300×219 m for a 185 m quay, because 15% of the elements are spread over 400 m.
         /// Fewer than 10 boxes: no trimming. Returns the indices kept.
         /// More than <paramref name="maxClustered"/> boxes (the pair sweep must stay cheap on Revit's

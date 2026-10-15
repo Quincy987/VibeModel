@@ -518,7 +518,7 @@ and its source: `(map van het model)` (default) or `(ingesteld)` (configured).
 curl -s http://localhost:18884/docs                               # Manifest: names, kinds, sizes (one level deep, ≤200)
 curl -s "http://localhost:18884/docs?args=survey"                 # One subfolder
 curl -s "http://localhost:18884/readdoc?args=memo.txt"            # Text inline (400k-char cap)
-curl -s "http://localhost:18884/readdoc?args=PRG1002-+DO.pdf"     # PDF text via the PDF helper, else path + hint
+curl -s "http://localhost:18884/readdoc?args=DEMO001-+DO.pdf"     # PDF text via the PDF helper, else path + hint
 curl -s "http://localhost:18884/readdoc?args=bestek"              # Unique prefix ok; ambiguous lists the matches
 ```
 - Read-only, and only inside the folder: `..`, absolute paths, prefix siblings (`docs-x` vs
@@ -550,7 +550,7 @@ curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday
   written by `RevitCommandHandler` from the `DocumentChanged` ids
   (`- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`),
   and one per chat turn with the `[bron: …]` / `[source: …]` markers its answer cited
-  (`… · chat t3f9a2c "…" · sources: PRG1002- DO.pdf p.3`). A command that changed nothing (an
+  (`… · chat t3f9a2c "…" · sources: DEMO001- DO.pdf p.3`). A command that changed nothing (an
   `exec` that only read) is not journaled; `export` changes nothing but is (`IJournaledCommand`:
   `… · export pdf 0001 · wrote 0001 - Situatie.pdf · chat …`). The turn comes from the `X-VibeModel-Turn` header
   (`<id> <url-encoded question>`, sent by the API backends) or else from the chat turn in flight
