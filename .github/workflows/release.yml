@@ -1,0 +1,51 @@
+name: Release
+
+# Tag v<version> (matching <Version> in src/VibeModel/VibeModel.csproj) and push the tag:
+# this builds the Revit 2023 zip with scripts/package-release.ps1 and attaches it to the
+# GitHub release for that tag (created as a draft when none exists yet).
+# Signing stays a manual step on a machine with the office certificate
+# (package-release.ps1 -Sign -Thumbprint ...): no certificate or secret lives in CI.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: 1
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Package Revit 2023 zip (unsigned)
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -RevitVersion 2023
+
+      - name: Check the tag matches the csproj version
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem release/*.zip | Select-Object -First 1
+          if (-not $zip) { throw "package-release.ps1 produced no zip" }
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($zip.Name -notlike "VibeModel-v$tag-*") {
+            throw "Tag ${{ github.ref_name }} does not match the packaged version ($($zip.Name)). Bump <Version> in src/VibeModel/VibeModel.csproj or retag."
+          }
+          Write-Host "Packaged $($zip.Name)"
+
+      - name: Upload zip to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true

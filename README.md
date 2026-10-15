@@ -7,9 +7,10 @@
 An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch it work, keep what you like. Every change is one Ctrl+Z.
 
 [![Release](https://img.shields.io/github/v/tag/Quincy987/VibeModel?label=release&color=2ea44f)](https://github.com/Quincy987/VibeModel/releases)
-[![Revit 2022+](https://img.shields.io/badge/Revit-2022%2B-0696D7)](#requirements)
+[![Revit 2022–2024](https://img.shields.io/badge/Revit-2022%E2%80%932024-0696D7)](#requirements)
+<!-- The licence is a pending decision of the owner; the LICENSE file is not in the repo yet. -->
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](#license)
-[![Tests](https://img.shields.io/badge/tests-1004%20passing-success)](#building-from-source)
+[![CI](https://github.com/Quincy987/VibeModel/actions/workflows/ci.yml/badge.svg?branch=development)](https://github.com/Quincy987/VibeModel/actions/workflows/ci.yml)
 
 </div>
 
@@ -53,7 +54,7 @@ Remember: new sections get phase 2
 
 ## What it can do
 
-Nine kinds of work, with an honest status as of v1.2.8. Five topics have a live screen recording folded under the table (Dutch prompts; the full videos are in the <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">demo-videos release</a>); the scripts and the rest live in [docs/demos](docs/demos/README.md).
+Nine kinds of work, with an honest status as of v1.2.10. Five topics have a live screen recording folded under the table (Dutch prompts; the full videos are in the <a href="https://github.com/Quincy987/VibeModel/releases/tag/demo-videos-2026-10">demo-videos release</a>); the scripts and the rest live in [docs/demos](docs/demos/README.md).
 
 | | Topic | Status |
 |---|---|---|
@@ -148,7 +149,7 @@ A pack only switches on for models that match its **fingerprint** (your phases a
 
 ### Requirements
 
-- Autodesk Revit 2022 or newer (Windows)
+- Autodesk Revit 2022, 2023 or 2024 on Windows (built and verified on 2023). The add-in targets .NET Framework 4.8; Revit 2025 and newer run on .NET 8 and cannot load it yet
 - One way to reach Claude: an [Anthropic API key](https://console.anthropic.com/) (what an office hands out), a [Claude Code](https://code.claude.com/docs/en/setup) subscription, or a local LLM server ([setup notes](docs/LOCAL_LLM_SETUP.md))
 - No administrator rights: everything installs for the signed-in Windows user
 
@@ -238,6 +239,19 @@ Port 18884 is the default; a second Revit instance falls back to 18885–18888. 
 Open a project first (not the start screen), and check that the element you name still exists. Every error names the cause and, where there is one, the fix.
 </details>
 
+## Limitations & privacy
+
+- Windows only, Revit 2022–2024 (see [Requirements](#requirements)).
+- Needs an Anthropic API key, a Claude Code subscription or a local LLM server; nothing works offline without one.
+- Your question, the model data the assistant asks for (element lists, parameters, geometry), screenshots of views and the text it quotes from project and office documents are sent to the LLM provider you configured. With a local LLM nothing leaves your machine.
+- The local HTTP server listens on loopback only, but its `exec` command runs any C# the signed-in user could run; other processes on the same machine can call it unless you set `VIBEMODEL_TOKEN`. Details and how to report a vulnerability: [SECURITY.md](SECURITY.md).
+
+## Contributing
+
+Bugs: open an [issue](https://github.com/Quincy987/VibeModel/issues/new/choose) with the Diagnose report (chat header → **Diagnose** → **Copy**), your Revit year and what you asked.
+Pull requests go against the `development` branch; `dotnet test VibeModel.sln -p:RevitVersion=2023` must stay green (CI runs it on every push).
+
 ## License
 
+<!-- LICENSE file pending: the owner has not yet finalised the licence. Keep this section and badge as they are until then. -->
 [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)

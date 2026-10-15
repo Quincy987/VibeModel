@@ -1,0 +1,61 @@
+name: CI
+
+# The Revit API comes from the Autodesk.Revit.SDK NuGet package, so no Revit install is
+# needed. A plain `dotnet build`/`dotnet test` never deploys into the Addins folder: the
+# DeployAddin target in src/VibeModel/VibeModel.csproj only runs with -p:Deploy=true.
+# Revit 2025/2026 are deliberately absent: they run on .NET 8 and this net48 add-in
+# does not build against their SDK.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - revit: 2023
+            test: true
+          - revit: 2022
+            test: false
+          - revit: 2024
+            test: false
+    name: Revit ${{ matrix.revit }}${{ matrix.test && ' + tests' || ' (compile only)' }}
+    env:
+      DOTNET_NOLOGO: 1
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\.nuget\packages
+          key: nuget-${{ runner.os }}-revit${{ matrix.revit }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-revit${{ matrix.revit }}-
+            nuget-${{ runner.os }}-
+
+      - name: Build and test (Revit ${{ matrix.revit }})
+        if: matrix.test
+        run: dotnet test VibeModel.sln -p:RevitVersion=${{ matrix.revit }} -c Release --logger "trx;LogFileName=tests-revit${{ matrix.revit }}.trx" --results-directory TestResults
+
+      - name: Build add-in (Revit ${{ matrix.revit }})
+        if: ${{ !matrix.test }}
+        run: dotnet build src/VibeModel/VibeModel.csproj -p:RevitVersion=${{ matrix.revit }} -c Release
+
+      - name: Upload test results
+        if: matrix.test && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-revit${{ matrix.revit }}
+          path: TestResults/*.trx
+          if-no-files-found: ignore

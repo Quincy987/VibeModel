@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in VibeModel does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The **Diagnose** report answers most "is it connected / which version / which proxy" questions in one go, so please include it. It masks API keys; check it for anything else you do not want public (project names, paths) before pasting.
+  - type: input
+    id: revit
+    attributes:
+      label: Revit year
+      description: VibeModel loads in Revit 2022, 2023 and 2024.
+      placeholder: "2023"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: VibeModel version
+      description: Shown at the top of the Diagnose report and in the release zip name.
+      placeholder: "v1.2.10"
+    validations:
+      required: true
+  - type: textarea
+    id: asked
+    attributes:
+      label: What did you ask or run?
+      description: The chat prompt, or the command/curl call if you used the HTTP API directly.
+      placeholder: "Maak een doorsnede door muur 1543814 en zet hem op blad 0001"
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened, and what did you expect instead?
+      description: The answer or error text verbatim where possible. Screenshots of the chat pane or the Revit view are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnose report
+      description: In Revit, chat pane header → **Diagnose** → **Copy**, then paste here. (Or run `curl -s http://127.0.0.1:18884/diagnose`.)
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Connection
+      description: Which way the chat reaches the model (also in the Diagnose report).
+      options:
+        - Anthropic API key
+        - Claude Code
+        - Local LLM
+        - Not sure
+    validations:
+      required: false
