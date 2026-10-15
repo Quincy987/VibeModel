@@ -1270,6 +1270,8 @@ namespace VibeModel.Services.Claude.Commands
             }
             catch { }
 
+#if !REVIT2022
+            // Element.IsModifiable exists from Revit 2023; 2022 simply has no such note.
             try
             {
                 if (!elem.IsModifiable)
@@ -1277,6 +1279,7 @@ namespace VibeModel.Services.Claude.Commands
                         "Revit reports this element as not modifiable in the current state");
             }
             catch { }
+#endif
 
             try
             {

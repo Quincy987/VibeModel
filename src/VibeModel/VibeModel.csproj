@@ -36,6 +36,10 @@
 
     <!-- Revit Addins deployment path -->
     <RevitAddinFolder>$(APPDATA)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinFolder>
+
+    <!-- REVIT2022 / REVIT2023 / REVIT2024 for the few API members that differ per year
+         (e.g. Element.IsModifiable, new in 2023). -->
+    <DefineConstants>$(DefineConstants);REVIT$(RevitVersion)</DefineConstants>
   </PropertyGroup>
 
   <!-- Revit SDK references (version-specific) -->
