@@ -188,7 +188,7 @@ namespace VibeModel.Tests
         public void List_OneLevelDeep_SkipsRevitFilesAndFolders()
         {
             Touch("memo.txt");
-            Touch("DEMO001- DO.pdf");
+            Touch("Tekening DEMO001- DO.pdf");
             Touch("model.rvt");
             Touch("model.0001.rvt");
             Touch("lib.rfa");
@@ -200,7 +200,7 @@ namespace VibeModel.Tests
 
             var listing = ProjectDocs.List(_root);
             var names = listing.Entries.Select(e => e.RelativePath).ToList();
-            Assert.Equal(new[] { "memo.txt", "DEMO001- DO.pdf", @"survey\levels.csv" }, names);
+            Assert.Equal(new[] { "memo.txt", "Tekening DEMO001- DO.pdf", @"survey\levels.csv" }, names);
             Assert.Equal(new[] { "survey" }, listing.Subfolders);
             Assert.Equal("pdf", listing.Entries[1].Tag);
             Assert.Equal("text", listing.Entries[0].Tag);

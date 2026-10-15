@@ -367,7 +367,9 @@ namespace VibeModel.Tests
         {
             Assert.Equal("slow", PathProbe.Run(() => { System.Threading.Thread.Sleep(2000); return "done"; }, TimeSpan.FromMilliseconds(50), "slow"));
             Assert.Equal("err", PathProbe.Run<string>(() => throw new IOException("x"), TimeSpan.FromSeconds(1), "err"));
-            Assert.Equal("ok", PathProbe.Run(() => "ok", TimeSpan.FromSeconds(1), "x"));
+            // A generous deadline: on a loaded machine or a shared CI runner the thread-pool
+            // task behind Run can take over a second to even start, and the fallback is wrong then.
+            Assert.Equal("ok", PathProbe.Run(() => "ok", TimeSpan.FromSeconds(15), "x"));
         }
 
         [Fact]
