@@ -4,7 +4,8 @@
     Automatically closes Revit, builds, and restarts.
 
 .PARAMETER RevitVersion
-    Target Revit version (2022, 2023, 2024, 2025). Default: 2023
+    Target Revit version (2022, 2023, 2024). Default: 2023
+    Revit 2025+ runs on .NET 8 and cannot load this .NET Framework 4.8 add-in.
 
 .PARAMETER Configuration
     Build configuration (Debug, Release). Default: Release
@@ -23,7 +24,7 @@
 #>
 
 param(
-    [ValidateSet("2022", "2023", "2024", "2025")]
+    [ValidateSet("2022", "2023", "2024")]
     [string]$RevitVersion = "2023",
 
     [ValidateSet("Debug", "Release")]

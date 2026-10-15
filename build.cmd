@@ -1,6 +1,6 @@
 @echo off
 REM VibeModel build script - runs build.ps1
-REM Usage: build.cmd [RevitVersion] [--debug] [--no-restart]
+REM Usage: build.cmd [RevitVersion: 2022|2023|2024] [--debug] [--no-restart]
 REM Examples:
 REM   build.cmd                 - Build for Revit 2023, restart
 REM   build.cmd 2024            - Build for Revit 2024, restart
@@ -27,7 +27,6 @@ if "%~1"=="--no-restart" (
 if "%~1"=="2022" set REVIT_VERSION=2022
 if "%~1"=="2023" set REVIT_VERSION=2023
 if "%~1"=="2024" set REVIT_VERSION=2024
-if "%~1"=="2025" set REVIT_VERSION=2025
 shift
 goto parse_args
 

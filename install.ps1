@@ -92,11 +92,12 @@ $searchDirs = @(
     $scriptDir,
     (Join-Path $scriptDir "bin\Release\Revit2023"),
     (Join-Path $scriptDir "bin\Release\Revit2024"),
-    (Join-Path $scriptDir "bin\Release\Revit2025"),
+    (Join-Path $scriptDir "bin\Release\Revit2022"),
     (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2023"),
     (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2024"),
-    (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2025")
+    (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2022")
 )
+# Only Revit 2022-2024 can load this add-in (.NET Framework 4.8); Revit 2025+ runs on .NET 8.
 
 # Resolve each file independently (DLLs may be in build output, .addin in repo root)
 $resolvedFiles = @{}
@@ -153,7 +154,7 @@ if ($revitProcs.Count -gt 0) {
 $addinsBase = Join-Path $env:APPDATA "Autodesk\Revit\Addins"
 $detected = @()
 if (Test-Path $addinsBase) {
-    $detected = @(Get-ChildItem $addinsBase -Directory | Where-Object { $_.Name -match '^20(2[2-9]|30)$' } | ForEach-Object { $_.Name })
+    $detected = @(Get-ChildItem $addinsBase -Directory | Where-Object { $_.Name -match '^202[2-4]$' } | ForEach-Object { $_.Name })
 }
 
 # The release zip names its Revit year in revit-year.txt; a build folder in its path (bin\Release\Revit2023).
@@ -181,11 +182,11 @@ if ($buildYear) {
         Say "No Revit add-in folder found under $addinsBase." "Yellow"
         if ($Quiet) { Fail @("No Revit version detected - start Revit once, or create $addinsBase\<year>.") 3 }
         Write-Host ""
-        $manualYear = Read-Host "  Enter your Revit version year (e.g. 2023)"
-        if ($manualYear -match '^\d{4}$') {
+        $manualYear = Read-Host "  Enter your Revit version year (2022, 2023 or 2024)"
+        if ($manualYear -match '^202[2-4]$') {
             $revitVersions = @($manualYear)
         } else {
-            Fail @("Invalid input. Exiting.")
+            Fail @("Invalid input - this add-in loads only in Revit 2022, 2023 or 2024. Exiting.")
         }
     }
 }
