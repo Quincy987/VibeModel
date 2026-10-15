@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Claude;
 
 namespace VibeModel.Services.Diagnostics
 {
@@ -62,6 +63,8 @@ namespace VibeModel.Services.Diagnostics
             sb.AppendLine("Signature: " + Await(signature, deadline, "(check timed out)"));
             sb.AppendLine("Revit: " + (RevitVersion ?? "?") + " · .NET " + Environment.Version + " · Windows " + Environment.OSVersion.Version);
             sb.AppendLine("HTTP server: " + (FileFallback ? "not running - file-based fallback (C:\\RevitClaudeLink)" : "port " + HttpPort));
+            if (!FileFallback)
+                sb.AppendLine("Server access: " + ServerAuth.Describe(HttpPort) + "; browser requests (Origin / Sec-Fetch / foreign Host) refused");
             sb.AppendLine("Debug log: " + (Logger.DebugEnabled ? "on" : "off (warnings and errors only)") + " - " + Logger.LogDirectory);
             sb.AppendLine();
 
@@ -82,6 +85,8 @@ namespace VibeModel.Services.Diagnostics
             foreach (var line in ClaudeCodeBackend.LastSearch)
                 sb.AppendLine("  checked: " + line);
             sb.AppendLine("managed.json: " + (managedPath ?? "none (looked in " + string.Join(", ", ManagedSettings.SearchPaths) + ")"));
+            if (ManagedSettings.UntrustedFile != null)
+                sb.AppendLine("  IGNORED " + ManagedSettings.UntrustedFile + ": " + ManagedSettings.UntrustedReason);
             if (managedPath != null)
                 foreach (var k in ManagedSettings.Keys.Where(ManagedSettings.IsManaged))
                 {

@@ -21,7 +21,14 @@ Measured on Revit 2023 / Windows 11 (2026-10-14). The verification report with s
 | `%USERPROFILE%\.local\bin\claude.exe` *(optional)* | Claude Code, only if a user installs it |
 
 The add-in runs a small HTTP server on `127.0.0.1:18884` (18885–18888 for a second Revit), loopback
-only. Set `VIBEMODEL_TOKEN` to require a token on it.
+only, and **token-gated**: every call except `/health` must carry the `X-VibeModel-Token` header.
+Each Revit session makes a random token and writes it to the user's own
+`%LOCALAPPDATA%\VibeModel\servers\<port>.json`; the chat pane and the Claude Code CLI it starts use it
+automatically, nothing to configure. Set `VIBEMODEL_TOKEN` to choose the token yourself (it wins over
+the generated one); `"OpenServer": true` in `managed.json` restores the open server for scripts that
+cannot read the file (not recommended: any local process can then run `exec`). Requests made by a web
+browser (an `Origin` or `Sec-Fetch-*` header, a `Host` other than 127.0.0.1/localhost) are refused
+with 403 whatever the token mode. See [../SECURITY.md](../SECURITY.md).
 
 ## Installing
 
@@ -72,6 +79,26 @@ one found wins; its keys override the user's settings and show as locked ("behee
 Settings. VibeModel never writes it. Changes are read within a minute; which chat connection is
 used (`PreferredBackend`, a new key) is decided when Revit starts.
 
+**The machine-wide file must be created by IT, as an administrator.** Windows lets ordinary users
+create folders under `%ProgramData%`, so a user could otherwise plant a `VibeModel\managed.json`
+that points everyone's chat at an endpoint or key of their choosing and looks like policy. VibeModel
+therefore only trusts `%ProgramData%\VibeModel\managed.json` when **both the file and its folder are
+owned by Administrators or SYSTEM** and give **no write access to Users, Authenticated Users,
+Everyone or Interactive** (the inherited ProgramData ACL does — remove it). Anything else is ignored,
+logged once as a warning and shown in Diagnose as `IGNORED <path>: <reason>`. Created from an elevated
+PowerShell, this ACL passes:
+
+```powershell
+$dir = "$env:ProgramData\VibeModel"
+New-Item -ItemType Directory -Force $dir | Out-Null
+icacls $dir /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX"
+Set-Content -Encoding utf8 "$dir\managed.json" '{ "PreferredBackend": "anthropic-api", "AnthropicApiKey": "sk-ant-..." }'
+icacls "$dir\managed.json" /setowner "*S-1-5-32-544"
+```
+(`S-1-5-32-544` = Administrators, `S-1-5-18` = SYSTEM, `S-1-5-32-545` = Users — SIDs, so the
+commands work on a Dutch or English Windows alike. `/inheritance:r` drops the inherited Users
+create-rights; a folder created by Intune/SCCM as SYSTEM already has the right owner.)
+
 ```json
 {
   "PreferredBackend": "anthropic-api",
@@ -92,6 +119,7 @@ used (`PreferredBackend`, a new key) is decided when Revit starts.
 | `DisableClaudeCode` | `true` hides the Claude Code option entirely |
 | `ClaudeCliPath` | Full path to `claude.exe` if it lives elsewhere; `none` switches discovery off |
 | `Language` | `nl` or `en`: the pane's texts and the fallback reply language |
+| `OpenServer` | `true` runs the local HTTP server **without** a token, as before 1.2.11 (default `false`). Only for scripts that cannot read the token from `%LOCALAPPDATA%\VibeModel\servers\<port>.json`; a set `VIBEMODEL_TOKEN` still wins. |
 
 Key precedence: `managed.json` → `ANTHROPIC_API_KEY` → the user's own (encrypted) key.
 A key from `managed.json` or the environment is never copied into the user's settings.
@@ -105,7 +133,7 @@ answer in the chat shows its tokens and an estimated cost (`31.0k tokens · ≈ 
 |---|---|
 | `ANTHROPIC_API_KEY` | API key (after managed.json) |
 | `VIBEMODEL_CLAUDE_CLI` | Path to `claude.exe`, or `none` |
-| `VIBEMODEL_TOKEN` | Require this token on the local HTTP server |
+| `VIBEMODEL_TOKEN` | Use this token on the local HTTP server instead of the per-session one (must be set in the environment Revit starts from) |
 | `VIBEMODEL_DEBUG=1` | Log everything (INFO too) |
 | `HTTPS_PROXY` / `HTTP_PROXY` | Used by Claude Code; the API connection uses the Windows proxy settings |
 

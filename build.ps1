@@ -132,7 +132,7 @@ if (-not $NoRestart) {
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Build complete!" -ForegroundColor Green
-Write-Host "  HTTP server: http://localhost:18884" -ForegroundColor Gray
-Write-Host "  Test: curl -s http://localhost:18884/health" -ForegroundColor Gray
+Write-Host "  HTTP server: http://127.0.0.1:18884" -ForegroundColor Gray
+Write-Host "  Test: curl -s http://127.0.0.1:18884/health" -ForegroundColor Gray
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""

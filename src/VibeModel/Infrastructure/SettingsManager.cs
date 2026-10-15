@@ -171,6 +171,25 @@ namespace VibeModel.Infrastructure
         public static bool IsClaudeCodeDisabled() => ManagedSettings.GetBool(ManagedSettings.DisableClaudeCode) == true;
 
         /// <summary>
+        /// OpenServer: run the local HTTP server without a token, as before 1.2.11 — for people who
+        /// script against it. managed.json decides when IT set it; else settings.json; default false.
+        /// An explicit VIBEMODEL_TOKEN still wins over this (see ServerAuth).
+        /// </summary>
+        public static bool GetOpenServer()
+        {
+            var managed = ManagedSettings.GetBool(ManagedSettings.OpenServer);
+            if (managed.HasValue) return managed.Value;
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue(ManagedSettings.OpenServer, out val))
+            {
+                if (val is bool b) return b;
+                if (val is string s) return s.Equals("true", StringComparison.OrdinalIgnoreCase) || s == "1";
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Where the Claude Code CLI lives when set explicitly: managed.json, the
         /// VIBEMODEL_CLAUDE_CLI environment variable, then settings.json. "none" switches discovery
         /// off (simulates a laptop without Claude Code). Null = discover it.
@@ -388,6 +407,11 @@ namespace VibeModel.Infrastructure
                 return s;
             return fallback;
         }
+
+        /// <summary>Settings-side OpenServer (managed.json wins when IT set it); applies at the next Revit start.</summary>
+        public static void SetOpenServer(bool open) => SetValue(ManagedSettings.OpenServer, open);
+
+        internal static void SetValueForTests(string key, object value) => SetValue(key, value);
 
         private static void SetValue(string key, object value)
         {

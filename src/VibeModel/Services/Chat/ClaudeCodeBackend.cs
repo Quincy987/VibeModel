@@ -344,7 +344,7 @@ namespace VibeModel.Services.Chat
             {
                 sb.AppendLine("AUTH: This server requires a token. Add this header to EVERY curl call:");
                 sb.AppendLine("  -H \"" + RevitHttpServer.TokenHeader + ": $" + RevitHttpServer.TokenEnvVar + "\"");
-                sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell. Requests without this header return 401.");
+                sb.AppendLine("The " + RevitHttpServer.TokenEnvVar + " environment variable is already set in your shell (PowerShell: $env:" + RevitHttpServer.TokenEnvVar + "). Requests without this header return 401.");
                 sb.AppendLine();
             }
             var baseUrl = RevitHttpServer.BaseUrl(httpPort);
@@ -548,6 +548,10 @@ namespace VibeModel.Services.Chat
                 StandardErrorEncoding = Encoding.UTF8
             };
             ApplyProxyEnvironment(psi);
+            // The prompt file tells the CLI to send -H "X-VibeModel-Token: $VIBEMODEL_TOKEN"; this is
+            // where that variable comes from (the session token, or the user's own when they set one).
+            if (_authToken != null)
+                psi.EnvironmentVariables[RevitHttpServer.TokenEnvVar] = _authToken;
 
             Logger.Info("Starting claude: " + _claudePath + " " + args);
 
