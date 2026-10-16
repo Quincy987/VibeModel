@@ -126,8 +126,7 @@ namespace VibeModel.Services.Claude.FamilyGen
 
                     step = "parameters";
                     var fm = fd.FamilyManager;
-                    if (fm.CurrentType == null) fm.NewType(spec.TypeName);
-                    else if (fm.CurrentType.Name != spec.TypeName) fm.RenameCurrentType(spec.TypeName);
+                    if (!EnsureType(fm, spec.TypeName) && fm.CurrentType.Name != spec.TypeName) fm.RenameCurrentType(spec.TypeName);
 
                     if (forms.Count > 0 && spec.Kind != GenKind.Framing)
                     {
@@ -261,6 +260,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             var ext = fd.FamilyCreate.NewExtrusion(true, arr, SketchPlane.Create(fd, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, XYZ.Zero)), Ft(spec.VerticalHeight));
             var fm = fd.FamilyManager;
             var h = fm.get_Parameter(ParamHeight) ?? fm.AddParameter(ParamHeight, GroupTypeId.Geometry, SpecTypeId.Length, false);
+            EnsureType(fm, spec.TypeName);
             fm.Set(h, Ft(spec.VerticalHeight));
             fm.AssociateElementParameterToFamilyParameter(ext.get_Parameter(BuiltInParameter.EXTRUSION_END_PARAM), h);
             return ext;
@@ -287,6 +287,17 @@ namespace VibeModel.Services.Claude.FamilyGen
         }
 
         /// <summary>A Profile family: the outline as detail lines (x = u, y = v) + VM_Profile with the points.</summary>
+        /// <summary>
+        /// A fresh family document can have no type at all (Metric Profile.rft: "There is no current
+        /// type" on the first FamilyManager.Set). Creates the one named type; true when it did.
+        /// </summary>
+        private static bool EnsureType(FamilyManager fm, string typeName)
+        {
+            if (fm.CurrentType != null) return false;
+            fm.NewType(typeName);
+            return true;
+        }
+
         private static void ProfileFamily(Document fd, GenSpec spec)
         {
             var plan = PlanView(fd);
@@ -299,6 +310,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             }
             var fm = fd.FamilyManager;
             var p = fm.get_Parameter(ParamProfile) ?? fm.AddParameter(ParamProfile, GroupTypeId.Data, SpecTypeId.String.Text, false);
+            EnsureType(fm, spec.TypeName);
             fm.Set(p, spec.ProfileText ?? "");
         }
 
@@ -381,7 +393,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             var gFootT = P(ParamFootThickness);
             var gToe = P(ParamToe);
             var gHeel = P(ParamHeel);
-            if (fm.CurrentType == null) fm.NewType(spec.TypeName);
+            EnsureType(fm, spec.TypeName);
             fm.Set(gStem, Ft(s.Stem));
             fm.Set(gHeight, Ft(s.Height));
             fm.Set(gFoot, Ft(s.Foot));

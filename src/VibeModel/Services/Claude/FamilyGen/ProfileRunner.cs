@@ -657,7 +657,8 @@ namespace VibeModel.Services.Claude.FamilyGen
             bool movedExisting, string typeStatus, Material material, Level level, string zNote, List<string> setNotes,
             List<string> joined, List<string> joinRefused, string joinRollback, string filePath, string fileNote, GeneratedFamilyStore.Target target)
         {
-            _doc.Regenerate();
+            // No Regenerate here: the transactions are committed (a commit regenerates) and a
+            // Regenerate outside a transaction throws "Modification of the document is forbidden".
             string familyStatus;
             switch (action)
             {
