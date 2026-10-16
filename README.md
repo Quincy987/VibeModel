@@ -196,7 +196,7 @@ All in the chat panel's **Settings**:
 - **Project folder** — where the model's documents live; defaults to the folder of the open `.rvt`.
 - **Standards pack folder** — an office standards pack (phases, view templates, library, checks, manual). See [standards/README.md](standards/README.md) and the sample pack in `standards/example-office/`.
 - **Project memory & journal** — on by default; writes `VibeModel\memory.md` and `VibeModel\journal.md` next to the project documents.
-- Optional: set `VIBEMODEL_TOKEN` before starting Revit to require a token on every API call.
+- The local HTTP server needs a token on every call (except `/health`). Each Revit session makes its own and writes it to `%LOCALAPPDATA%\VibeModel\servers\<port>.json`; the chat pane uses it automatically. From a terminal: PowerShell `$t = (Get-Content "$env:LOCALAPPDATA\VibeModel\servers\18884.json" | ConvertFrom-Json).token; curl.exe -s -H "X-VibeModel-Token: $t" http://127.0.0.1:18884/info` — bash `TOKEN=$(python -c "import json,os;print(json.load(open(os.path.expandvars(r'%LOCALAPPDATA%\VibeModel\servers\18884.json')))['token'])")`. Set `VIBEMODEL_TOKEN` before starting Revit to choose the token yourself; `"OpenServer": true` in settings.json or managed.json runs it open, as before 1.2.11. Requests from web pages are refused regardless — see [SECURITY.md](SECURITY.md).
 </details>
 
 ## Building from source

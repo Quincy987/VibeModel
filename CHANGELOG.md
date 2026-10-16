@@ -38,6 +38,34 @@
 - Office packs get an optional `profiles` block (prefix, category per kind, templates, folder,
   shared parameters, materials, type-name pattern) and the example pack a `kadeconstructie` topic
   sheet: the questions an office answers about its quay walls, without values.
+### Security — the local server only answers the user's own tools
+A brainstorm review (2026-10-15) found that any web page the user had open could drive Revit: the
+server never looked at `Host` or `Origin`, and the token was off unless `VIBEMODEL_TOKEN` was set —
+`<img src="http://127.0.0.1:18884/exec?args=…">` ran C# inside Revit, and a domain resolving to
+127.0.0.1 could also read `readdoc`/memory. See the new `SECURITY.md`.
+- **Browser requests are refused** (403 `forbidden`, before `/health` too): any request with an
+  `Origin` header, a `Sec-Fetch-Site` other than `none`/`same-origin`, a cross-site `Sec-Fetch-Mode`,
+  or a `Host` that is not `127.0.0.1`, `localhost` or `[::1]` (bare or with the server's own port).
+  curl, the chat backends and the Claude Code CLI send none of these — nothing legitimate changes.
+- **A token on every call, by default.** Without `VIBEMODEL_TOKEN` the server now generates a random
+  per-session token and publishes it in the per-user `%LOCALAPPDATA%\VibeModel\servers\<port>.json`
+  (`token` field). The chat pane reads it in-process, the Claude Code CLI gets it as `VIBEMODEL_TOKEN`;
+  terminal one-liners for bash and PowerShell are in CLAUDE.md/README. An explicit `VIBEMODEL_TOKEN`
+  still wins. `"OpenServer": true` (managed.json or settings.json) restores the open server for
+  scripts; Diagnose shows which mode is active, and a 401's hint names the servers file.
+- **managed.json must be IT's.** `%ProgramData%\VibeModel\managed.json` is only trusted when file and
+  folder are owned by Administrators or SYSTEM and give ordinary users no write access (Windows lets
+  users create folders under ProgramData); otherwise it is ignored, logged once and named in Diagnose.
+  docs/deployment.md shows the `icacls` commands.
+
+### Fixed
+- `POST /batch`: a multi-byte character (`°`, `m²`, `ë`) that straddled a 4 KB read boundary was
+  decoded as two broken characters and changed the body's byte count. The request is now read as
+  bytes against Content-Length and decoded once; `Expect: 100-continue` (curl, bodies over 1 KB) is
+  answered before the body is awaited.
+- `scripts/sign.ps1` signed silently without a timestamp when the timestamp server was unreachable
+  (such a signature dies with the certificate). It is now an error unless `-NoTimestamp` is passed.
+- `poll-health.ps1` and the build summary use `127.0.0.1` instead of `localhost` (IPv6 stall).
 
 
 ## v1.2.10 — Zero-Admin Onboarding, Annotations Survive Replacements (2026-10-14)

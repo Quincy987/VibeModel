@@ -1,7 +1,7 @@
 for ($i = 0; $i -lt 12; $i++) {
     Start-Sleep -Seconds 10
     try {
-        $r = Invoke-WebRequest -Uri 'http://localhost:18884/health' -UseBasicParsing -TimeoutSec 3
+        $r = Invoke-WebRequest -Uri 'http://127.0.0.1:18884/health' -UseBasicParsing -TimeoutSec 3
         Write-Host "VibeModel is UP: $($r.Content)"
         exit 0
     } catch {

@@ -35,7 +35,7 @@ VibeModel runs an HTTP server on `http://localhost:18884` inside Revit. Commands
 
 **Port discovery (multiple Revit instances):** if 18884 is busy (e.g. a second Revit instance),
 the server falls back to 18885–18888. Each live server writes
-`%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc}`) on startup and deletes
+`%LOCALAPPDATA%\VibeModel\servers\<port>.json` (`{port, pid, startedUtc, token}`) on startup and deletes
 it on shutdown — read those files (a file is stale if its `pid` is no longer running) or probe
 `/health` on 18884–18888 to find the right port instead of assuming 18884.
 Clients running **on this machine** (in-process code, or the CLI the chat pane spawns) should
@@ -109,19 +109,41 @@ batch rolls back when a command was refused — and then its per-command `-- rev
 annotations) were undone with everything else. From code: `FailureCollector.Current` (a `FailureReport`
 — `DeletedIds`, `Resolved[*].Deleted`, `RollbackReason`) while a command executes.
 
-### Optional Auth Token (off by default)
-By default the server is **fully open** on loopback — no token, nothing changes. To gate access
-(e.g. so other localhost processes can't call `exec`/`delete`), set the `VIBEMODEL_TOKEN`
-environment variable **before launching Revit**. When set, every request except `/health` must
-carry a matching `X-VibeModel-Token` header:
+### Auth Token (on by default) and the browser gate
+Since 1.2.11 the server is **token-gated by default**: every request except `/health` must carry an
+`X-VibeModel-Token` header. `ServerAuth` decides the token once per Revit session:
+1. `VIBEMODEL_TOKEN` set in the environment Revit was started from → that token (unchanged behaviour);
+2. else `OpenServer: true` (managed.json, else settings.json) → **no token**, the pre-1.2.11 open
+   server, for people who script against it (the startup log warns);
+3. else a random 256-bit token for this session, published as the `token` field of the per-user
+   servers file `%LOCALAPPDATA%\VibeModel\servers\<port>.json` (next to `port`/`pid`; readable by
+   this Windows user only, like Revit's memory).
+From a terminal, read it from that file:
 ```bash
-export VIBEMODEL_TOKEN="your-secret"     # set before starting Revit
-curl -s -H "X-VibeModel-Token: $VIBEMODEL_TOKEN" http://localhost:18884/info
+# bash (Git for Windows)
+TOKEN=$(python -c "import json,os;print(json.load(open(os.path.expandvars(r'%LOCALAPPDATA%\VibeModel\servers\18884.json')))['token'])")
+curl -s -H "X-VibeModel-Token: $TOKEN" http://127.0.0.1:18884/info
+```
+```powershell
+# PowerShell
+$token = (Get-Content "$env:LOCALAPPDATA\VibeModel\servers\18884.json" | ConvertFrom-Json).token
+curl.exe -s -H "X-VibeModel-Token: $token" http://127.0.0.1:18884/info
 ```
 Missing/wrong token → `401` (`{"ok":false,"error":{"code":"unauthorized",...}}` in JSON mode,
-`ERROR: Missing or invalid token.` in text mode). `/health` stays unauthenticated for liveness
-probes. The in-app chat backends read the same env var and add the header automatically, so
-enabling the token doesn't break in-Revit chat.
+`ERROR: Missing or invalid token.` + a `Hint:` naming the servers file in text mode). `/health`
+stays unauthenticated for liveness probes. In-app clients need nothing: the chat backends and the
+pane read `ServerAuth.Token` directly (`ChatBackendBase.CreateRevitClient`), and the Claude Code CLI
+child gets it as `VIBEMODEL_TOKEN` in its environment (its prompt file says to send the header).
+Diagnose shows the mode (`Server access: per-session token … | token from VIBEMODEL_TOKEN | OPEN`).
+
+**Browser gate (`RequestGuard`, 403 `forbidden`).** A web page can reach loopback — `<img
+src="http://127.0.0.1:18884/exec?args=…">` is a GET no browser blocks, and a hostile domain
+resolving to 127.0.0.1 (DNS rebinding) is even same-origin. Before anything else (also `/health`)
+the server refuses any request with an `Origin` header, a `Sec-Fetch-Site` other than
+`none`/`same-origin`, a `Sec-Fetch-Mode` of `no-cors`/`cors`/`navigate` without a site, or a `Host`
+that is not `127.0.0.1`, `localhost` or `[::1]` (bare or with this server's own port). curl, the
+in-pane WebClient/HttpWebRequest calls and the Claude Code CLI send none of those headers, so
+nothing legitimate changes. Refusals are logged as WARN.
 
 ### Query Commands
 ```bash
@@ -646,8 +668,11 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   (`MaskKey`: `sk-ant-…1234`). Settings never copies a managed/environment key into settings.json.
 - **managed.json** (`Infrastructure/ManagedSettings.cs`, read-only, `%ProgramData%\VibeModel\` then
   `%APPDATA%\VibeModel\`, re-read at most once a minute): `PreferredBackend`, `Model`, `ApiBaseUrl`,
-  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language` override settings.json and are locked
-  in Settings ("beheerd door IT").
+  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer` override settings.json and
+  are locked in Settings ("beheerd door IT"). The `%ProgramData%` file is only trusted when `FileTrust`
+  says it is IT's: file and folder owned by Administrators or SYSTEM, no Allow-write ACE for Users /
+  Authenticated Users / Everyone / Interactive (ordinary users may create folders under ProgramData).
+  Otherwise it is ignored, logged once as WARN and named by Diagnose (`ManagedSettings.UntrustedFile`).
 - **HTTP**: every Anthropic call (chat, quick replies, distiller, key test) uses `AnthropicHttp`:
   `SettingsManager.MessagesUrl(GetApiBaseUrl())`, Windows proxy with the user's credentials for the
   proxy only, the Windows certificate store (validation never relaxed). TLS: Revit's process-wide

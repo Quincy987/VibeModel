@@ -44,9 +44,10 @@ namespace VibeModel.Services.Claude
             return "http://" + LoopbackHost + ":" + port;
         }
 
-        // Optional shared-secret gate. Read once at startup from the VIBEMODEL_TOKEN env var.
-        // Null/empty => auth disabled and the server behaves exactly as before (fully open).
-        // When set, every request except /health must present a matching X-VibeModel-Token header.
+        // Shared-secret gate, decided once at startup by ServerAuth: the VIBEMODEL_TOKEN env var
+        // when set, else a random per-session token (published in the servers file), else — only
+        // with OpenServer = true — no token at all. When a token is in force, every request except
+        // /health must present it in the X-VibeModel-Token header.
         internal const string TokenEnvVar = "VIBEMODEL_TOKEN";
         internal const string TokenHeader = "X-VibeModel-Token";
         private readonly string _authToken;
@@ -62,9 +63,7 @@ namespace VibeModel.Services.Claude
         public RevitHttpServer(RevitCommandHandler commandHandler)
         {
             _commandHandler = commandHandler;
-
-            var token = Environment.GetEnvironmentVariable(TokenEnvVar);
-            _authToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+            _authToken = ServerAuth.Initialize();
         }
 
         public bool Start()
@@ -86,9 +85,10 @@ namespace VibeModel.Services.Claude
                     };
                     _listenThread.Start();
 
-                    Logger.Info("HTTP server started on http://127.0.0.1:" + port
-                              + (_authToken != null ? " (token auth ENABLED)" : " (open, no token)"));
-                    ServerDiscovery.Write(port);
+                    Logger.Info("HTTP server started on http://127.0.0.1:" + port + " - " + ServerAuth.Describe(port));
+                    if (_authToken == null)
+                        Logger.Warn("HTTP server is OPEN (OpenServer = true): any local process can run commands without a token");
+                    ServerDiscovery.Write(port, _authToken);
                     return true;
                 }
                 catch (SocketException)
@@ -162,7 +162,7 @@ namespace VibeModel.Services.Claude
 
                 using (var stream = client.GetStream())
                 {
-                    var request = ReadHttpRequest(stream);
+                    var request = ReadHttpRequest(stream, bytes => stream.Write(bytes, 0, bytes.Length));
                     if (request == null)
                     {
                         SendResponse(stream, 400, "Bad Request");
@@ -191,40 +191,47 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        private HttpRequest ReadHttpRequest(NetworkStream stream)
+        internal const int MaxHeaderBytes = 65536;
+        internal const int MaxBodyBytes = 1048576; // 1 MB
+
+        /// <summary>
+        /// Reads one request as BYTES: the head up to the blank line, then exactly Content-Length
+        /// body bytes, and only then decodes the body as UTF-8 — once. (Decoding every 4 KB read
+        /// separately broke a °, m² or ë that straddled a read boundary, and re-encoding the
+        /// decoded overflow changed the byte count.) <paramref name="interim"/> receives
+        /// "100 Continue" when the client waits for it (curl does for bodies over 1 KB). Null when
+        /// the connection closed early or the head is malformed or too large.
+        /// </summary>
+        internal static HttpRequest ReadHttpRequest(Stream stream, Action<byte[]> interim = null)
         {
-            // Read headers — accumulate until we find \r\n\r\n
-            var headerBuilder = new StringBuilder();
+            var head = new MemoryStream();
             var buffer = new byte[4096];
             int headerEnd = -1;
-            byte[] overflow = null;
-            int overflowLength = 0;
+            byte[] pending = null; // body bytes that arrived together with the head
 
             while (headerEnd < 0)
             {
                 int bytesRead = stream.Read(buffer, 0, buffer.Length);
                 if (bytesRead == 0) return null;
+                head.Write(buffer, 0, bytesRead);
 
-                headerBuilder.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
-                var headerStr = headerBuilder.ToString();
-                headerEnd = headerStr.IndexOf("\r\n\r\n", StringComparison.Ordinal);
-
+                var all = head.GetBuffer();
+                int length = (int)head.Length;
+                // The terminator may straddle two reads: search from 3 bytes before this one.
+                headerEnd = IndexOfHeaderEnd(all, Math.Max(0, length - bytesRead - 3), length);
                 if (headerEnd >= 0)
                 {
-                    // Everything after \r\n\r\n is body overflow
                     int bodyStart = headerEnd + 4;
-                    var fullBytes = Encoding.UTF8.GetBytes(headerStr);
-                    var bodyOverflowStr = headerStr.Substring(bodyStart);
-                    overflow = Encoding.UTF8.GetBytes(bodyOverflowStr);
-                    overflowLength = overflow.Length;
+                    pending = new byte[length - bodyStart];
+                    Array.Copy(all, bodyStart, pending, 0, pending.Length);
                 }
-
-                if (headerBuilder.Length > 65536)
+                else if (length > MaxHeaderBytes)
+                {
                     return null; // Headers too large, reject
+                }
             }
 
-            var raw = headerBuilder.ToString();
-            var headerSection = raw.Substring(0, headerEnd);
+            var headerSection = Encoding.UTF8.GetString(head.GetBuffer(), 0, headerEnd);
             var lines = headerSection.Split(new[] { "\r\n" }, StringSplitOptions.None);
             if (lines.Length == 0) return null;
 
@@ -235,52 +242,36 @@ namespace VibeModel.Services.Claude
             var method = requestLine[0];
             var rawPath = requestLine[1];
 
-            // Capture Accept (used to decide text vs JSON response format) and the optional
-            // auth token header (used by the shared-secret gate when a token is configured).
-            string accept = null;
-            string token = null;
-            string turn = null;
-            foreach (var line in lines)
+            // Every header, first occurrence wins: Accept (text vs JSON), the token, the chat turn
+            // (journal), Content-Length / Expect, and the browser markers RequestGuard checks.
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 1; i < lines.Length; i++)
             {
-                if (accept == null && line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
-                {
-                    accept = line.Substring(7).Trim();
-                }
-                else if (token == null && line.StartsWith(TokenHeader + ":", StringComparison.OrdinalIgnoreCase))
-                {
-                    token = line.Substring(TokenHeader.Length + 1).Trim();
-                }
-                else if (turn == null && line.StartsWith(Chat.ProjectJournal.TurnHeader + ":", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Project journal: which chat turn sent this (id + url-encoded question).
-                    turn = line.Substring(Chat.ProjectJournal.TurnHeader.Length + 1).Trim();
-                }
+                int colon = lines[i].IndexOf(':');
+                if (colon <= 0) continue;
+                var name = lines[i].Substring(0, colon).Trim();
+                if (!headers.ContainsKey(name))
+                    headers[name] = lines[i].Substring(colon + 1).Trim();
             }
 
-            // Find Content-Length for POST body
             string body = null;
             if (method == "POST")
             {
                 int contentLength = 0;
-                foreach (var line in lines)
-                {
-                    if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int.TryParse(line.Substring(15).Trim(), out contentLength);
-                    }
-                }
+                if (headers.TryGetValue("Content-Length", out var lengthHeader))
+                    int.TryParse(lengthHeader, out contentLength);
 
-                if (contentLength > 0 && contentLength <= 1048576) // 1MB max body
+                if (contentLength > 0 && contentLength <= MaxBodyBytes)
                 {
-                    // Start with any overflow from header read
                     var bodyBytes = new byte[contentLength];
-                    int bodyRead = 0;
+                    int bodyRead = Math.Min(pending.Length, contentLength);
+                    Array.Copy(pending, 0, bodyBytes, 0, bodyRead);
 
-                    if (overflow != null && overflowLength > 0)
+                    if (bodyRead < contentLength && interim != null &&
+                        headers.TryGetValue("Expect", out var expect) &&
+                        expect.Equals("100-continue", StringComparison.OrdinalIgnoreCase))
                     {
-                        int toCopy = Math.Min(overflowLength, contentLength);
-                        Array.Copy(overflow, 0, bodyBytes, 0, toCopy);
-                        bodyRead = toCopy;
+                        interim(Encoding.ASCII.GetBytes("HTTP/1.1 100 Continue\r\n\r\n"));
                     }
 
                     // Read remaining body bytes with blocking reads
@@ -293,14 +284,28 @@ namespace VibeModel.Services.Claude
 
                     body = Encoding.UTF8.GetString(bodyBytes, 0, bodyRead);
                 }
-                else if (overflow != null && overflowLength > 0)
+                else if (contentLength == 0 && pending.Length > 0)
                 {
                     // No Content-Length but some body data arrived
-                    body = Encoding.UTF8.GetString(overflow, 0, overflowLength);
+                    body = Encoding.UTF8.GetString(pending);
                 }
             }
 
-            return new HttpRequest(method, rawPath, body, accept, token) { Turn = Chat.ChatTurnRef.FromHeader(turn) };
+            headers.TryGetValue("Accept", out var accept);
+            headers.TryGetValue(TokenHeader, out var token);
+            // Project journal: which chat turn sent this (id + url-encoded question).
+            headers.TryGetValue(Chat.ProjectJournal.TurnHeader, out var turn);
+            return new HttpRequest(method, rawPath, body, accept, token, headers) { Turn = Chat.ChatTurnRef.FromHeader(turn) };
+        }
+
+        private static int IndexOfHeaderEnd(byte[] data, int from, int length)
+        {
+            for (int i = from; i + 3 < length; i++)
+            {
+                if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n')
+                    return i;
+            }
+            return -1;
         }
 
         private HttpResponse ProcessRequest(HttpRequest request)
@@ -339,6 +344,15 @@ namespace VibeModel.Services.Claude
                               request.Accept.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0);
             var fmt = wantsJson ? ResponseFormat.Json : ResponseFormat.Text;
 
+            // Browser / DNS-rebinding gate, before anything else — /health included: a page that
+            // can probe which ports answer is a page that can enumerate running Revit instances.
+            var refused = RequestGuard.Check(request.Headers, ActivePort);
+            if (refused != null)
+            {
+                Logger.Warn("Refused request to /" + path + ": " + refused);
+                return Forbidden(fmt, refused);
+            }
+
             // Route
             // /health (and the bare root) stays unauthenticated so liveness probes keep
             // working regardless of whether a token is configured.
@@ -347,8 +361,8 @@ namespace VibeModel.Services.Claude
                 return new HttpResponse(200, "OK");
             }
 
-            // Shared-secret gate: when a token is configured, every non-health request must
-            // present a matching X-VibeModel-Token header. No token configured => open (unchanged).
+            // Shared-secret gate: when a token is in force (the default), every non-health request
+            // must present a matching X-VibeModel-Token header. Open server (opt-in) => no check.
             if (_authToken != null && !FixedTimeEquals(_authToken, request.Token))
             {
                 return Unauthorized(fmt);
@@ -376,16 +390,33 @@ namespace VibeModel.Services.Claude
         private HttpResponse Unauthorized(ResponseFormat fmt)
         {
             const string message = "Missing or invalid token.";
-            const string suggestion = "Send the configured token in the " + TokenHeader + " request header.";
+            var suggestion = "Send the server's token in the " + TokenHeader + " request header. " +
+                (ServerAuth.Mode == ServerAuthMode.EnvironmentToken
+                    ? "It is the value of " + TokenEnvVar + " in the environment Revit was started from."
+                    : "This session's token is the \"token\" field of " + ServerDiscovery.GetFilePath(ActivePort) + ".");
+            return ErrorResponse(401, fmt, "unauthorized", message, suggestion);
+        }
 
+        // 403 for a request a web page made (Origin / Sec-Fetch-*) or that names another host.
+        private HttpResponse Forbidden(ResponseFormat fmt, string reason)
+        {
+            const string suggestion = "Only local tools may drive this server: call it from curl, a script or the chat pane, " +
+                                      "without browser headers, at http://127.0.0.1:<port>.";
+            return ErrorResponse(403, fmt, "forbidden", reason, suggestion);
+        }
+
+        // JSON uses the standard error envelope ({"ok":false,"error":{code,message,suggestion}});
+        // text mode uses the "ERROR:" convention with a Hint line.
+        private static HttpResponse ErrorResponse(int status, ResponseFormat fmt, string code, string message, string suggestion)
+        {
             if (fmt == ResponseFormat.Json)
             {
-                var body = CommandResult.Error("unauthorized", message, suggestion)
+                var body = CommandResult.Error(code, message, suggestion)
                     .Render(ResponseFormat.Json, new JavaScriptSerializer());
-                return new HttpResponse(401, body, "application/json; charset=utf-8");
+                return new HttpResponse(status, body, "application/json; charset=utf-8");
             }
 
-            return new HttpResponse(401, "ERROR: " + message + "\nHint: " + suggestion);
+            return new HttpResponse(status, "ERROR: " + message + "\nHint: " + suggestion);
         }
 
         // Length-independent, short-circuit-free comparison to avoid leaking the token via timing.
@@ -485,6 +516,7 @@ namespace VibeModel.Services.Claude
             {
                 case 200: statusText = "OK"; break;
                 case 401: statusText = "Unauthorized"; break;
+                case 403: statusText = "Forbidden"; break;
                 default: statusText = "Bad Request"; break;
             }
             var bodyBytes = Encoding.UTF8.GetBytes(body ?? "");
@@ -502,22 +534,25 @@ namespace VibeModel.Services.Claude
             stream.Flush();
         }
 
-        private class HttpRequest
+        internal class HttpRequest
         {
             public string Method { get; }
             public string Path { get; }
             public string Body { get; }
             public string Accept { get; }
             public string Token { get; }
+            public IDictionary<string, string> Headers { get; }
             public Chat.ChatTurnRef Turn { get; set; }
 
-            public HttpRequest(string method, string path, string body, string accept = null, string token = null)
+            public HttpRequest(string method, string path, string body, string accept = null, string token = null,
+                IDictionary<string, string> headers = null)
             {
                 Method = method;
                 Path = path;
                 Body = body;
                 Accept = accept;
                 Token = token;
+                Headers = headers ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             }
         }
 

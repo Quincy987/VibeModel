@@ -29,7 +29,12 @@ namespace VibeModel.Services.Claude
             return Path.Combine(GetServersDirectory(), port + ".json");
         }
 
-        internal static string BuildJson(int port, int pid, DateTime startedUtc)
+        /// <summary>
+        /// {port, pid, startedUtc[, token]}. The token is the one requests must carry (absent when
+        /// the server is open); the folder is under the user's own profile, so only this Windows
+        /// user (and administrators) can read it — the same people who could read Revit's memory.
+        /// </summary>
+        internal static string BuildJson(int port, int pid, DateTime startedUtc, string token = null)
         {
             var payload = new Dictionary<string, object>
             {
@@ -37,10 +42,12 @@ namespace VibeModel.Services.Claude
                 { "pid", pid },
                 { "startedUtc", startedUtc.ToString("o") }
             };
+            if (!string.IsNullOrEmpty(token))
+                payload["token"] = token;
             return new JavaScriptSerializer().Serialize(payload);
         }
 
-        public static void Write(int port)
+        public static void Write(int port, string token = null)
         {
             try
             {
@@ -48,7 +55,8 @@ namespace VibeModel.Services.Claude
                 var json = BuildJson(
                     port,
                     System.Diagnostics.Process.GetCurrentProcess().Id,
-                    DateTime.UtcNow);
+                    DateTime.UtcNow,
+                    token);
                 File.WriteAllText(GetFilePath(port), json);
                 Logger.Info("Server discovery file written: " + GetFilePath(port));
             }

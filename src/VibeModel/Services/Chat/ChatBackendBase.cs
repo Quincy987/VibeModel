@@ -21,8 +21,9 @@ namespace VibeModel.Services.Chat
         protected readonly IReadOnlyDictionary<string, IClaudeCommand> _commands;
         protected readonly object _lock = new object();
 
-        // Shared secret for the local Revit HTTP server. Null unless VIBEMODEL_TOKEN is set —
-        // when present, in-app tool/context calls must carry the X-VibeModel-Token header.
+        // Shared secret for the local Revit HTTP server (ServerAuth: VIBEMODEL_TOKEN, else this
+        // session's generated token; null only on an opted-in open server). In-app tool/context
+        // calls carry it in the X-VibeModel-Token header.
         protected readonly string _authToken;
 
         // Assigned by subclasses that talk over HTTP (Anthropic, Local). ClaudeCode leaves
@@ -42,19 +43,17 @@ namespace VibeModel.Services.Chat
             _commands = commands;
             _httpPort = httpPort;
 
-            var token = Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar);
-            _authToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+            _authToken = ServerAuth.Token;
         }
 
         /// <summary>
         /// A WebClient for the local Revit server, UTF-8 and carrying the auth token header when
-        /// one is configured. Centralizes the header so every in-app call stays authenticated.
+        /// one is in force. Centralizes the header so every in-app call stays authenticated.
         /// </summary>
         protected WebClient CreateRevitClient() => NewRevitClient(_authToken);
 
-        /// <summary>The same client for code outside a backend (the pane's source popup); token from the environment.</summary>
-        internal static WebClient NewRevitClient() =>
-            NewRevitClient(Environment.GetEnvironmentVariable(RevitHttpServer.TokenEnvVar));
+        /// <summary>The same client for code outside a backend (the pane's source popup).</summary>
+        internal static WebClient NewRevitClient() => NewRevitClient(ServerAuth.Token);
 
         private static WebClient NewRevitClient(string token)
         {

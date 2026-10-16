@@ -15,6 +15,11 @@
                    it is "not trusted" and Revit still asks whether to load the add-in. Real
                    distribution needs a certificate from a CA (ask IT).
 
+.PARAMETER NoTimestamp
+    Sign without an RFC 3161 timestamp. Without this switch an unreachable timestamp server is an
+    ERROR (an untimestamped signature dies with the certificate; silently shipping one is worse
+    than failing the build). Only for a local test build.
+
 .PARAMETER Files
     The files to sign. Default: the add-in, the PDF helper and the scripts of a build/release
     folder given by -Root.
@@ -30,7 +35,8 @@ param(
     [string]$Thumbprint,
     [string]$PfxPath,
     [SecureString]$PfxPassword,
-    [string]$TimestampServer = "http://timestamp.digicert.com"
+    [string]$TimestampServer = "http://timestamp.digicert.com",
+    [switch]$NoTimestamp
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,15 +86,23 @@ if ($signing.SelfSigned) {
 
 $failed = 0
 foreach ($file in $Files) {
-    try {
-        $result = Set-AuthenticodeSignature -FilePath $file -Certificate $signing.Cert -TimestampServer $TimestampServer -HashAlgorithm SHA256
-    } catch {
-        # A timestamp server that cannot be reached (offline, proxy): sign without, and say so.
-        Write-Host "  timestamp failed for $(Split-Path $file -Leaf) ($($_.Exception.Message)); signing without a timestamp" -ForegroundColor Yellow
+    if ($NoTimestamp) {
         $result = Set-AuthenticodeSignature -FilePath $file -Certificate $signing.Cert -HashAlgorithm SHA256
+    } else {
+        try {
+            $result = Set-AuthenticodeSignature -FilePath $file -Certificate $signing.Cert -TimestampServer $TimestampServer -HashAlgorithm SHA256
+        } catch {
+            # A timestamp server that cannot be reached (offline, proxy) is a hard error: a signature
+            # without a timestamp expires with the certificate. Pass -NoTimestamp to accept that knowingly.
+            throw "Timestamping $(Split-Path $file -Leaf) at $TimestampServer failed: $($_.Exception.Message). Fix the connection (proxy?) or pass -NoTimestamp for a local test build."
+        }
     }
     $check = Get-AuthenticodeSignature -FilePath $file
     $ok = $check.SignerCertificate -and $check.SignerCertificate.Thumbprint -eq $signing.Cert.Thumbprint
+    # Set-AuthenticodeSignature can also return without throwing yet without a timestamp.
+    if ($ok -and -not $NoTimestamp -and -not $check.TimeStamperCertificate) {
+        throw "$(Split-Path $file -Leaf) was signed WITHOUT a timestamp (server $TimestampServer). Fix the connection or pass -NoTimestamp."
+    }
     if (-not $ok) { $failed++ }
     Write-Host ("  {0,-28} {1}  ({2})" -f (Split-Path $file -Leaf), $(if ($ok) { "signed" } else { "NOT signed" }), $check.Status)
 }
