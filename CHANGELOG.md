@@ -28,7 +28,10 @@
   phase (`--phase`), runs the post-command check and is journaled with the `.rfa` it wrote.
 - Re-running updates instead of adding "(2)": the same profile reuses the loaded family, a changed one
   is regenerated and reloaded keeping the project's type values; a family edited by hand in Revit
-  since (or one VibeModel did not make) is refused until `--replace`.
+  since (or one VibeModel did not make) is refused until `--replace`. Live-checked in Revit 2023
+  (`docs/verify/plan12-live-2026-10-16.md`): a reused family is not opened, so its hand edits show
+  up as a `WARN` when Revit's volume differs from profile area × length; `--replace` regenerates
+  even with unchanged points.
 - The `.rfa` files go to `<project folder>\VibeModel\families\` (3 s deadline; offline → a local copy,
   said in the response). Revit's shared-parameter file setting is swapped for the build and always
   restored.
