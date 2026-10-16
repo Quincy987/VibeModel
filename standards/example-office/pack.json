@@ -67,7 +67,8 @@
     "naming": "topics/naming.md",
     "export": "topics/export.md",
     "checklist": "checklist.md",
-    "inventory": "template-inventory.md"
+    "inventory": "template-inventory.md",
+    "kadeconstructie": "topics/kadeconstructie.md"
   },
   "phaseTable": {
     "default": "new",
@@ -164,5 +165,32 @@
         "document": "checklist"
       }
     ]
+  },
+  "profiles": {
+    "familyPrefix": "EX_",
+    "category": {
+      "lwall": "generic",
+      "capstone": "generic",
+      "apron": "generic",
+      "sweep": "generic"
+    },
+    "familyTemplates": {
+      "lineBased": "EX_Generic Model line based.rft",
+      "generic": "EX_Generic Model.rft",
+      "foundation": "EX_Structural Foundation.rft",
+      "framing": "EX_Structural Framing.rft",
+      "profile": "EX_Profile.rft"
+    },
+    "folder": "Model\\Project families\\Generated",
+    "sharedParameters": {
+      "file": "\\\\server\\revit\\admin\\EX_SharedParameters.txt",
+      "length": "EX_Length",
+      "objectCode": "EX_ObjectCode"
+    },
+    "material": {
+      "default": "EX_Concrete in situ",
+      "capstone": "EX_Concrete prefab"
+    },
+    "typeName": "{stem}x{height} foot {foot}x{footThickness}"
   }
 }

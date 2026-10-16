@@ -283,6 +283,68 @@ is refused; `--switch` when the wrong element wins). Use `--cut` for penetration
 a quay wall, an H-beam inside a concrete pile); plain `join` for shared faces (a wing wall against
 a capstone). `unjoin` removes whichever relation exists — join, cut, or both.
 
+### Composite Profiles (profile / extrude / sweep / lwall)
+Quay walls, capstones, aprons and curved runs as **real, schedulable families with a type** — not
+`exec` DirectShapes (no Volume, no join). Each command generates a family on the fly
+(`Application.NewFamilyDocument`), saves it, loads it and places it in ONE transaction group: one
+Ctrl+Z, also inside `batch` (atomic included). Plan: `docs/plans/12-composite-profiles.md`.
+```bash
+curl -G -s "http://localhost:18884/profile" --data-urlencode "args=Deksteen --points 0,0 500,0 500,250 470,280 0,280"   # Profile family + VM_Profile
+curl -s "http://localhost:18884/profile?args=Deksteen"                                        # Points, area, box, centroid; 'profile' lists them
+curl -s "http://localhost:18884/extrude?args=Deksteen --along 4711 --material Beton"          # Line-based Generic Model along a line/wall id or x1 y1 x2 y2
+curl -s "http://localhost:18884/extrude?args=Deksteen --along 0 0 10000 0 --category foundation"   # Point-based foundation with Wall length (or framing)
+curl -s "http://localhost:18884/extrude?args=Damwandpaar --vertical 15000 --at 1000 2000 --rotate 30"  # Plan profile standing up (Height = type parameter)
+curl -s "http://localhost:18884/sweep?args=Kade L --along 4711,4712,4713"                       # Along a chain of lines/arcs (any order) or a wall
+curl -s "http://localhost:18884/lwall?args=-92722 14921 -73243 10385 --stem 600x4000 --foot 2500x800"  # L-wall: one parametric family, a type per size
+curl -s "http://localhost:18884/lwall?args=--along 1543814 --stem 600x4000 --foot 2500x800 --toe 500 --side right --type-name KW1 --material Beton --phase new"
+```
+- **Profile convention** (all commands): a closed polygon in mm, **u = horizontal, positive to the
+  LEFT of the run direction** x1,y1 → x2,y2 (the side `section` looks to), **v = up** from the line's
+  elevation (the level + `--z`); (0,0) lies on the line. A repeated closing point, duplicates and
+  collinear points are dropped, clockwise input is turned round; < 3 points, no area or a crossing
+  outline (the segments are named) is refused. Lines only (arcs in a profile: phase 2). `--flip`
+  mirrors u. `--vertical`: u,v = plan x,y around `--at`.
+- **`lwall`**: the line is the stem's **front face**; the heel lies on `--side` (default left). Stem
+  `<thickness>x<height>` (height = underside of the foot → top), foot `<width>x<thickness>` (width =
+  the whole foot), `--toe` = how far the foot sticks out in front. Family `<prefix>L-wand` (line-based
+  Generic Model; `--category foundation` → `<prefix>L-wand SF`) with type parameters Stem width,
+  Height, Foot width, Foot thickness, Toe (Heel = Foot width − Toe) on locked reference planes — the
+  user can flex it in Type Properties. Each size combination is a **type** named from the sizes
+  (`600x4000 voet 2500x800`, pack `profiles.typeName`), an existing type is reused (refused when its
+  sizes were changed in Revit); never a second family. `--slope <mm>` (foot thickness at the back)
+  is not parametric yet: a fixed-profile family per size, and the response says so.
+- **Families**: `<prefix><profile>` (Generic Models, line-based), `… SF` (foundation), `… beam`
+  (framing — a real beam: analytical member, the section hangs from its top at the line),
+  `… vertical`, `… sweep <first id>` (or `--name`), the profile itself `<prefix><name> profile`
+  (Profiles: Revit's Wall Sweep / Slab Edge tools use it too). Prefix from the pack
+  (`profiles.familyPrefix`, default `VM_`). Parameters: `Material` (type), `VM_Length` (shared,
+  instance, `= Length` / `Wall length`; the sweep's path length) and the hidden `VM_Source` stamp,
+  from a shared-parameter file with fixed GUIDs (`%LOCALAPPDATA%\VibeModel\VibeModel.SharedParameters.txt`,
+  or the pack's office file + names). Revit's `SharedParametersFilename` is swapped for the build and
+  always restored.
+- **Re-running updates, never "(2)"**: same profile/path → the loaded family is reused (no
+  generation); changed points or path → regenerated and reloaded with `overwriteParameterValues =
+  false` (project types and their values stay, existing instances follow; a sweep's instance moves to
+  the new path start). A family changed by hand since (Edit Family → Load into Project — detected by
+  the structure hash in `VM_Source` when the family would be overwritten) or one VibeModel did not
+  generate is refused until `--replace`. A reused family is not opened (no `EditFamily` per `lwall`),
+  so a hand edit shows up as `WARN: volume … but the profile gives …` (Revit's volume vs profile area ×
+  length, straight runs, not joined); `--replace` always regenerates, also with unchanged points.
+- **Files**: built in `%LOCALAPPDATA%\VibeModel\families\_staging\<pid>\`, loaded from there, then
+  copied to `<project folder>\VibeModel\families\<family>.rfa` (pack `profiles.folder`, relative to the
+  project folder) with the 3 s project-folder deadline; offline → `…\families\_offline\`, said in the
+  response. The model never depends on the file. Templates: pack `profiles.familyTemplates.<kind>`
+  (`lineBased|generic|foundation|framing|profile`; a network template is cached with a deadline),
+  else the Autodesk metric templates (Revit's template folder, then
+  `C:\ProgramData\Autodesk\RVT <ver>\Family Templates\English\`).
+- **Placement**: phase via `PhaseDefaults` like `place` (`--phase`), `--set "P=v"` (instance),
+  `--material` (type parameter: every instance of that type follows — the response says so), the
+  post-command check and the journal (`lwall … · created … · wrote VM_L-wand.rfa`). The new element is
+  joined with every wall, floor and generated element it really overlaps (never library families such
+  as piles); `--no-join` skips that. Response: family (new / reused / updated), type, profile area,
+  side (compass), instance id, length, **Volume** (from Revit), underside/top, material, phase, joins,
+  file, and a `section` / `schedule … VM_Length,Volume` next step.
+
 ### Batch Commands (POST)
 A batch runs as **one undo unit** — the whole batch collapses to a single Ctrl+Z in Revit.
 Send a multi-step "vibe" as one `/batch` to get one-undo behavior (rather than many single calls).

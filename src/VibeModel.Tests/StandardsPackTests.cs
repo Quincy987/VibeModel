@@ -75,7 +75,7 @@ namespace VibeModel.Tests
             Assert.Equal("example-office", pack.Id);
             Assert.Equal("2026-10-11.1", pack.Version);
             Assert.Contains("phasing", pack.TopicNames);
-            Assert.Equal(10, pack.Topics.Count);
+            Assert.Equal(11, pack.Topics.Count);
             Assert.Equal(3, pack.Fingerprint.Phases.Count);
             Assert.Equal("checks.json", pack.ChecksFile);
             Assert.Equal("EX_TITLEBLOCK : A1", pack.Sheets.DefaultTitleblock);
@@ -86,6 +86,47 @@ namespace VibeModel.Tests
             Assert.False(pack.LinkCad.CorrectOffAxisLines);
             Assert.True(pack.LinkCad.PinAfterLink);
             Assert.Equal(1000, pack.CoordinateRoundingMm);
+        }
+
+        [Fact]
+        public void ExamplePack_ProfilesBlock()
+        {
+            var p = Example().Profiles;
+            Assert.Equal("EX_", p.FamilyPrefix);
+            Assert.Equal("generic", p.CategoryFor("lwall"));
+            Assert.Equal("generic", p.CategoryFor("CAPSTONE", "extrude"));
+            Assert.Equal("EX_Generic Model line based.rft", p.FamilyTemplates["lineBased"]);
+            Assert.Equal(@"Model\Project families\Generated", p.Folder);
+            Assert.Equal(@"\\server\revit\admin\EX_SharedParameters.txt", p.SharedParameterFile);
+            Assert.Equal("EX_Length", p.LengthParameter);
+            Assert.Equal("EX_ObjectCode", p.ObjectCodeParameter);
+            Assert.Equal("EX_Concrete prefab", p.MaterialFor("capstone"));
+            Assert.Equal("EX_Concrete in situ", p.MaterialFor("lwall"));
+            Assert.Equal("{stem}x{height} foot {foot}x{footThickness}", p.TypeName);
+            Assert.Contains("Wall body", Example().GetTopicText("kadeconstructie"));
+        }
+
+        [Fact]
+        public void Profiles_AbsentBlock_GivesDefaults()
+        {
+            var p = StandardsPack.TryLoad(WritePack("noprof", "{\"id\":\"noprof\"}"), out _).Profiles;
+            Assert.NotNull(p);
+            Assert.Null(p.FamilyPrefix);
+            Assert.Null(p.CategoryFor("lwall", "extrude"));
+            Assert.Null(p.MaterialFor("lwall"));
+            Assert.Null(p.Folder);
+            Assert.Null(p.TypeName);
+        }
+
+        [Fact]
+        public void Profiles_MaterialShorthand_AndBlankValuesIgnored()
+        {
+            var p = StandardsPack.TryLoad(WritePack("prof2",
+                "{\"id\":\"prof2\",\"profiles\":{\"material\":\"Beton\",\"category\":{\"lwall\":\" \",\"Deksteen\":\"foundation\"},\"familyPrefix\":\"\"}}"), out _).Profiles;
+            Assert.Equal("Beton", p.MaterialFor("anything"));
+            Assert.Null(p.CategoryFor("lwall"));
+            Assert.Equal("foundation", p.CategoryFor("deksteen", "extrude"));
+            Assert.Equal("", p.FamilyPrefix);   // an empty prefix is a choice: no prefix
         }
 
         [Fact]
