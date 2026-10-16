@@ -38,6 +38,7 @@
 - Office packs get an optional `profiles` block (prefix, category per kind, templates, folder,
   shared parameters, materials, type-name pattern) and the example pack a `kadeconstructie` topic
   sheet: the questions an office answers about its quay walls, without values.
+
 ### Security — the local server only answers the user's own tools
 A brainstorm review (2026-10-15) found that any web page the user had open could drive Revit: the
 server never looked at `Host` or `Origin`, and the token was off unless `VIBEMODEL_TOKEN` was set —
