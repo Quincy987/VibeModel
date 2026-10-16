@@ -380,10 +380,12 @@ namespace VibeModel.Services.Claude
         public static Action Decide(bool exists, string existingStamp, string newSpecHash, string currentStructure, bool replace)
         {
             if (!exists) return Action.Create;
-            if (!TryParseStamp(existingStamp, out var version, out var spec, out var structure))
-                return replace ? Action.Regenerate : Action.RefuseForeign;
-            if (version == GeneratorVersion && spec == newSpecHash) return Action.Reuse;
+            // --replace always regenerates — also for an unchanged spec: that is how a family edited
+            // by hand (live: an extra extrusion, "reused" with its volume) gets its generated shape back.
             if (replace) return Action.Regenerate;
+            if (!TryParseStamp(existingStamp, out var version, out var spec, out var structure))
+                return Action.RefuseForeign;
+            if (version == GeneratorVersion && spec == newSpecHash) return Action.Reuse;
             if (currentStructure != null && currentStructure != structure) return Action.RefuseEdited;
             return Action.Regenerate;
         }

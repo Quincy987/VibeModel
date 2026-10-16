@@ -311,6 +311,14 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void Decide_SameSpec_Replace_RegeneratesAnyway()
+        {
+            // Live: a family edited by hand keeps the stamp and the spec, so only --replace can bring the generated shape back.
+            Assert.Equal(FamilyNaming.Action.Regenerate, FamilyNaming.Decide(true, Ours, "specA", null, true));
+            Assert.False(FamilyNaming.NeedsStructureCheck(true, Ours, "specA", true));
+        }
+
+        [Fact]
         public void Decide_NewSpec_Unedited_Regenerates()
         {
             Assert.True(FamilyNaming.NeedsStructureCheck(true, Ours, "specB", false));

@@ -326,7 +326,10 @@ curl -s "http://localhost:18884/lwall?args=--along 1543814 --stem 600x4000 --foo
   generation); changed points or path → regenerated and reloaded with `overwriteParameterValues =
   false` (project types and their values stay, existing instances follow; a sweep's instance moves to
   the new path start). A family changed by hand since (Edit Family → Load into Project — detected by
-  the structure hash in `VM_Source`) or one VibeModel did not generate is refused until `--replace`.
+  the structure hash in `VM_Source` when the family would be overwritten) or one VibeModel did not
+  generate is refused until `--replace`. A reused family is not opened (no `EditFamily` per `lwall`),
+  so a hand edit shows up as `WARN: volume … but the profile gives …` (Revit's volume vs profile area ×
+  length, straight runs, not joined); `--replace` always regenerates, also with unchanged points.
 - **Files**: built in `%LOCALAPPDATA%\VibeModel\families\_staging\<pid>\`, loaded from there, then
   copied to `<project folder>\VibeModel\families\<family>.rfa` (pack `profiles.folder`, relative to the
   project folder) with the 3 s project-folder deadline; offline → `…\families\_offline\`, said in the

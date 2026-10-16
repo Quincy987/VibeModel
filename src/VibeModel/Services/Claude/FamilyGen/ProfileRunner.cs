@@ -670,7 +670,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             switch (action)
             {
                 case FamilyNaming.Action.Create: familyStatus = "new"; break;
-                case FamilyNaming.Action.Reuse: familyStatus = "reused, unchanged"; break;
+                case FamilyNaming.Action.Reuse: familyStatus = "reused, not regenerated"; break;
                 default:
                     familyStatus = _a.Replace ? "replaced (--replace)" : "updated: regenerated and reloaded, project types and their values kept, existing instances follow";
                     break;
@@ -679,6 +679,19 @@ namespace VibeModel.Services.Claude.FamilyGen
             double? volume = volP != null && volP.HasValue ? RevitUnitHelper.CuFeetToM3(volP.AsDouble()) : (double?)null;
             double lengthMm = plan.Kind == GenKind.Sweep ? plan.ChainLengthMm : plan.Run != null ? Mm(plan.Run.Length) : 0;
             var bb = inst.get_BoundingBox(null);
+
+            // A reused family is not opened (speed), so a hand edit since the generation is invisible
+            // to the stamp (live: an extra extrusion was placed as "reused"). The volume gives it away:
+            // a straight run must measure profile area × length (a joined element may have lost some).
+            string reuseNote = null;
+            if (action == FamilyNaming.Action.Reuse && volume.HasValue && plan.Profile != null && plan.Kind != GenKind.Sweep && joined.Count == 0)
+            {
+                double runM = (plan.Kind == GenKind.Vertical ? _a.VerticalHeight : lengthMm) / 1000.0;
+                double expected = plan.Profile.AreaM2 * runM;
+                if (expected > 0 && Math.Abs(volume.Value - expected) > 0.01 * expected + 0.0005)
+                    reuseNote = "WARN: volume " + ProfileGeometry.M3(volume.Value) + " m³, but the profile gives " + ProfileGeometry.M3(expected) +
+                                " m³ — the loaded family differs from what VibeModel generated (edited in Revit?). Add --replace to regenerate it.";
+            }
 
             string title = _command == "lwall" ? "L-WALL PLACED" : _command == "sweep" ? "SWEPT" : "EXTRUDED";
             var sb = new StringBuilder();
@@ -717,6 +730,7 @@ namespace VibeModel.Services.Claude.FamilyGen
             sb.AppendLine("Instance: " + inst.Id.IntegerValue + " " + where + (volume.HasValue ? ", volume " + ProfileGeometry.M3(volume.Value) + " m³" : ""));
             if (bb != null) sb.AppendLine("  underside " + ProfileGeometry.F(Mm(bb.Min.Z)) + " mm, top " + ProfileGeometry.F(Mm(bb.Max.Z)) + " mm (level " + level.Name + (Math.Abs(_a.Z) > 1e-9 ? " + " + ProfileGeometry.F(_a.Z) : "") + ")");
             if (zNote != null) sb.AppendLine("  " + zNote);
+            if (reuseNote != null) sb.AppendLine("  " + reuseNote);
 
             var matP = symbol.LookupParameter(plan.Kind == GenKind.Framing ? "Structural Material" : FamilyBuilder.ParamMaterial);
             var matName = matP != null && matP.AsElementId() != ElementId.InvalidElementId ? _doc.GetElement(matP.AsElementId())?.Name : "<By Category>";
@@ -740,7 +754,8 @@ namespace VibeModel.Services.Claude.FamilyGen
 
             var scheduleCat = plan.Kind == GenKind.Foundation || plan.Kind == GenKind.LwallFoundation ? "structural foundations"
                             : plan.Kind == GenKind.Framing ? "structural framing" : "generic models";
-            sb.AppendLine("Next: 'section " + inst.Id.IntegerValue + "' to check the profile; 'schedule " + scheduleCat +
+            // 'section <id>' takes wall ids only (live): give a line across the element instead.
+            sb.AppendLine("Next: 'section x1 y1 x2 y2 --depth 1500' across " + inst.Id.IntegerValue + " to check the profile; 'schedule " + scheduleCat +
                           " --fields \"Family and Type,Count," + GeneratedFamilyStore.LengthName + ",Volume\" --group Family and Type --total'.");
             sb.AppendLine("One undo step (Ctrl+Z removes the element" + (built != null ? " and the family load" : "") + ").");
 
