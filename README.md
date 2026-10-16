@@ -4,7 +4,7 @@
 
 **Talk to your Revit model.**
 
-An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch it work, keep what you like. Every change is one Ctrl+Z.
+An add-in that puts an AI chat panel inside Revit. Ask in plain language, watch it work, keep what you like.
 
 [![Release](https://img.shields.io/github/v/tag/Quincy987/VibeModel?label=release&color=2ea44f)](https://github.com/Quincy987/VibeModel/releases)
 [![Revit 2022+](https://img.shields.io/badge/Revit-2022%2B-0696D7)](#requirements)
