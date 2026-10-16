@@ -277,6 +277,16 @@ namespace VibeModel.Services.Claude.FamilyGen
             return null;
         }
 
+        /// <summary>Writes the VM_Source stamp on every type of the loaded family (inside the project transaction).</summary>
+        public static void WriteStamp(Document doc, Family fam, string stamp)
+        {
+            foreach (var id in fam.GetFamilySymbolIds())
+            {
+                var p = doc.GetElement(id)?.get_Parameter(SourceGuid);
+                if (p != null && !p.IsReadOnly) p.Set(stamp);
+            }
+        }
+
         /// <summary>
         /// The structure hash of the family as it is loaded now (opens it with EditFamily — no
         /// transaction may be open). Null when it cannot be opened.
