@@ -15,7 +15,7 @@ namespace VibeModel.Services.Claude
     public class ClaudeCommandRegistry
     {
         private static readonly HashSet<string> NoDocRequired =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health", "chatlog" };
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "help", "health", "chatlog", "approvals" };
 
         private readonly Dictionary<string, IClaudeCommand> _commands =
             new Dictionary<string, IClaudeCommand>(StringComparer.OrdinalIgnoreCase);

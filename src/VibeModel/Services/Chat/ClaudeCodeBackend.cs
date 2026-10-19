@@ -308,6 +308,11 @@ namespace VibeModel.Services.Chat
         internal const string ArgsRule =
             "Arguments always go in ?args=, URL-encoded, or in a POST /batch body; never in the path.";
 
+        // Plan 15: per-request run options. Stated in the prompt file only (the API backends' tools
+        // carry args alone).
+        internal const string PreviewRule =
+            "Add &preview=1 (or ?preview=1) to a modifying command or POST /batch to see what it WOULD change - it runs, reports \"-- preview: … Would add/modify/delete …\", and everything is rolled back. Add readonly=1 to an exec (or batch) that should only read: if it changes the model it is rolled back and fails with QUERY_MODIFIED_MODEL.";
+
         // A laptop without Git for Windows has no Bash: the CLI shells out through PowerShell, where
         // plain `curl` is an alias of Invoke-WebRequest and $'..' strings do not exist.
         internal const string PowerShellRule =
@@ -358,6 +363,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (curl encodes ?args= for you - use this for code and free text)");
             sb.AppendLine("    curl -s -X POST \"" + baseUrl + "/batch\" --data-binary $'wall 0 0 5000 0\\nwall 5000 0 5000 5000'   (plain text, one command per line, one undo step)");
             sb.AppendLine("- " + PowerShellRule);
+            sb.AppendLine("- " + PreviewRule);
             sb.AppendLine();
             sb.AppendLine("Available commands (ARGS = what goes in ?args=, before encoding; [..] optional, a | b alternatives):");
             sb.AppendLine();
@@ -515,7 +521,7 @@ namespace VibeModel.Services.Chat
             var context = GatherModelContext();
 
             var appendPrompt = new StringBuilder(
-                BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current));
+                BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current, ChangeApprovalPolicy.EffectiveMode));
 
             // Office standards (plan 11): live template facts + the active pack's core rules go
             // into the per-turn system prompt — not into the prompt FILE, which the model reads
@@ -892,7 +898,8 @@ namespace VibeModel.Services.Chat
         /// <paramref name="language"/>. Rebuilt every turn, so a language switch in Settings
         /// applies from the next message on — also in a resumed session.
         /// </summary>
-        internal static string BuildTurnPrompt(string systemPromptPath, int httpPort, string context, string language)
+        internal static string BuildTurnPrompt(string systemPromptPath, int httpPort, string context, string language,
+            ChangeApprovalMode approval = ChangeApprovalMode.Auto)
         {
             var sb = new StringBuilder();
             sb.Append("You are inside Revit. Read " + systemPromptPath +
@@ -915,7 +922,7 @@ namespace VibeModel.Services.Chat
 
             sb.AppendLine();
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(language).TrimEnd());
+            sb.Append(BuildBehaviourRules(language, approval).TrimEnd());
             return sb.ToString();
         }
 

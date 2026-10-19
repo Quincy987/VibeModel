@@ -176,6 +176,10 @@ namespace VibeModel.Services.Claude
                     {
                         client.SendTimeout = 305000;
                     }
+                    // Plan 15: under "ask" a delete/edit waits up to 10 min for the user's decision.
+                    if (ChangeApprovalPolicy.EffectiveMode == ChangeApprovalMode.Ask)
+                        client.SendTimeout = Math.Max(client.SendTimeout,
+                            (int)ChangeApprovalPolicy.ApprovalTimeout.TotalMilliseconds + 5000);
 
                     var response = ProcessRequest(request);
                     SendResponse(stream, response.StatusCode, response.Body, response.ContentType);
@@ -368,9 +372,12 @@ namespace VibeModel.Services.Claude
                 return Unauthorized(fmt);
             }
 
+            // Plan 15: ?preview=1 / ?readonly=1.
+            var options = ParseRunOptions(rawQuery);
+
             if (path == "batch" && request.Method == "POST")
             {
-                return HandleBatch(request.Body, rawQuery, fmt, request.Turn);
+                return HandleBatch(request.Body, rawQuery, fmt, request.Turn, options);
             }
 
             // Single command — use POST body as args if no query args
@@ -380,7 +387,7 @@ namespace VibeModel.Services.Claude
                 args = request.Body.TrimEnd('\r', '\n');
             }
 
-            var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn);
+            var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn, options);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
@@ -435,6 +442,32 @@ namespace VibeModel.Services.Claude
             return diff == 0;
         }
 
+        /// <summary>
+        /// True when the query string carries <paramref name="name"/>=1|true|yes (case-insensitive).
+        /// Like format=json, these flags are ignored by <see cref="ParseQueryArgs"/>.
+        /// </summary>
+        internal static bool QueryFlag(string query, string name)
+        {
+            if (string.IsNullOrEmpty(query)) return false;
+            foreach (var param in query.Split('&'))
+            {
+                var kv = param.Split(new[] { '=' }, 2);
+                if (kv.Length != 2 || !kv[0].Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                var v = kv[1].Trim();
+                if (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) || v.Equals("yes", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Plan 15's per-request options: ?preview=1 and ?readonly=1.</summary>
+        internal static RunOptions ParseRunOptions(string query)
+        {
+            bool preview = QueryFlag(query, "preview");
+            bool readOnly = QueryFlag(query, "readonly");
+            return preview || readOnly ? new RunOptions { Preview = preview, ReadOnly = readOnly } : RunOptions.None;
+        }
+
         // Scans the query string for an explicit format=json pair (ignored by ParseQueryArgs).
         internal static bool QueryHasFormatJson(string query)
         {
@@ -450,14 +483,14 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
-        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt, Chat.ChatTurnRef turn)
+        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt, Chat.ChatTurnRef turn, RunOptions options)
         {
             var parsed = BatchParser.Parse(body, rawQuery);
             if (!parsed.IsValid)
                 return new HttpResponse(400, parsed.Error);
 
             // One request → one TransactionGroup → one undo entry.
-            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt, turn);
+            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt, turn, options);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }

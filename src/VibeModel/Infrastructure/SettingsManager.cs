@@ -190,6 +190,34 @@ namespace VibeModel.Infrastructure
         }
 
         /// <summary>
+        /// Settings → "Wijzigingen door de AI" (plan 15): managed.json, then VIBEMODEL_APPROVAL, then
+        /// settings.json, else auto (never ask — the default). An unreadable value is skipped.
+        /// </summary>
+        public static Services.Claude.ChangeApprovalMode GetChangeApproval(out Services.Claude.ChangeApprovalSource source)
+        {
+            return Services.Claude.ChangeApprovalPolicy.Resolve(
+                ManagedSettings.GetString(ManagedSettings.ChangeApproval),
+                Environment.GetEnvironmentVariable(Services.Claude.ChangeApprovalPolicy.EnvVar),
+                GetString(ManagedSettings.ChangeApproval, ""),
+                out source);
+        }
+
+        /// <summary>The user's own choice (settings.json); auto when unset.</summary>
+        public static Services.Claude.ChangeApprovalMode GetChangeApprovalSetting()
+        {
+            Services.Claude.ChangeApprovalPolicy.TryParse(GetString(ManagedSettings.ChangeApproval, ""), out var mode);
+            return mode;
+        }
+
+        public static void SetChangeApproval(Services.Claude.ChangeApprovalMode mode)
+        {
+            var settings = Load();
+            if (mode == Services.Claude.ChangeApprovalMode.Auto) settings.Remove(ManagedSettings.ChangeApproval);
+            else settings[ManagedSettings.ChangeApproval] = Services.Claude.ChangeApprovalPolicy.Name(mode);
+            Save(settings);
+        }
+
+        /// <summary>
         /// Where the Claude Code CLI lives when set explicitly: managed.json, the
         /// VIBEMODEL_CLAUDE_CLI environment variable, then settings.json. "none" switches discovery
         /// off (simulates a laptop without Claude Code). Null = discover it.

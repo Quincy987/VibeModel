@@ -66,6 +66,16 @@ namespace VibeModel.Services.Standards
             set.Trim(Cap);
         }
 
+        /// <summary>
+        /// A run that was rolled back (preview, read-only, discarded — plan 15) created nothing:
+        /// its ids are dropped so a later element that gets the same id is not taken for ours.
+        /// </summary>
+        public static void Forget(string docKey, IEnumerable<ElementId> ids)
+        {
+            if (string.IsNullOrEmpty(docKey) || ids == null || !ByDoc.TryGetValue(docKey, out var set)) return;
+            foreach (var id in ids) if (id != null) set.Remove(id.IntegerValue);
+        }
+
         public static bool Contains(Document doc, ElementId id)
         {
             if (doc == null || id == null) return false;
@@ -80,6 +90,8 @@ namespace VibeModel.Services.Standards
             private readonly Queue<int> _order = new Queue<int>();
             public void Add(int v) { if (_set.Add(v)) _order.Enqueue(v); }
             public bool Contains(int v) => _set.Contains(v);
+            // The queue keeps the stale entry; Trim dequeues it later without effect.
+            public void Remove(int v) => _set.Remove(v);
             public void Trim(int cap) { while (_order.Count > cap) _set.Remove(_order.Dequeue()); }
         }
     }

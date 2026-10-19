@@ -58,7 +58,7 @@ namespace VibeModel.Services.Claude
         /// Enqueues a command and blocks until the main thread processes it.
         /// </summary>
         public string EnqueueAndWait(string command, string args, ResponseFormat fmt = ResponseFormat.Text,
-            ChatTurnRef turn = null)
+            ChatTurnRef turn = null, RunOptions options = null)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -66,7 +66,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(command, args, fmt) { Turn = turn };
+            var request = new CommandRequest(command, args, fmt) { Turn = turn, Options = options ?? RunOptions.None };
             _queue.Enqueue(request);
 
             try
@@ -82,11 +82,15 @@ namespace VibeModel.Services.Claude
 
             try
             {
-                var timeout = TimeoutFor(command);
+                // Plan 15: a delete/edit under "ask" waits for the user's Keep / Discard.
+                bool mayWait = ChangeApprovalPolicy.MayWaitForUser(ChangeApprovalPolicy.EffectiveMode,
+                    ChangeApprovalPolicy.IsGuarded(command), _registry.IsModification(command), request.Options.Preview);
+                var timeout = ChangeApprovalPolicy.TimeoutFor(TimeoutFor(command), mayWait);
                 if (!request.ResponseReady.Wait(timeout))
                 {
-                    request.Cancel();
+                    request.CancelAfterTimeout();
                     Logger.Warn("Command timed out: " + command);
+                    if (mayWait) return PendingResponse(fmt);
                     return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds + " seconds. Is Revit in a modal dialog?";
                 }
 
@@ -98,13 +102,19 @@ namespace VibeModel.Services.Claude
             }
         }
 
+        // The client stopped waiting while the approval window may still be up: the decision
+        // lands in the approval log and in the next stamp, never re-run the change.
+        private string PendingResponse(ResponseFormat fmt)
+            => CommandResult.Error(ChangeApprovalPolicy.PendingCode, ChangeApprovalPolicy.PendingMessage,
+                ChangeApprovalPolicy.PendingHint).Render(fmt, _json);
+
         /// <summary>
         /// Called by HTTP server (background thread) for a POST /batch.
         /// Enqueues the whole command list as ONE request so a single TransactionGroup can
         /// wrap the entire loop (one undo entry). Uses a timeout scaled to the batch size.
         /// </summary>
         public string EnqueueBatchAndWait(IReadOnlyList<BatchCommand> commands, bool atomic,
-            ResponseFormat fmt = ResponseFormat.Text, ChatTurnRef turn = null)
+            ResponseFormat fmt = ResponseFormat.Text, ChatTurnRef turn = null, RunOptions options = null)
         {
             if (_disposed)
                 return "ERROR: VibeModel is shutting down";
@@ -112,7 +122,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(commands, atomic, fmt) { Turn = turn };
+            var request = new CommandRequest(commands, atomic, fmt) { Turn = turn, Options = options ?? RunOptions.None };
             _queue.Enqueue(request);
 
             try
@@ -125,13 +135,17 @@ namespace VibeModel.Services.Claude
                 return "ERROR: VibeModel is shutting down";
             }
 
-            var timeout = BatchTimeout(commands.Count);
+            bool mayWait = ChangeApprovalPolicy.MayWaitForUser(ChangeApprovalPolicy.EffectiveMode,
+                ChangeApprovalPolicy.IsGuardedBatch(commands.Select(c => c.Command)),
+                commands.Any(c => _registry.IsModification(c.Command)), request.Options.Preview);
+            var timeout = ChangeApprovalPolicy.TimeoutFor(BatchTimeout(commands.Count), mayWait);
             try
             {
                 if (!request.ResponseReady.Wait(timeout))
                 {
-                    request.Cancel();
+                    request.CancelAfterTimeout();
                     Logger.Warn("Batch timed out (" + commands.Count + " commands)");
+                    if (mayWait) return PendingResponse(fmt);
                     return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds +
                            " seconds. Is Revit in a modal dialog?";
                 }
@@ -225,11 +239,23 @@ namespace VibeModel.Services.Claude
         /// Runs a single command and appends the model-state stamp: a trailing text line on
         /// successful text responses, a "meta" object on every JSON envelope. Centralized here
         /// so no individual command can forget it.
+        /// <para>
+        /// Plan 15: when the change-approval policy, ?preview=1 or ?readonly=1 asks for it
+        /// (<see cref="ChangeApprovalPolicy.NeedsRunGroup"/>), the command runs inside a "run group"
+        /// that is kept, shown to the user first, or rolled back (<see cref="RunDecision"/>). Under
+        /// the default policy without flags nothing of that happens: the run is exactly as before.
+        /// </para>
         /// </summary>
         private string ExecuteSingle(UIApplication app, CommandRequest request)
         {
             // Record what a modifying command adds so the office rules can check exactly that.
             bool modifying = _registry.IsModification(request.Command);
+            var options = request.Options ?? RunOptions.None;
+            var doc = app.ActiveUIDocument?.Document;
+            var mode = ChangeApprovalPolicy.EffectiveMode;
+            bool guarded = ChangeApprovalPolicy.IsGuarded(request.Command);
+            bool runControl = doc != null && ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, modifying, options.Preview, options.ReadOnly);
+            bool isExec = request.Command.Equals("exec", StringComparison.OrdinalIgnoreCase);
             RecordedChanges changes = null;
             CommandResult cr;
             FailureReport revit = null;
@@ -237,16 +263,34 @@ namespace VibeModel.Services.Claude
             // Annotations on the elements this command replaces/changes (spot elevations,
             // dimensions, tags): recorded now, re-hosted or removed afterwards — in the same undo
             // step (one TransactionGroup), except for exec, whose snippet may save, open or close
-            // documents (not allowed inside a group): there the re-host is its own undo step.
-            var gdoc = AnnotationGuard.Applies(request.Command) ? app.ActiveUIDocument?.Document : null;
+            // documents (not allowed inside a group): there the re-host is its own undo step —
+            // unless the run needs a group anyway (plan 15); exec then runs inside it.
+            var gdoc = AnnotationGuard.Applies(request.Command) ? doc : null;
             var snapshot = gdoc != null ? GuardCapture(gdoc, AnnotationScope.TargetIds(request.Command, request.Args)) : null;
+            var preRead = runControl ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(request.Command, request.Args)) : null;
+            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             TransactionGroup group = null;
             AnnotationOutcome annotations = null;
-            if (snapshot != null && !request.Command.Equals("exec", StringComparison.OrdinalIgnoreCase))
+            if (runControl || (snapshot != null && !isExec))
             {
-                try { group = new TransactionGroup(gdoc, "VibeModel: " + request.Command); group.Start(); }
-                catch (Exception ex) { Logger.Warn("Annotation guard: no transaction group (" + ex.Message + ")"); group?.Dispose(); group = null; }
+                var groupName = runControl
+                    ? ChangeApprovalPolicy.UndoName(request.Command, request.Args)
+                    : "VibeModel: " + request.Command;
+                try { group = new TransactionGroup(doc, groupName); group.Start(); }
+                catch (Exception ex)
+                {
+                    Logger.Warn((runControl ? "Run group" : "Annotation guard") + ": no transaction group (" + ex.Message + ")");
+                    group?.Dispose();
+                    group = null;
+                    // A run that must be previewable, refusable or approvable never runs without its group.
+                    if (runControl)
+                        return Render(request, CommandResult.Error(ChangeApprovalPolicy.RunGroupCode,
+                            "Could not open a transaction group for this run: " + ex.Message,
+                            "Revit may be in an edit mode or another transaction; finish it and retry."), app);
+                }
             }
+
+            var run = new RunOutcome();
             try
             {
                 if (modifying) CreatedElementsRecorder.Arm();
@@ -259,11 +303,20 @@ namespace VibeModel.Services.Claude
                     if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
                 }
                 if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, changes, revit);
+                if (runControl)
+                    run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false);
             }
             finally
             {
-                EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
+                if (runControl) EndRunGroup(group, run.Keep);
+                else EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
             }
+
+            if (runControl) FinishRun(app, doc, request, run, changes, editsMark, request.Command, request.Args);
+            // Nothing a rolled-back run did is checked or journaled.
+            bool rolledBack = runControl && !run.Keep;
+            if (rolledBack) changes = null;
+
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
             if (cr.Success && changes != null)
             {
@@ -273,15 +326,27 @@ namespace VibeModel.Services.Claude
                     try { written = j.JournalFiles(cr); } catch { written = null; }
                 Journal(app, request.Command, request.Args, changes, request.Turn, written);
             }
-            else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
+            else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
+
+            return Render(request, run.Replace ?? cr, app, revit, findings, annotations, run);
+        }
+
+        /// <summary>
+        /// The response of a single command: the result, then the "-- revit", "-- check",
+        /// "-- annotations" and plan-15 lines, then the stamp (text); the same as additive JSON
+        /// objects next to the envelope.
+        /// </summary>
+        private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
+            List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null)
+        {
             bool json = request.Format == ResponseFormat.Json;
 
             // Take the stamp only when it will actually be delivered — taking it resets the
             // "user edits since last command" counter (reset means "the client has been told").
             ModelStamp stamp = null;
             if (!StampExcluded.Contains(request.Command) && (json || cr.Success))
-                stamp = TryTakeStamp(app);
+                stamp = TryTakeStamp(app, !request.IsCancelled);
 
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             var annotationLine = annotations?.ToTextLine();
@@ -295,9 +360,13 @@ namespace VibeModel.Services.Claude
                     if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
                     if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
                     if (annotationLine != null) dict["annotations"] = annotations.ToJson();
+                    run?.AddJson(dict);
                 }
                 return _json.Serialize(obj);
             }
+
+            // READ_ONLY carries the preview line between its message and its hint (errors are unstamped).
+            if (run?.TextOverride != null) return run.TextOverride;
 
             var text = cr.RenderText();
             // What Revit's failure processing did (warnings dismissed, annotations deleted). An
@@ -306,7 +375,158 @@ namespace VibeModel.Services.Claude
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
             if (annotationLine != null) text = AppendLine(text, annotationLine);
+            if (run?.Line != null) text = AppendLine(text, run.Line);
             return stamp != null ? stamp.AppendToText(text) : text;
+        }
+
+        // ------------------------------------------------------------------ run group (plan 15)
+
+        /// <summary>What a run group's decision turned into, for the group and the response.</summary>
+        private sealed class RunOutcome
+        {
+            /// <summary>Assimilate the group (else roll it back). False until a decision says keep.</summary>
+            public bool Keep;
+            public RunDecision Decision = RunDecision.Nothing;
+            public ChangeSetSummary Summary;
+            /// <summary>The user's answer (Prompt only).</summary>
+            public ApprovalLog.Entry Approval;
+            public ApprovalRun.PromptResult Prompt;
+            /// <summary>The result that replaces the command's own (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).</summary>
+            public CommandResult Replace;
+            /// <summary>Text mode: the whole response instead of the rendered result (READ_ONLY).</summary>
+            public string TextOverride;
+            /// <summary>Text mode: one extra line after the annotations line ("-- preview: …", "-- approval: …").</summary>
+            public string Line;
+
+            /// <summary>The additive JSON objects: "preview" for a rolled-back run, "approval" for a decision.</summary>
+            public void AddJson(Dictionary<string, object> envelope)
+            {
+                if (Summary != null && (Decision == RunDecision.Preview || Decision == RunDecision.ReadOnly ||
+                                        Decision == RunDecision.QueryModified))
+                    envelope["preview"] = Summary.ToJson(rolledBack: true);
+                if (Approval != null)
+                    envelope["approval"] = ChangeApprovalPolicy.ApprovalJson(Approval.Id, Approval.Decision);
+            }
+        }
+
+        /// <summary>
+        /// Plan 15's decision for a finished run, while its group is still open: what to keep,
+        /// what to show, what to say. For <see cref="RunDecision.Prompt"/> this shows the approval
+        /// window (modal) and logs the answer.
+        /// </summary>
+        private static RunOutcome DecideRun(UIApplication app, Document doc, CommandRequest request, ChangeApprovalMode mode,
+            bool guarded, RunOptions options, RecordedChanges changes, IDictionary<int, string> preRead,
+            CommandResult cr, FailureReport revit, AnnotationOutcome annotations, bool batch)
+        {
+            var run = new RunOutcome();
+            bool empty = changes == null || changes.IsEmpty;
+            run.Decision = ChangeApprovalPolicy.Decide(mode, guarded, options.Preview, options.ReadOnly, empty);
+            run.Summary = ApprovalRun.Summarize(doc, changes, preRead);
+            switch (run.Decision)
+            {
+                case RunDecision.Keep:
+                    run.Keep = true;
+                    break;
+                case RunDecision.Nothing:
+                    break;
+                case RunDecision.Preview:
+                    // A failed command keeps its own error; there is nothing to preview.
+                    if (cr == null || cr.Success) run.Line = run.Summary.PreviewLine();
+                    break;
+                case RunDecision.QueryModified:
+                    run.Replace = CommandResult.Error(ChangeApprovalPolicy.QueryModifiedCode,
+                        ChangeApprovalPolicy.QueryModifiedMessage(run.Summary, batch), ChangeApprovalPolicy.QueryModifiedHint);
+                    break;
+                case RunDecision.ReadOnly:
+                    run.Replace = CommandResult.Error(ChangeApprovalPolicy.ReadOnlyCode,
+                        ChangeApprovalPolicy.ReadOnlyMessage, ChangeApprovalPolicy.ReadOnlyHint);
+                    run.TextOverride = "ERROR: " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" + run.Summary.PreviewLine() +
+                                       "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
+                    break;
+                case RunDecision.Prompt:
+                    var lines = new List<string>();
+                    if (revit != null) lines.AddRange(revit.ToTextLines());
+                    var annotationLine = annotations?.ToTextLine();
+                    if (annotationLine != null) lines.Add(annotationLine);
+                    var commandText = request.IsBatch
+                        ? ProjectJournal.BatchText(BatchItems(request.Batch))
+                        : request.Command + (string.IsNullOrWhiteSpace(request.Args) ? "" : " " + request.Args);
+                    var question = (request.Turn ?? ProjectJournal.CurrentTurn)?.Question;
+                    run.Prompt = ApprovalRun.Ask(app, doc, run.Summary, changes, commandText, question, lines,
+                        commandFailed: cr != null && !cr.Success);
+                    if (run.Prompt.DontAskAgain) ChangeApprovalPolicy.DontAskThisSession = true;
+                    run.Approval = ApprovalLog.Add(DateTime.Now, commandText, run.Prompt.Decision,
+                        ApprovalLog.ShortCounts(run.Summary), delivered: true);
+                    request.AttachApproval(run.Approval.Id);
+                    Logger.Info("Approval #" + run.Approval.Id + ": " + ApprovalLog.DecisionWord(run.Prompt.Decision) +
+                                " by the user — " + commandText);
+                    if (run.Prompt.Decision == ApprovalDecision.Kept)
+                    {
+                        run.Keep = true;
+                        run.Line = ChangeApprovalPolicy.KeptLine(run.Approval.Id);
+                    }
+                    else
+                    {
+                        run.Replace = CommandResult.Error(ChangeApprovalPolicy.DiscardedCode,
+                            ChangeApprovalPolicy.DiscardedMessage, ChangeApprovalPolicy.DiscardedHint);
+                    }
+                    break;
+            }
+            return run;
+        }
+
+        /// <summary>Closes a run group: Assimilate (one undo entry) when kept, else RollBack. Never leaves it open.</summary>
+        private static void EndRunGroup(TransactionGroup group, bool keep)
+        {
+            if (group == null) return;
+            try
+            {
+                if (group.HasStarted() && !group.HasEnded())
+                {
+                    if (keep) group.Assimilate();
+                    else group.RollBack();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Run group: closing failed — " + ex.Message);
+                try { if (group.HasStarted() && !group.HasEnded()) group.RollBack(); } catch { }
+            }
+            finally
+            {
+                group.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// After the run group closed: the bookkeeping of a rollback, the selection the user had
+        /// before the approval window, and the journal line of a discarded run.
+        /// </summary>
+        private static void FinishRun(UIApplication app, Document doc, CommandRequest request, RunOutcome run,
+            RecordedChanges changes, long editsMark, string command, string args)
+        {
+            if (!run.Keep) ApprovalRun.AfterRollback(doc, changes, editsMark);
+            if (run.Prompt != null) ApprovalRun.RestoreSelection(app, run.Prompt.PreviousSelection);
+            if (run.Approval != null && run.Approval.Decision == ApprovalDecision.Discarded)
+                JournalDiscarded(app, command, args, request.Turn);
+        }
+
+        /// <summary>Project journal: "… · delete 1730959 · discarded by the user · chat …".</summary>
+        private static void JournalDiscarded(UIApplication app, string command, string args, ChatTurnRef turn)
+        {
+            try
+            {
+                if (!ProjectData.Enabled) return;
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null) return;
+                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args, null, null, null,
+                    turn ?? ProjectJournal.CurrentTurn, null, ProjectJournal.DiscardedOutcome);
+                ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Journal line skipped: " + ex.Message);
+            }
         }
 
         // ------------------------------------------------------------------ annotation guard
@@ -384,8 +604,10 @@ namespace VibeModel.Services.Claude
         /// Builds the stamp on the Revit main thread (active view + selection must not be read
         /// from the HTTP thread). Never throws — a stamp failure must not break a command that
         /// would otherwise have succeeded; it just falls back to no stamp.
+        /// <paramref name="includeApproval"/>: carry an approval decision no client received yet
+        /// (plan 15) — false when this response itself will not be delivered (its client gave up).
         /// </summary>
-        private static ModelStamp TryTakeStamp(UIApplication app)
+        private static ModelStamp TryTakeStamp(UIApplication app, bool includeApproval = true)
         {
             try
             {
@@ -406,7 +628,8 @@ namespace VibeModel.Services.Claude
                 ActiveDocumentTracker.UpdateView(viewName, uidoc.ActiveView is ViewSheet, selectedCount);
 
                 return ModelChangeTracker.TakeStamp(
-                    ModelChangeTracker.DocKey(doc.PathName, doc.Title), viewName, selectedCount);
+                    ModelChangeTracker.DocKey(doc.PathName, doc.Title), viewName, selectedCount,
+                    includeApproval ? ApprovalLog.TakeUndelivered() : null);
             }
             catch (Exception ex)
             {
@@ -453,6 +676,16 @@ namespace VibeModel.Services.Claude
             var batchRevit = new FailureReport();
             AnnotationOutcome annotations = null;
 
+            // Plan 15: the batch group doubles as the run group when the policy or a flag asks.
+            var options = req.Options ?? RunOptions.None;
+            var mode = ChangeApprovalPolicy.EffectiveMode;
+            bool guarded = ChangeApprovalPolicy.IsGuardedBatch(batchItems.Select(i => i.Key));
+            bool batchModifies = req.Batch.Any(i => _registry.IsModification(i.Command));
+            bool runControl = ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, batchModifies, options.Preview, options.ReadOnly);
+            var preRead = runControl ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
+            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
+            var run = new RunOutcome();
+
             RecordedChanges changes = null;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
@@ -494,6 +727,23 @@ namespace VibeModel.Services.Claude
                         rolledBack = true;
                         sb.AppendLine("[atomic] rolled back — a command failed.");
                     }
+                    else if (runControl)
+                    {
+                        if (anyModified)
+                        {
+                            changes = CreatedElementsRecorder.DisarmChanges();
+                            if (snapshot != null) annotations = GuardReconcile(snapshot, changes, batchRevit);
+                        }
+                        // Nothing modified (every command failed or only read): an empty change set.
+                        run = DecideRun(app, doc, req, mode, guarded, options, anyModified ? changes : null, preRead,
+                            null, batchRevit, annotations, batch: true);
+                        if (run.Keep) tg.Assimilate();
+                        else
+                        {
+                            tg.RollBack();
+                            rolledBack = run.Decision != RunDecision.Nothing;
+                        }
+                    }
                     else if (anyModified)
                     {
                         if (snapshot != null)
@@ -510,7 +760,7 @@ namespace VibeModel.Services.Claude
                 }
                 catch
                 {
-                    if (tg.HasStarted()) tg.RollBack(); // safety: never leave the group open
+                    if (tg.HasStarted() && !tg.HasEnded()) tg.RollBack(); // safety: never leave the group open
                     throw;
                 }
                 finally
@@ -523,6 +773,14 @@ namespace VibeModel.Services.Claude
                 }
             }
 
+            if (runControl)
+            {
+                FinishRun(app, doc, req, run, changes, editsMark, ProjectJournal.BatchText(batchItems), null);
+                if (!run.Keep) anyModified = false; // nothing kept: no check, no journal line
+                var line = BatchRunLine(run);
+                if (line != null) sb.AppendLine(line);
+            }
+
             // Office rules over everything the batch created (nothing when rolled back).
             List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
             if (anyModified && !rolledBack)
@@ -531,15 +789,16 @@ namespace VibeModel.Services.Claude
             if (checkLine != null) sb.AppendLine(checkLine);
             var annotationLine = annotations?.ToTextLine();
             if (annotationLine != null) sb.AppendLine(annotationLine);
+            if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
 
             // One stamp for the whole batch, never per sub-command.
-            var stamp = TryTakeStamp(app);
+            var stamp = TryTakeStamp(app, !req.IsCancelled);
 
             if (json)
             {
                 var envelope = new Dictionary<string, object>
                 {
-                    { "ok", !anyError },
+                    { "ok", !anyError && run.Replace == null },
                     { "atomic", req.Atomic },
                     { "rolledBack", rolledBack },
                     { "results", entries }
@@ -550,10 +809,41 @@ namespace VibeModel.Services.Claude
                     envelope["check"] = CheckEnvelope(checkLine, findings);
                 if (annotationLine != null)
                     envelope["annotations"] = annotations.ToJson();
+                run.AddJson(envelope);
+                // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
+                if (run.Replace != null && run.Replace.ToJsonObject() is Dictionary<string, object> replaced &&
+                    replaced.TryGetValue("error", out var error))
+                    envelope["error"] = error;
                 return _json.Serialize(envelope);
             }
 
             return stamp != null ? stamp.AppendToText(sb.ToString()) : sb.ToString();
+        }
+
+        /// <summary>
+        /// The batch's plan-15 line after its per-command results: why it kept nothing, or the
+        /// preview. The kept line ("-- approval: kept by the user (#7)") goes after the check and
+        /// annotations lines, like a single command's.
+        /// </summary>
+        private static string BatchRunLine(RunOutcome run)
+        {
+            switch (run.Decision)
+            {
+                case RunDecision.Preview:
+                    return run.Summary.PreviewLine();
+                case RunDecision.ReadOnly:
+                    return "[read-only] rolled back — " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" +
+                           run.Summary.PreviewLine() + "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
+                case RunDecision.QueryModified:
+                    return "[readonly] rolled back — " + run.Replace.Message + "\nHint: " + ChangeApprovalPolicy.QueryModifiedHint;
+                case RunDecision.Prompt:
+                    if (run.Approval != null && run.Approval.Decision == ApprovalDecision.Discarded)
+                        return "[approval] rolled back — " + ChangeApprovalPolicy.DiscardedMessage + " (#" + run.Approval.Id + ")" +
+                               "\nHint: " + ChangeApprovalPolicy.DiscardedHint;
+                    return null;
+                default:
+                    return null;
+            }
         }
 
         private static IEnumerable<KeyValuePair<string, string>> BatchItems(IReadOnlyList<BatchCommand> batch)
@@ -651,6 +941,21 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>
+    /// Per-request run options from the query string (plan 15): <c>?preview=1</c> runs the
+    /// command and rolls everything back, reporting what would change; <c>?readonly=1</c> fails a
+    /// snippet or batch that changed the model (rolled back, QUERY_MODIFIED_MODEL).
+    /// </summary>
+    public sealed class RunOptions
+    {
+        public static readonly RunOptions None = new RunOptions();
+
+        public bool Preview { get; set; }
+        public bool ReadOnly { get; set; }
+
+        public bool IsEmpty => !Preview && !ReadOnly;
+    }
+
+    /// <summary>
     /// One command in a batch request.
     /// </summary>
     public class BatchCommand
@@ -682,11 +987,40 @@ namespace VibeModel.Services.Claude
         /// <summary>The chat turn that sent it (X-VibeModel-Turn header); null for other clients.</summary>
         public ChatTurnRef Turn { get; set; }
 
+        /// <summary>?preview=1 / ?readonly=1 (plan 15); never null.</summary>
+        public RunOptions Options { get; set; } = RunOptions.None;
+
         public string Result { get; set; }
         public ManualResetEventSlim ResponseReady { get; } = new ManualResetEventSlim(false);
 
         private volatile bool _cancelled;
         public bool IsCancelled => _cancelled;
+
+        // Plan 15: the approval decision of this run, and who knows about it. The main thread
+        // attaches it, the HTTP thread may give up on the request at the same moment; under one
+        // lock exactly one of them marks the decision undelivered when the client never got it.
+        private readonly object _approvalSync = new object();
+        private int _approvalId;
+
+        /// <summary>Main thread: this run's decision is logged; undelivered when the client already gave up.</summary>
+        public void AttachApproval(int id)
+        {
+            lock (_approvalSync)
+            {
+                _approvalId = id;
+                if (_cancelled) ApprovalLog.MarkUndelivered(id);
+            }
+        }
+
+        /// <summary>HTTP thread: the wait timed out — the result (and any decision in it) will not reach the client.</summary>
+        public void CancelAfterTimeout()
+        {
+            lock (_approvalSync)
+            {
+                _cancelled = true;
+                if (_approvalId > 0) ApprovalLog.MarkUndelivered(_approvalId);
+            }
+        }
 
         public CommandRequest(string command, string args, ResponseFormat format = ResponseFormat.Text)
         {

@@ -220,5 +220,37 @@ namespace VibeModel.Tests
             Assert.Equal(3, next.TotalEdits);
             Assert.Equal(0, next.UserEdits);
         }
+
+        // ---- Plan 15: rolled-back runs and undelivered approval decisions ----
+
+        [Fact]
+        public void RewindTo_UndoesTheCountOfARolledBackRun_NeverForward()
+        {
+            const string doc = "doc-rewind";
+            ModelChangeTracker.RecordCommit(doc, Ours);
+            long mark = ModelChangeTracker.GetTotalEdits(doc);
+            ModelChangeTracker.RecordCommit(doc, Ours);   // inside a preview's group
+            ModelChangeTracker.RecordCommit(doc, Ours);
+            ModelChangeTracker.RewindTo(doc, mark);
+            Assert.Equal(1, ModelChangeTracker.GetTotalEdits(doc));
+            ModelChangeTracker.RewindTo(doc, 5);
+            Assert.Equal(1, ModelChangeTracker.GetTotalEdits(doc));
+        }
+
+        [Fact]
+        public void Stamp_WithoutApproval_IsUnchanged()
+        {
+            var plain = new ModelStamp(47, 0, "{3D} Main", 0);
+            Assert.Equal("-- model #47 | view: {3D} Main | selected: 0", plain.ToTextLine());
+            Assert.False(plain.ToMeta().ContainsKey("approval"));
+        }
+
+        [Fact]
+        public void Stamp_CarriesAnUndeliveredDecision()
+        {
+            var stamp = new ModelStamp(48, 0, "Level 1", 1, "approval #8: discarded");
+            Assert.Equal("-- model #48 | view: Level 1 | selected: 1 | approval #8: discarded", stamp.ToTextLine());
+            Assert.Equal("approval #8: discarded", stamp.ToMeta()["approval"]);
+        }
     }
 }
