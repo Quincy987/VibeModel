@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
+
 ### Added — approve before keeping, preview, read-only runs (Settings → "Wijzigingen door de AI")
 - Plan 15, after pyRevit 7.0's agent runtime (2026-10-06). **Off by default**: `auto` keeps every
   answer exactly as it was. `ask` makes deletions and edits (`delete`, `exec`, `set`, `join`,
