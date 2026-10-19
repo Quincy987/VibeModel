@@ -271,7 +271,7 @@ curl -s "http://localhost:18884/join?args=12345 67890 --switch"   # Flip which e
 curl -s "http://localhost:18884/join?args=12345 67890 --cut"      # Solid-solid cut: A cuts B
 curl -s "http://localhost:18884/unjoin?args=12345 67890"          # Remove join and/or cut
 
-# Execute arbitrary C# code
+# Execute arbitrary C# code (braced loops stop after 25 s, &timeout=<s> up to 300; unsure about the API? apilookup first)
 curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
 ```
 
@@ -388,6 +388,80 @@ curl -s -X POST "http://localhost:18884/batch?atomic=1" -d "wall 0 0 5000 0
 wall 5000 0 5000 5000"
 ```
 A read-only batch (no modifications) creates no undo entry.
+
+### Change approval, preview, read-only runs (approvals / ?preview=1 / ?readonly=1)
+Settings → *Wijzigingen door de AI* / *Changes by the AI* (`ChangeApproval`; managed.json →
+`VIBEMODEL_APPROVAL` → settings.json → `auto`). Plan: `docs/plans/15-approve-and-preview.md`.
+```bash
+curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000&preview=1"     # Runs, reports, rolls back
+curl -s -X POST "http://localhost:18884/batch?preview=1" -d "delete 1561047
+wall 0 0 5000 0 3000"
+curl -s -G "http://localhost:18884/exec" --data-urlencode "args=sb.AppendLine(doc.Title);" --data "readonly=1"  # Fails if it changes the model
+curl -s http://localhost:18884/approvals                                  # This session's Keep/Discard decisions
+```
+- **`auto`** (default): never ask — every run exactly as before plan 15 (no group, no new lines).
+- **`ask`**: `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and a batch holding one) that
+  actually changed something wait for the user: the added/modified elements the active view can show
+  are isolated temporarily and selected, and a modal window (owned by Revit, restored when minimized)
+  shows the chat question, the command, the counts by category, the `-- revit`/`-- annotations` lines,
+  *Inzoomen*, *Deze Revit-sessie niet meer vragen*, **Ongedaan maken** / **Behouden** (Enter = Keep;
+  Esc and closing = Discard). Keep = ONE undo entry `VibeModel: <command args>` (≤ 60 chars) and
+  `-- approval: kept by the user (#7)`; Discard = everything rolled back and `ERROR: Discarded by the
+  user.` (+ the command's own error when it had failed) with `Hint: do not retry this change; ask the
+  user what they want instead.` (JSON `DISCARDED`, additive `approval:{id,decision,by}`). Creating
+  commands never ask; an `exec` that only read never asks. The isolate lives in a nested group that is
+  rolled back on both answers — a temporary isolate the user had stays; the selection is restored.
+- **`readonly`**: a modifying command that changed something is rolled back: `ERROR: VibeModel is set to
+  read-only; nothing was changed.` + the preview line + `Hint:` (JSON `READ_ONLY` + `preview`). Reading
+  (an exec that only reads) works as usual.
+- **`?preview=1`** (any policy, single command or batch): the command runs inside a group that is
+  always rolled back; the normal answer + `-- preview: nothing was changed. Would add 1 (Walls 1),
+  modify 4 (Walls 3, Views 1), delete 1 (Walls 1). Ids are provisional.` (JSON `preview:{added,
+  modified,deleted:[{id,category}],rolledBack}`). Files a command writes (export, generated `.rfa`)
+  are still written. **`?readonly=1`** on exec or batch: a change → rolled back, `QUERY_MODIFIED_MODEL`.
+- **Change sets**: added/modified are read live, deleted ones from categories pre-read for the ids the
+  command names AND their `GetDependentElements` (≤ 5000). Internal elements, sketch lines and automatic
+  sketch dimensions are never shown (measured: a new wall adds two plain Element objects; a floor's
+  delete takes its sketch with 94 lines); an unreadable deletion counts as `other`. Revit regeneration
+  inflates "modified" (joined walls, the view) — shown by category.
+- **Waiting**: under `ask` a guarded request waits up to 10 min (HTTP, the in-pane WebClient
+  `RevitWebClient`, the socket); then `ERROR: still waiting for the user's decision in Revit.`
+  (`APPROVAL_PENDING`, hint: call `approvals`, never re-run). A decision the client never received is
+  shown once in the next stamp: `-- model #12 | … | approval #8: discarded` (JSON `meta.approval`).
+  The RULES block / turn prompt carry the policy (`ChatBackendBase.ApprovalAskRule`/`ApprovalWaitRule`
+  /`ApprovalReadOnlyRule`; auto = the old Undo sentence verbatim).
+- **Inside a run group** Revit refuses to save, close or synchronize ("Operation is not permitted when
+  there is any open transaction phase started by API client" — measured; under `auto` an exec can
+  `trans.Commit(); doc.Save();`); exec adds a `Hint:` saying why. Rolled-back runs rewind the edit
+  counter (`ModelChangeTracker.RewindTo`) and leave `VibeModelCreated`; discarded runs are journaled
+  (`· delete 1730959 · discarded by the user · chat …`), previews and refusals are not.
+- Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
+  side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
+  `ApprovalWindow`, `ApprovalSummary`, `ApprovalZoom`, `ApprovalDontAsk`, `ApprovalDiscard`,
+  `ApprovalKeep`). `build.ps1 -Approval ask|auto|readonly` sets `VIBEMODEL_APPROVAL` for the Revit it starts.
+
+### exec helpers: apilookup and the loop deadline
+```bash
+curl -s "http://localhost:18884/apilookup?args=Wall"                                  # Type: using, how to get one, members
+curl -s "http://localhost:18884/apilookup?args=Wall.Create"                           # One member, every overload
+curl -s "http://localhost:18884/apilookup?args=FilteredElementCollector --filter Where"
+curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "timeout=120"  # Longer loop budget (max 300 s)
+```
+- **`apilookup`** (plan 16, read-only, no document needed) reflects RevitAPI, RevitAPIUI and
+  VibeModel's own assembly as loaded in THIS Revit: header, `using` line (or "exec does not import it:
+  write <full name>"), how to get one (constructors, the collector line for Element subclasses, static
+  factories, members elsewhere returning it), properties, methods by overload, events, enum values,
+  `[Obsolete: …]` with Revit's own advice; `--all` adds inherited members, 60 members max. Not found →
+  the closest names; several substring hits are listed. Measured: first call 0.28 s (index), then
+  0.01–0.03 s. A failed exec compile (CS1061/CS0117/CS0246 — matched by number and the identifier at
+  the error, so a Dutch compiler message works) appends `Hint: apilookup Wall.Widht` + that lookup.
+- **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
+  `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
+  rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at
+  a loop check (nothing kept).` (JSON `EXEC_TIMEOUT`). The HTTP wait is the budget + 10 s. Not
+  interrupted: brace-less loop bodies, recursion, one long Revit call (the HTTP timeout says so).
+  Measured: `while(true){}` stopped at 25.1 s and Revit answered at once; no overhead over a loop
+  across every element of the test model (9–11 ms either way). Pure: `Services/Claude/ExecDeadline.cs`.
 
 ### Sheet Assembly (section / crop / viewport / dimension / spot / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
@@ -668,7 +742,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   (`MaskKey`: `sk-ant-…1234`). Settings never copies a managed/environment key into settings.json.
 - **managed.json** (`Infrastructure/ManagedSettings.cs`, read-only, `%ProgramData%\VibeModel\` then
   `%APPDATA%\VibeModel\`, re-read at most once a minute): `PreferredBackend`, `Model`, `ApiBaseUrl`,
-  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer` override settings.json and
+  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer`, `ChangeApproval` override settings.json and
   are locked in Settings ("beheerd door IT"). The `%ProgramData%` file is only trusted when `FileTrust`
   says it is IT's: file and folder owned by Administrators or SYSTEM, no Allow-write ACE for Users /
   Authenticated Users / Everyone / Interactive (ordinary users may create folders under ProgramData).

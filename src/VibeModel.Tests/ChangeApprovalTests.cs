@@ -404,6 +404,38 @@ namespace VibeModel.Tests
         }
     }
 
+    public class RevitWebClientTests
+    {
+        private static System.Net.WebRequest Request(RevitWebClient client)
+        {
+            var m = typeof(System.Net.WebClient).GetMethod("GetWebRequest",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            return (System.Net.WebRequest)m.Invoke(client, new object[] { new Uri("http://127.0.0.1:18884/info") });
+        }
+
+        [Fact]
+        public void Default_IsWebRequestsOwn100Seconds_ReadWriteNeverShortened()
+        {
+            using (var client = new RevitWebClient())
+            {
+                var r = (System.Net.HttpWebRequest)Request(client);
+                Assert.Equal(100000, r.Timeout);
+                Assert.Equal(300000, r.ReadWriteTimeout);
+            }
+        }
+
+        [Fact]
+        public void ApprovalWait_RaisesBothTimeouts()
+        {
+            using (var client = new RevitWebClient { Timeout = ChangeApprovalPolicy.ApprovalTimeout + TimeSpan.FromSeconds(5) })
+            {
+                var r = (System.Net.HttpWebRequest)Request(client);
+                Assert.Equal(605000, r.Timeout);
+                Assert.Equal(605000, r.ReadWriteTimeout);
+            }
+        }
+    }
+
     public class ChangeApprovalJournalTests
     {
         [Fact]
