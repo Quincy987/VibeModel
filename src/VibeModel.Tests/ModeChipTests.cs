@@ -253,6 +253,30 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void Changed_FiresOncePerRealChange()
+        {
+            int fired = 0;
+            EventHandler h = (s, e) => fired++;
+            ChangeApprovalPolicy.Changed += h;
+            try
+            {
+                ChangeApprovalPolicy.DontAskThisSession = true;               // the approval window's checkbox
+                ChangeApprovalPolicy.DontAskThisSession = true;
+                Assert.Equal(1, fired);
+                ChangeApprovalPolicy.ChooseForSession(ChangeApprovalMode.Ask); // clears it + sets the chip
+                Assert.Equal(3, fired);
+                ChangeApprovalPolicy.SessionOverride = ChangeApprovalMode.Ask;
+                Assert.Equal(3, fired);
+                ChangeApprovalPolicy.SessionOverride = null;
+                Assert.Equal(4, fired);
+            }
+            finally
+            {
+                ChangeApprovalPolicy.Changed -= h;
+            }
+        }
+
+        [Fact]
         public void ArmingFalse_OverwritesAStaleArm()
         {
             // A send that never started a turn (an error before the backend ran) must not leave

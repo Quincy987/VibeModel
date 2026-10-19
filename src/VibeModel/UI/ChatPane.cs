@@ -194,6 +194,7 @@ namespace VibeModel.UI
             };
             // A model opened or switched: the welcome card names it.
             ActiveDocumentTracker.Changed += OnActiveDocumentChanged;
+            ChangeApprovalPolicy.Changed += OnApprovalPolicyChanged;
         }
 
         private Border CreateHeader()
@@ -450,6 +451,10 @@ namespace VibeModel.UI
                 Child = inputStack
             };
         }
+
+        // The approval window's "don't ask again" (or Settings) changed the session's policy.
+        private void OnApprovalPolicyChanged(object sender, EventArgs e)
+            => Dispatcher.BeginInvoke(new Action(RefreshModeChip));
 
         // Plan 18: the chip re-reads the policy (Settings, the approval window's "don't ask again"
         // and managed.json can all change it); in Vragen the send arrow turns amber as a reminder.
@@ -2010,6 +2015,7 @@ namespace VibeModel.UI
         public void Cleanup()
         {
             ActiveDocumentTracker.Changed -= OnActiveDocumentChanged;
+            ChangeApprovalPolicy.Changed -= OnApprovalPolicyChanged;
             _cts?.Cancel();
             _backend?.Cancel();
             // Persist whatever conversation is open when Revit shuts down.

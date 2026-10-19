@@ -66,8 +66,19 @@ namespace VibeModel.Services.Claude
         public static bool DontAskThisSession
         {
             get => _dontAskThisSession;
-            set => _dontAskThisSession = value;
+            set
+            {
+                if (_dontAskThisSession == value) return;
+                _dontAskThisSession = value;
+                Changed?.Invoke(null, EventArgs.Empty);
+            }
         }
+
+        /// <summary>
+        /// Raised (on the setting thread) when <see cref="DontAskThisSession"/> or
+        /// <see cref="SessionOverride"/> changes, so the pane's mode chip follows the approval window.
+        /// </summary>
+        public static event EventHandler Changed;
 
         // Plan 18: the chat pane's mode chip. A Nullable cannot be volatile, so the choice is
         // kept as an int (-1 = none).
@@ -80,7 +91,13 @@ namespace VibeModel.Services.Claude
         public static ChangeApprovalMode? SessionOverride
         {
             get { var v = _sessionOverride; return v < 0 ? (ChangeApprovalMode?)null : (ChangeApprovalMode)v; }
-            set => _sessionOverride = value.HasValue ? (int)value.Value : -1;
+            set
+            {
+                int v = value.HasValue ? (int)value.Value : -1;
+                if (_sessionOverride == v) return;
+                _sessionOverride = v;
+                Changed?.Invoke(null, EventArgs.Empty);
+            }
         }
 
         /// <summary>

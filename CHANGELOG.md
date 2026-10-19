@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added — mode chip in the chat input (Cursor-style), next message as preview
+- Plan 18. The chat input is one rounded box with a footer row: paperclip, a **mode chip** and a round
+  send arrow. The chip shows how the AI's changes are handled — **Automatisch**, **Vragen** (approve
+  deletions and edits first) or **Alleen lezen** — and one click switches it for the rest of the Revit
+  session, without opening Settings. In *Vragen* the send arrow turns amber. IT's managed.json still
+  wins (the chip is then greyed); Settings shows the chip's choice and can clear it; Diagnose and
+  `approvals` report it as `(this session)`.
+- **Volgend bericht als preview** in the same menu: the next message runs as a preview — every change
+  the AI makes in that turn is rolled back by Revit and reported, and the AI says what it *would*
+  change. Live in Revit 2023: "Verwijder wand …" as a preview turn ran the delete, the wall stayed, and
+  the answer said nothing was changed.
+
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 
 ### Added — approve before keeping, preview, read-only runs (Settings → "Wijzigingen door de AI")

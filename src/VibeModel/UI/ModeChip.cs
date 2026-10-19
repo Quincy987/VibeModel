@@ -161,7 +161,9 @@ namespace VibeModel.UI
             };
             AutomationProperties.SetAutomationId(toggle, "PreviewNextToggle");
             AutomationProperties.SetName(toggle, Strings.For(language, Strings.ModePreviewNext));
-            toggle.Click += (s, e) => PreviewNext = toggle.IsChecked == true;
+            // Checked/Unchecked, not Click: UI Automation's Toggle does not raise Click.
+            toggle.Checked += (s, e) => PreviewNext = true;
+            toggle.Unchecked += (s, e) => PreviewNext = false;
             list.Children.Add(toggle);
 
             var border = new Border
@@ -174,7 +176,6 @@ namespace VibeModel.UI
                 Focusable = true,
                 Child = list
             };
-            AutomationProperties.SetAutomationId(border, "ModeMenu");
             border.PreviewKeyDown += (s, e) =>
             {
                 if (e.Key == Key.Escape) { CloseMenu(); Focus(); e.Handled = true; }
