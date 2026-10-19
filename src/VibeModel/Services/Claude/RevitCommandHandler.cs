@@ -306,6 +306,7 @@ namespace VibeModel.Services.Claude
             }
 
             var run = new RunOutcome();
+            RunContext.InRunGroup = runControl && group != null;
             try
             {
                 if (modifying) CreatedElementsRecorder.Arm();
@@ -323,6 +324,7 @@ namespace VibeModel.Services.Claude
             }
             finally
             {
+                RunContext.InRunGroup = false;
                 if (runControl) EndRunGroup(group, run.Keep);
                 else EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
             }
@@ -482,8 +484,11 @@ namespace VibeModel.Services.Claude
                     }
                     else
                     {
+                        // A command that had failed half-way (an exec that changed something, then
+                        // threw) keeps its own error in the message: the model needs both facts.
                         run.Replace = CommandResult.Error(ChangeApprovalPolicy.DiscardedCode,
-                            ChangeApprovalPolicy.DiscardedMessage, ChangeApprovalPolicy.DiscardedHint);
+                            ChangeApprovalPolicy.DiscardedMessageFor(cr != null && !cr.Success ? cr.RenderText() : null),
+                            ChangeApprovalPolicy.DiscardedHint);
                     }
                     break;
             }
@@ -706,6 +711,7 @@ namespace VibeModel.Services.Claude
             {
                 tg.Start();
                 CreatedElementsRecorder.Arm();
+                RunContext.InRunGroup = runControl;
                 try
                 {
                     foreach (var item in req.Batch)
@@ -780,6 +786,7 @@ namespace VibeModel.Services.Claude
                 }
                 finally
                 {
+                    RunContext.InRunGroup = false;
                     if (CreatedElementsRecorder.IsArmed)
                     {
                         var rest = CreatedElementsRecorder.DisarmChanges();
@@ -980,6 +987,12 @@ namespace VibeModel.Services.Claude
     public static class RunContext
     {
         public static RunOptions Current { get; internal set; }
+
+        /// <summary>
+        /// True while the command runs inside a plan-15 run group (preview, read-only, approval):
+        /// saving, closing or synchronizing is refused by Revit there, and exec explains why.
+        /// </summary>
+        public static bool InRunGroup { get; internal set; }
     }
 
     /// <summary>

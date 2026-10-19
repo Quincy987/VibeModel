@@ -197,6 +197,11 @@ namespace VibeModel.Tests
             Assert.Equal("-- approval: kept by the user (#7)", ChangeApprovalPolicy.KeptLine(7));
             Assert.Equal("ERROR: Discarded by the user.\nHint: do not retry this change; ask the user what they want instead.",
                 ChangeApprovalPolicy.DiscardedText());
+            Assert.Equal("Discarded by the user.", ChangeApprovalPolicy.DiscardedMessageFor(null));
+            Assert.Equal("Discarded by the user. The command itself had failed: Runtime exception: boom",
+                ChangeApprovalPolicy.DiscardedMessageFor("ERROR: Runtime exception: boom\nmore"));
+            Assert.Equal("Discarded by the user. The command itself had failed: ERROR in exec: x",
+                ChangeApprovalPolicy.DiscardedMessageFor("\r\nERROR in exec: x\r\n"));
             var json = ChangeApprovalPolicy.ApprovalJson(8, ApprovalDecision.Discarded);
             Assert.Equal(8, json["id"]);
             Assert.Equal("discarded", json["decision"]);
@@ -222,7 +227,7 @@ namespace VibeModel.Tests
         public void PreviewLine_NoAdded_NoProvisionalNote()
         {
             var s = new ChangeSetSummary(null, null, new[] { new ChangedElement(5, "Structural Foundations"), new ChangedElement(6, null) });
-            Assert.Equal("-- preview: nothing was changed. Would add 0, modify 0, delete 2 (other 1, Structural Foundations 1).",
+            Assert.Equal("-- preview: nothing was changed. Would add 0, modify 0, delete 2 (Structural Foundations 1, other 1).",
                 s.PreviewLine());
         }
 

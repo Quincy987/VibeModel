@@ -57,7 +57,7 @@ namespace VibeModel.Services.Claude.Commands
         /// (at most two), "Hint: apilookup Wall.Foo" and the first lines of that lookup — the
         /// closest member/type names or the real signatures — so the next attempt is right.
         /// </summary>
-        internal static string CompileErrorHint(IEnumerable<string> errors)
+        internal static string CompileErrorHint(IEnumerable<ApiLookup.CompileError> errors)
         {
             try
             {

@@ -27,6 +27,11 @@ namespace VibeModel.Services.Claude.Commands
             var clock = new ExecClock(ExecDeadline.BudgetSeconds(RunContext.Current?.TimeoutSeconds));
             int recordedBefore = Standards.CreatedElementsRecorder.RecordedCount;
             var text = Run(args, uiApp, clock);
+            // Plan 15: inside a run group (preview / read-only / approval) Revit refuses to save,
+            // close or synchronize — say why instead of leaving Revit's bare message.
+            if (RunContext.InRunGroup && text != null &&
+                text.IndexOf("open transaction phase", StringComparison.OrdinalIgnoreCase) >= 0)
+                text = text.TrimEnd() + "\nHint: " + InRunGroupHint;
             if (!clock.Fired) return CommandResult.Legacy(text);
             // Transactions the snippet committed itself before the loop check fired are kept.
             bool kept = Standards.CreatedElementsRecorder.RecordedCount > recordedBefore;
@@ -125,20 +130,27 @@ public static class DynamicCommand
                 var sb = new StringBuilder();
                 sb.AppendLine("COMPILATION ERRORS:");
                 sb.AppendLine();
-                var texts = new System.Collections.Generic.List<string>();
+                var errors = new System.Collections.Generic.List<ApiLookup.CompileError>();
+                var sourceLines = fullSource.Replace("\r\n", "\n").Split('\n');
                 foreach (CompilerError error in results.Errors)
                 {
                     if (!error.IsWarning)
                     {
                         sb.AppendLine("  Line " + error.Line + ": " + error.ErrorText);
-                        texts.Add(error.ErrorText);
+                        errors.Add(new ApiLookup.CompileError
+                        {
+                            Number = error.ErrorNumber,
+                            Message = error.ErrorText,
+                            Line = error.Line >= 1 && error.Line <= sourceLines.Length ? sourceLines[error.Line - 1] : null,
+                            Column = error.Column
+                        });
                     }
                 }
                 sb.AppendLine();
                 sb.AppendLine("Your code was wrapped in a method with: doc, uiDoc, uiApp, sb (StringBuilder)");
                 sb.AppendLine("Use sb.AppendLine(...) to produce output.");
                 // Plan 16: what the API really has for the member/type the compiler could not find.
-                var hint = ApiLookupCommand.CompileErrorHint(texts);
+                var hint = ApiLookupCommand.CompileErrorHint(errors);
                 if (hint != null)
                 {
                     sb.AppendLine();
@@ -180,6 +192,9 @@ public static class DynamicCommand
                 return "ERROR: Execution failed: " + ex.Message;
             }
         }
+
+        internal const string InRunGroupHint =
+            "saving, closing or synchronizing is not allowed while VibeModel previews a change or waits for the user's approval (the run is one transaction group) - switch Settings → Wijzigingen door de AI to \"Nooit vragen\" for this snippet, or let the user save.";
 
         // A snippet can commit several transactions; only the one Revit refused is gone.
         internal const string RollbackHint = "Revit rolled back the transaction that failed; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";

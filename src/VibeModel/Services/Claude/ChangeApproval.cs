@@ -200,6 +200,20 @@ namespace VibeModel.Services.Claude
         public const string DiscardedMessage = "Discarded by the user.";
         public const string DiscardedHint = "do not retry this change; ask the user what they want instead.";
 
+        /// <summary>
+        /// "Discarded by the user." — plus, when the command had also failed, its first error line
+        /// ("… The command itself had failed: ERROR in exec: …").
+        /// </summary>
+        public static string DiscardedMessageFor(string commandError)
+        {
+            if (string.IsNullOrWhiteSpace(commandError)) return DiscardedMessage;
+            var first = commandError.Replace("\r\n", "\n").Split('\n')
+                .Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
+            if (first.StartsWith("ERROR: ", StringComparison.Ordinal)) first = first.Substring(7);
+            if (first.Length > 300) first = first.Substring(0, 299) + "…";
+            return first.Length == 0 ? DiscardedMessage : DiscardedMessage + " The command itself had failed: " + first;
+        }
+
         public const string ReadOnlyCode = "READ_ONLY";
         public const string ReadOnlyMessage = "VibeModel is set to read-only; nothing was changed.";
         public const string ReadOnlyHint = "Settings → Wijzigingen door de AI.";
@@ -269,13 +283,15 @@ namespace VibeModel.Services.Claude
 
         public bool IsEmpty => Added.Count == 0 && Modified.Count == 0 && Deleted.Count == 0;
 
-        /// <summary>"Walls 2, Floors 1" — most first, then by name; elements without a category as "other".</summary>
+        /// <summary>"Walls 2, Floors 1, other 1" — most first, then by name; elements without a category last, as "other".</summary>
         public static string ByCategory(IReadOnlyList<ChangedElement> elements, string unknown = "other")
         {
             if (elements == null || elements.Count == 0) return "";
+            // Named categories first (most first, then by name); the unknown ones last.
             return string.Join(", ", elements
                 .GroupBy(e => e.Category ?? unknown, StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(g => g.Count())
+                .OrderBy(g => g.Key == unknown ? 1 : 0)
+                .ThenByDescending(g => g.Count())
                 .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.Key + " " + g.Count().ToString(CultureInfo.InvariantCulture)));
         }

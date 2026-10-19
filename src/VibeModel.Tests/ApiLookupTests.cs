@@ -1,4 +1,5 @@
 using System;
+using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -221,17 +222,40 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void CompileErrors_MapToLookups()
+        public void CompileErrors_MapToLookups_EnglishAndDutch()
         {
             var errors = new[]
             {
-                "'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo' and no extension method 'Foo' accepting a first argument of type 'Autodesk.Revit.DB.Wall' could be found (are you missing a using directive or an assembly reference?)",
-                "'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo'",
-                "The type or namespace name 'Waal' could not be found (are you missing a using directive or an assembly reference?)",
-                "'System.Collections.Generic.List<Autodesk.Revit.DB.Wall>' does not contain a definition for 'Bar'",
-                "; expected"
+                new ApiLookup.CompileError { Number = "CS1061", Column = 9, Line = "var x = w.Foo;",
+                    Message = "'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo' and no extension method 'Foo' accepting a first argument of type 'Autodesk.Revit.DB.Wall' could be found (are you missing a using directive or an assembly reference?)" },
+                // Measured on this PC (Dutch Windows): no quotes at all.
+                new ApiLookup.CompileError { Number = "CS1061", Column = 21, Line = "    sb.AppendLine(w.Widht.ToString());",
+                    Message = "Autodesk.Revit.DB.Wall bevat geen definitie voor Widht en er is geen extensiemethode Widht gevonden waarmee het eerste argument van het type Autodesk.Revit.DB.Wall wordt geaccepteerd (mogelijk ontbreekt er een gebruiksinstructie of een assembly-verwijzing)" },
+                new ApiLookup.CompileError { Number = "CS0246", Column = 50, Line = "var c = new FilteredElementCollector(doc).OfClass(typeof(Waal)).Count();",
+                    Message = "Het type of de naamruimtenaam Waal is niet gevonden (ontbreekt er een gebruiksinstructie of assembly-verwijzing?)" },
+                new ApiLookup.CompileError { Number = "CS1061", Column = 1, Line = "list.Bar();",
+                    Message = "'System.Collections.Generic.List<Autodesk.Revit.DB.Wall>' does not contain a definition for 'Bar'" },
+                new ApiLookup.CompileError { Number = "CS1002", Column = 1, Line = "x", Message = "; expected" },
+                new ApiLookup.CompileError { Number = "CS1061", Column = 9, Line = "var x = w.Foo;", Message = "duplicate: 'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo'" },
             };
-            Assert.Equal(new[] { "Wall.Foo", "Waal" }, ApiLookup.LookupsForCompileErrors(errors).ToArray());
+            Assert.Equal(new[] { "Wall.Foo", "Wall.Widht", "Waal" }, ApiLookup.LookupsForCompileErrors(errors).ToArray());
+        }
+
+        /// <summary>The real compiler exec uses (CodeDom), in whatever language this Windows speaks.</summary>
+        [Fact]
+        public void CompileErrors_FromTheRealCompiler()
+        {
+            const string source = "public static class T {\n public static object M(System.Text.StringBuilder w) {\n  var a = w.Lenght;\n  return typeof(Strng);\n }\n}";
+            CompilerResults results;
+            using (var provider = new Microsoft.CSharp.CSharpCodeProvider())
+                results = provider.CompileAssemblyFromSource(new CompilerParameters { GenerateInMemory = true }, source);
+            var lines = source.Split('\n');
+            var errors = results.Errors.Cast<CompilerError>().Where(e => !e.IsWarning).Select(e => new ApiLookup.CompileError
+            {
+                Number = e.ErrorNumber, Message = e.ErrorText, Column = e.Column,
+                Line = e.Line >= 1 && e.Line <= lines.Length ? lines[e.Line - 1] : null
+            }).ToList();
+            Assert.Equal(new[] { "StringBuilder.Lenght", "Strng" }, ApiLookup.LookupsForCompileErrors(errors).ToArray());
         }
 
         [Fact]

@@ -19,8 +19,11 @@ namespace VibeModel.Services.Claude
     internal static class ApprovalRun
     {
         /// <summary>
-        /// Categories of the ids a command names, read BEFORE it runs: a deleted element can no
-        /// longer be read afterwards, so "deleted 2 (Structural Foundations 2)" needs them now.
+        /// Categories of the ids a command names AND of everything that goes with them
+        /// (<c>GetDependentElements</c>: a floor's sketch, its spot elevations, a wall's hosted
+        /// doors), read BEFORE it runs: a deleted element can no longer be read afterwards, so
+        /// "deleted 2 (Structural Foundations 2)" needs them now. Parts that are never shown
+        /// (<see cref="Hidden"/>) are recorded as hidden. At most <see cref="MaxPreRead"/> ids.
         /// </summary>
         public static Dictionary<int, string> PreRead(Document doc, IEnumerable<int> ids)
         {
@@ -28,37 +31,105 @@ namespace VibeModel.Services.Claude
             if (doc == null || ids == null) return map;
             foreach (var id in ids)
             {
-                if (map.ContainsKey(id)) continue;
-                var name = CategoryName(doc, new ElementId(id));
-                if (name != null) map[id] = name;
+                if (map.Count >= MaxPreRead) break;
+                Read(doc, new ElementId(id), map);
+                Element e;
+                try { e = doc.GetElement(new ElementId(id)); } catch { e = null; }
+                if (e == null) continue;
+                IList<ElementId> dependents;
+                try { dependents = e.GetDependentElements(null); } catch { dependents = null; }
+                if (dependents == null) continue;
+                foreach (var d in dependents)
+                {
+                    if (map.Count >= MaxPreRead) break;
+                    Read(doc, d, map);
+                }
             }
             return map;
+        }
+
+        private const int MaxPreRead = 5000;
+
+        // The value that marks a pre-read id as never shown.
+        private const string HiddenMark = "";
+
+        private static void Read(Document doc, ElementId id, Dictionary<int, string> map)
+        {
+            if (map.ContainsKey(id.IntegerValue)) return;
+            Element e;
+            try { e = doc.GetElement(id); } catch { e = null; }
+            if (e == null) return;
+            map[id.IntegerValue] = Hidden(e) ? HiddenMark : CategoryName(e);
         }
 
         /// <summary>The change set with categories (added/modified read live, deleted from <paramref name="preRead"/>).</summary>
         public static ChangeSetSummary Summarize(Document doc, RecordedChanges changes, IDictionary<int, string> preRead)
         {
             if (changes == null) return new ChangeSetSummary(null, null, null);
-            Func<ElementId, ChangedElement> live = id => new ChangedElement(id.IntegerValue, CategoryName(doc, id));
+            // Hidden parts (internal elements, sketch lines, automatic sketch dimensions) are never
+            // shown — measured: a new wall adds two plain Element objects, deleting a floor deletes
+            // its sketch with 94 sketch lines. A deleted element whose category was not read
+            // beforehand stays, as "other": an exec deletion must never read as "delete 0".
+            Func<ElementId, ChangedElement> live = id =>
+            {
+                Element e;
+                try { e = doc?.GetElement(id); } catch { e = null; }
+                if (e == null) return new ChangedElement(id.IntegerValue, null);
+                return Hidden(e) ? null : new ChangedElement(id.IntegerValue, CategoryName(e));
+            };
             Func<ElementId, ChangedElement> gone = id =>
-                new ChangedElement(id.IntegerValue, preRead != null && preRead.TryGetValue(id.IntegerValue, out var c) ? c : null);
-            return new ChangeSetSummary(changes.Added.Select(live), changes.Modified.Select(live), changes.Deleted.Select(gone));
+            {
+                if (preRead != null && preRead.TryGetValue(id.IntegerValue, out var c))
+                    return c == HiddenMark ? null : new ChangedElement(id.IntegerValue, c);
+                return new ChangedElement(id.IntegerValue, null);
+            };
+            return new ChangeSetSummary(changes.Added.Select(live).Where(e => e != null),
+                changes.Modified.Select(live).Where(e => e != null), changes.Deleted.Select(gone).Where(e => e != null));
         }
 
-        private static string CategoryName(Document doc, ElementId id)
+        /// <summary>
+        /// Parts of an element nobody thinks of as an element: no category (sketch, sketch plane,
+        /// internal objects; types excepted), sketch lines and automatic sketch dimensions.
+        /// </summary>
+        private static bool Hidden(Element e)
+        {
+            if (e is ElementType) return false;
+            var cat = e.Category;
+            if (cat == null) return true;
+            int bic = cat.Id.IntegerValue;
+            return bic == (int)BuiltInCategory.OST_SketchLines || bic == (int)BuiltInCategory.OST_WeakDims;
+        }
+
+        private static string CategoryName(Element e)
         {
             try
             {
-                var e = doc?.GetElement(id);
-                if (e == null) return null;
                 var cat = e.Category;
                 if (cat != null) return cat.Name;
-                return e is ElementType ? "Types" : e.GetType().Name;
+                return e is ElementType ? "Types" : null;
             }
             catch
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// What the window can isolate and zoom to: added and modified elements that still exist,
+        /// minus views, types and hidden parts (a deletion modifies the view it was seen in).
+        /// </summary>
+        internal static List<ElementId> Showable(Document doc, RecordedChanges changes)
+        {
+            var list = new List<ElementId>();
+            if (changes == null) return list;
+            foreach (var id in changes.Added.Concat(changes.Modified))
+            {
+                Element e;
+                try { e = doc.GetElement(id); } catch { e = null; }
+                if (e == null || e is View || e is ElementType || Hidden(e)) continue;
+                list.Add(id);
+            }
+            return list;
         }
 
         /// <summary>The edit counter before a run, so a rolled-back run can put it back.</summary>
@@ -111,8 +182,7 @@ namespace VibeModel.Services.Claude
             try { result.PreviousSelection = uidoc?.Selection.GetElementIds(); }
             catch { result.PreviousSelection = null; }
 
-            var shown = (changes?.Added ?? new List<ElementId>()).Concat(changes?.Modified ?? new List<ElementId>())
-                .Where(id => doc.GetElement(id) != null).ToList();
+            var shown = Showable(doc, changes);
             View view = null;
             try { view = uidoc?.ActiveView; } catch { view = null; }
             var visible = VisibleIn(doc, view, shown);

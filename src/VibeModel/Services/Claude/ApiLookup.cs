@@ -553,37 +553,74 @@ namespace VibeModel.Services.Claude
 
         // ------------------------------------------------------------------ exec compile errors
 
-        private static readonly Regex MissingMember = new Regex(
-            @"'(?<type>[\w\.\+`<>,\s]+?)' does not contain a definition for '(?<member>\w+)'", RegexOptions.Compiled);
-        private static readonly Regex MissingType = new Regex(
-            @"type or namespace name '(?<type>[\w\.]+)' (?:could not be found|does not exist)", RegexOptions.Compiled);
+        /// <summary>One compiler error of an exec snippet: its number, its (localized) text and its source line.</summary>
+        public sealed class CompileError
+        {
+            public string Number { get; set; }
+            public string Message { get; set; }
+            /// <summary>The source line the error points at, from <see cref="Column"/> (1-based) on; null when unknown.</summary>
+            public string Line { get; set; }
+            public int Column { get; set; }
+        }
+
+        private static readonly Regex DottedName = new Regex(@"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", RegexOptions.Compiled);
+        private static readonly Regex Identifier = new Regex(@"[A-Za-z_]\w*", RegexOptions.Compiled);
 
         /// <summary>
-        /// The lookups that would have prevented these exec compile errors: "Wall.Foo" for
-        /// "'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo'" (CS1061/CS0117),
-        /// "Waal" for "The type or namespace name 'Waal' could not be found" (CS0246). Distinct, in
-        /// order of appearance.
+        /// The lookups that would have prevented these exec compile errors: "Wall.Foo" for CS1061 /
+        /// CS0117 ("'Autodesk.Revit.DB.Wall' does not contain a definition for 'Foo'"), "Waal" for
+        /// CS0246 ("The type or namespace name 'Waal' could not be found"). Language-independent —
+        /// measured on a Dutch Windows, the compiler says "Autodesk.Revit.DB.Wall bevat geen
+        /// definitie voor Widht" without quotes: the name comes from the source at the error's
+        /// position (the first identifier there that the message also names), the type from the
+        /// first dotted name in the message. Distinct, in order of appearance.
         /// </summary>
-        public static List<string> LookupsForCompileErrors(IEnumerable<string> errors)
+        public static List<string> LookupsForCompileErrors(IEnumerable<CompileError> errors)
         {
             var list = new List<string>();
-            foreach (var e in errors ?? Enumerable.Empty<string>())
+            foreach (var e in errors ?? Enumerable.Empty<CompileError>())
             {
-                if (string.IsNullOrEmpty(e)) continue;
-                var m = MissingMember.Match(e);
-                if (m.Success)
+                if (e == null || string.IsNullOrEmpty(e.Message)) continue;
+                var number = (e.Number ?? "").Trim().ToUpperInvariant();
+                if (number == "CS1061" || number == "CS0117")
                 {
-                    var type = m.Groups["type"].Value.Trim();
-                    // A generic instance ("List<Wall>") or an array is no API type to look up.
-                    if (type.IndexOfAny(new[] { '<', '[', ',' }) >= 0) continue;
-                    var simple = type.Substring(type.LastIndexOf('.') + 1);
-                    Add(list, simple + "." + m.Groups["member"].Value);
-                    continue;
+                    var type = TypeInMessage(e.Message);
+                    if (type == null) continue;
+                    var member = NamedAtError(e, exclude: type);
+                    if (member != null) Add(list, type.Substring(type.LastIndexOf('.') + 1) + "." + member);
                 }
-                var t = MissingType.Match(e);
-                if (t.Success) Add(list, t.Groups["type"].Value);
+                else if (number == "CS0246")
+                {
+                    var name = NamedAtError(e, exclude: null);
+                    if (name != null) Add(list, name);
+                }
             }
             return list;
+        }
+
+        // The type a "does not contain a definition" error is about: the first dotted name in the
+        // message (quoted in English, bare in Dutch). A generic instance or an array is no API type.
+        private static string TypeInMessage(string message)
+        {
+            var m = DottedName.Match(message);
+            if (!m.Success) return null;
+            int after = m.Index + m.Length;
+            return after < message.Length && (message[after] == '<' || message[after] == '[') ? null : m.Value;
+        }
+
+        // The first identifier from the error's column on that the message names as a whole word
+        // (and that is not a segment of the type the message is about).
+        private static string NamedAtError(CompileError e, string exclude)
+        {
+            if (string.IsNullOrEmpty(e.Line)) return null;
+            var from = Math.Max(0, Math.Min(e.Line.Length, e.Column - 1));
+            var segments = exclude == null ? new HashSet<string>() : new HashSet<string>(exclude.Split('.'), StringComparer.Ordinal);
+            foreach (Match m in Identifier.Matches(e.Line.Substring(from)))
+            {
+                if (segments.Contains(m.Value)) continue;
+                if (Regex.IsMatch(e.Message, @"(?<![\w])" + Regex.Escape(m.Value) + @"(?![\w])")) return m.Value;
+            }
+            return null;
         }
 
         private static void Add(List<string> list, string item)
