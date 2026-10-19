@@ -531,7 +531,8 @@ namespace VibeModel.Services.Chat
             var context = GatherModelContext();
 
             var appendPrompt = new StringBuilder(
-                BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current, ChangeApprovalPolicy.EffectiveMode));
+                BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current, ChangeApprovalPolicy.EffectiveMode,
+                    ChangeApprovalPolicy.PreviewTurn));
 
             // Office standards (plan 11): live template facts + the active pack's core rules go
             // into the per-turn system prompt — not into the prompt FILE, which the model reads
@@ -909,7 +910,7 @@ namespace VibeModel.Services.Chat
         /// applies from the next message on — also in a resumed session.
         /// </summary>
         internal static string BuildTurnPrompt(string systemPromptPath, int httpPort, string context, string language,
-            ChangeApprovalMode approval = ChangeApprovalMode.Auto)
+            ChangeApprovalMode approval = ChangeApprovalMode.Auto, bool preview = false)
         {
             var sb = new StringBuilder();
             sb.Append("You are inside Revit. Read " + systemPromptPath +
@@ -932,7 +933,7 @@ namespace VibeModel.Services.Chat
 
             sb.AppendLine();
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(language, approval).TrimEnd());
+            sb.Append(BuildBehaviourRules(language, approval, preview).TrimEnd());
             return sb.ToString();
         }
 

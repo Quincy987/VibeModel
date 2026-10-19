@@ -22,7 +22,7 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>Where the policy in force came from (Diagnose names it).</summary>
-    public enum ChangeApprovalSource { Default, Settings, Environment, Managed }
+    public enum ChangeApprovalSource { Default, Settings, Environment, Managed, Session }
 
     /// <summary>What happens to a run's TransactionGroup once the command has run.</summary>
     public enum RunDecision
@@ -68,6 +68,56 @@ namespace VibeModel.Services.Claude
             get => _dontAskThisSession;
             set => _dontAskThisSession = value;
         }
+
+        // Plan 18: the chat pane's mode chip. A Nullable cannot be volatile, so the choice is
+        // kept as an int (-1 = none).
+        private static volatile int _sessionOverride = -1;
+
+        /// <summary>
+        /// The mode chosen in the chat pane's mode chip for the rest of this Revit session; null =
+        /// none (settings decide). managed.json still wins over it. Settings shows and clears it.
+        /// </summary>
+        public static ChangeApprovalMode? SessionOverride
+        {
+            get { var v = _sessionOverride; return v < 0 ? (ChangeApprovalMode?)null : (ChangeApprovalMode)v; }
+            set => _sessionOverride = value.HasValue ? (int)value.Value : -1;
+        }
+
+        /// <summary>
+        /// The chip's pick: the mode for the rest of this session. Choosing Ask clears "don't ask
+        /// again this session" — the user just asked to be asked.
+        /// </summary>
+        public static void ChooseForSession(ChangeApprovalMode mode)
+        {
+            if (mode == ChangeApprovalMode.Ask) DontAskThisSession = false;
+            SessionOverride = mode;
+        }
+
+        // Plan 18: "next message as preview". The pane arms the flag before every send (true or
+        // false, so a send that never started a turn cannot leave it behind); the turn takes it.
+        private static volatile bool _previewNextTurn;
+        private static volatile bool _previewTurn;
+
+        /// <summary>
+        /// True while a chat turn sent as a preview runs: every modifying command (the Claude Code
+        /// CLI's own curls and the API backends' tool calls, also an external curl made meanwhile —
+        /// like the journal's turn attribution) runs as ?preview=1.
+        /// </summary>
+        public static bool PreviewTurn => _previewTurn;
+
+        /// <summary>The pane, right before it sends a message: is that turn a preview?</summary>
+        public static void ArmNextTurn(bool preview) => _previewNextTurn = preview;
+
+        /// <summary>A turn starts: it takes the armed flag (and disarms it). Returns <see cref="PreviewTurn"/>.</summary>
+        public static bool BeginTurn()
+        {
+            _previewTurn = _previewNextTurn;
+            _previewNextTurn = false;
+            return _previewTurn;
+        }
+
+        /// <summary>The turn ended (also on error or cancel).</summary>
+        public static void EndTurn() => _previewTurn = false;
 
         public static string Name(ChangeApprovalMode mode)
         {
@@ -118,11 +168,51 @@ namespace VibeModel.Services.Claude
         public static ChangeApprovalMode Effective(ChangeApprovalMode configured, bool dontAskThisSession)
             => configured == ChangeApprovalMode.Ask && dontAskThisSession ? ChangeApprovalMode.Auto : configured;
 
-        /// <summary>The policy in force right now (reads managed.json, the environment and settings.json).</summary>
-        public static ChangeApprovalMode EffectiveMode
-            => Effective(Infrastructure.SettingsManager.GetChangeApproval(out _), DontAskThisSession);
+        /// <summary>
+        /// The configured mode with the session's chip choice applied: managed.json (IT) wins,
+        /// else the chip's <paramref name="sessionOverride"/>, else the configured one (environment
+        /// → settings → auto). <paramref name="chosenSource"/> is <see cref="ChangeApprovalSource.Session"/>
+        /// when the chip decided.
+        /// </summary>
+        public static ChangeApprovalMode WithSessionOverride(ChangeApprovalMode configured, ChangeApprovalSource source,
+            ChangeApprovalMode? sessionOverride, out ChangeApprovalSource chosenSource)
+        {
+            if (sessionOverride.HasValue && source != ChangeApprovalSource.Managed)
+            {
+                chosenSource = ChangeApprovalSource.Session;
+                return sessionOverride.Value;
+            }
+            chosenSource = source;
+            return configured;
+        }
 
-        /// <summary>"ask (settings)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)".</summary>
+        /// <summary>
+        /// The policy in force for a configuration: <see cref="WithSessionOverride"/>, then "don't ask
+        /// again this session" (ask → auto). The approval window's checkbox works the same under a
+        /// chip choice; the chip's Ask clears it (<see cref="ChooseForSession"/>).
+        /// </summary>
+        public static ChangeApprovalMode EffectiveOf(ChangeApprovalMode configured, ChangeApprovalSource source,
+            ChangeApprovalMode? sessionOverride, bool dontAskThisSession)
+            => Effective(WithSessionOverride(configured, source, sessionOverride, out _), dontAskThisSession);
+
+        /// <summary>The mode chosen right now (managed.json → the chip → environment → settings → auto), before "don't ask".</summary>
+        public static ChangeApprovalMode Chosen(out ChangeApprovalSource source)
+        {
+            var configured = Infrastructure.SettingsManager.GetChangeApproval(out var configuredSource);
+            return WithSessionOverride(configured, configuredSource, SessionOverride, out source);
+        }
+
+        /// <summary>The policy in force right now (reads managed.json, the chip, the environment and settings.json).</summary>
+        public static ChangeApprovalMode EffectiveMode
+        {
+            get
+            {
+                var configured = Infrastructure.SettingsManager.GetChangeApproval(out var source);
+                return EffectiveOf(configured, source, SessionOverride, DontAskThisSession);
+            }
+        }
+
+        /// <summary>"ask (settings)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)", "ask (this session)".</summary>
         public static string Describe(ChangeApprovalMode configured, ChangeApprovalSource source, bool dontAskThisSession)
         {
             string from;
@@ -131,6 +221,7 @@ namespace VibeModel.Services.Claude
                 case ChangeApprovalSource.Managed: from = "managed.json"; break;
                 case ChangeApprovalSource.Environment: from = EnvVar; break;
                 case ChangeApprovalSource.Settings: from = "settings"; break;
+                case ChangeApprovalSource.Session: from = "this session"; break;
                 default: from = "default"; break;
             }
             var text = Name(configured) + " (" + from + ")";
