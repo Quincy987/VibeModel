@@ -129,6 +129,7 @@ namespace VibeModel.Services.Chat
         public const string ApprovalIsolated = "ApprovalIsolated";             // {0} = count
         public const string ApprovalNotVisible = "ApprovalNotVisible";
         public const string ApprovalOnlyDeleted = "ApprovalOnlyDeleted";
+        public const string ApprovalNothingToShow = "ApprovalNothingToShow";
         public const string ApprovalZoom = "ApprovalZoom";
         public const string ApprovalDontAsk = "ApprovalDontAsk";
         public const string ApprovalDiscard = "ApprovalDiscard";
@@ -141,6 +142,7 @@ namespace VibeModel.Services.Chat
         public const string SettingApprovalReadOnly = "SettingApprovalReadOnly";
         public const string SettingApprovalReadOnlyHint = "SettingApprovalReadOnlyHint";
         public const string SettingApprovalSession = "SettingApprovalSession";
+        public const string SettingApprovalEnv = "SettingApprovalEnv";          // {0} = mode, {1} = variable
         // Diagnose (header button, `diagnose` command).
         public const string DiagnoseTitle = "DiagnoseTitle";
         public const string DiagnoseTip = "DiagnoseTip";
@@ -257,6 +259,7 @@ namespace VibeModel.Services.Chat
                 { ApprovalIsolated, "Isolated and selected in this view: {0}" },
                 { ApprovalNotVisible, "Not visible in this view - Zoom shows them." },
                 { ApprovalOnlyDeleted, "Only deletions: there is nothing to show." },
+                { ApprovalNothingToShow, "Nothing to show in a view (only views or types changed)." },
                 { ApprovalZoom, "Zoom" },
                 { ApprovalDontAsk, "Don't ask again this Revit session" },
                 { ApprovalDiscard, "Discard" },
@@ -269,6 +272,7 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalReadOnly, "Read-only - the AI may not change anything" },
                 { SettingApprovalReadOnlyHint, "For viewers: every change is rolled back and refused; reading still works." },
                 { SettingApprovalSession, "Not asking for the rest of this Revit session (ticked in the approval window) - untick to ask again" },
+                { SettingApprovalEnv, "In force now: '{0}' from the environment variable {1}, which overrides the choice above." },
                 { DiagnoseTitle, "VibeModel diagnosis" },
                 { DiagnoseTip, "What VibeModel sees of this computer: versions, connection, proxy, recent errors. Secrets are masked." },
                 { DiagnoseRunning, "Checking (network checks take up to 5 s each)…" },
@@ -385,6 +389,7 @@ namespace VibeModel.Services.Chat
                 { ApprovalIsolated, "Geïsoleerd en geselecteerd in deze view: {0}" },
                 { ApprovalNotVisible, "Niet zichtbaar in deze view - Inzoomen toont ze." },
                 { ApprovalOnlyDeleted, "Alleen verwijderingen: er is niets te tonen." },
+                { ApprovalNothingToShow, "Niets te tonen in een view (alleen views of types gewijzigd)." },
                 { ApprovalZoom, "Inzoomen" },
                 { ApprovalDontAsk, "Deze Revit-sessie niet meer vragen" },
                 { ApprovalDiscard, "Ongedaan maken" },
@@ -397,6 +402,7 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalReadOnly, "Alleen lezen - de AI mag niets wijzigen" },
                 { SettingApprovalReadOnlyHint, "Voor meekijkers: elke wijziging wordt teruggedraaid en geweigerd; lezen kan wel." },
                 { SettingApprovalSession, "Deze Revit-sessie wordt niet meer gevraagd (aangevinkt in het venster) - vink uit om weer te vragen" },
+                { SettingApprovalEnv, "Nu in werking: '{0}' uit de omgevingsvariabele {1}, die de keuze hierboven overschrijft." },
                 { DiagnoseTitle, "VibeModel-diagnose" },
                 { DiagnoseTip, "Wat VibeModel van deze computer ziet: versies, verbinding, proxy, recente fouten. Geheimen zijn afgeschermd." },
                 { DiagnoseRunning, "Bezig met controleren (netwerkcontroles duren elk tot 5 s)…" },

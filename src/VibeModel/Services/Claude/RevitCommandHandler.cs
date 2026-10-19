@@ -270,7 +270,6 @@ namespace VibeModel.Services.Claude
             var mode = ChangeApprovalPolicy.EffectiveMode;
             bool guarded = ChangeApprovalPolicy.IsGuarded(request.Command);
             bool runControl = doc != null && ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, modifying, options.Preview, options.ReadOnly);
-            bool isExec = request.Command.Equals("exec", StringComparison.OrdinalIgnoreCase);
             RecordedChanges changes = null;
             CommandResult cr;
             FailureReport revit = null;
@@ -280,13 +279,14 @@ namespace VibeModel.Services.Claude
             // step (one TransactionGroup), except for exec, whose snippet may save, open or close
             // documents (not allowed inside a group): there the re-host is its own undo step —
             // unless the run needs a group anyway (plan 15); exec then runs inside it.
+            var targets = AnnotationScope.TargetIds(request.Command, request.Args);
             var gdoc = AnnotationGuard.Applies(request.Command) ? doc : null;
-            var snapshot = gdoc != null ? GuardCapture(gdoc, AnnotationScope.TargetIds(request.Command, request.Args)) : null;
-            var preRead = runControl ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(request.Command, request.Args)) : null;
+            var snapshot = gdoc != null ? GuardCapture(gdoc, targets) : null;
+            var preRead = runControl ? ApprovalRun.PreRead(doc, targets) : null;
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             TransactionGroup group = null;
             AnnotationOutcome annotations = null;
-            if (runControl || (snapshot != null && !isExec))
+            if (runControl || (snapshot != null && !IsExec(request.Command)))
             {
                 var groupName = runControl
                     ? ChangeApprovalPolicy.UndoName(request.Command, request.Args)
@@ -346,7 +346,7 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, annotations, run);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run);
         }
 
         /// <summary>
@@ -366,7 +366,7 @@ namespace VibeModel.Services.Claude
                 stamp = TryTakeStamp(app, !request.IsCancelled);
 
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
-            var annotationLine = annotations?.ToTextLine();
+            var annotationLine = AnnotationText(annotations, run);
 
             if (json)
             {
@@ -376,8 +376,8 @@ namespace VibeModel.Services.Claude
                     if (stamp != null) dict["meta"] = stamp.ToMeta();
                     if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
                     if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
-                    if (annotationLine != null) dict["annotations"] = annotations.ToJson();
                     run?.AddJson(dict);
+                    AddAnnotationsJson(dict, annotations, run);
                 }
                 return _json.Serialize(obj);
             }
@@ -427,6 +427,34 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
+        /// The annotations a response may report: a kept run's (and every run outside a run group)
+        /// as they are; a preview's as what WOULD happen; none for any other rolled-back run — its
+        /// re-host or removal was undone with everything else.
+        /// </summary>
+        private static AnnotationOutcome ShownAnnotations(AnnotationOutcome annotations, bool runControl, RunOutcome run)
+            => !runControl || run.Keep || run.Decision == RunDecision.Preview ? annotations : null;
+
+        private static bool IsPreview(RunOutcome run) => run != null && !run.Keep && run.Decision == RunDecision.Preview;
+
+        // "-- annotations: removed 1 spot …", or for a preview "-- preview: annotations: removed 1 spot …".
+        private static string AnnotationText(AnnotationOutcome annotations, RunOutcome run)
+        {
+            var line = annotations?.ToTextLine();
+            if (line == null || !IsPreview(run)) return line;
+            return "-- preview: " + (line.StartsWith("-- ", StringComparison.Ordinal) ? line.Substring(3) : line);
+        }
+
+        // JSON: the additive "annotations" object; for a preview inside the "preview" object.
+        private static void AddAnnotationsJson(Dictionary<string, object> envelope, AnnotationOutcome annotations, RunOutcome run)
+        {
+            if (annotations == null || annotations.ToTextLine() == null) return;
+            if (IsPreview(run) && envelope.TryGetValue("preview", out var p) && p is Dictionary<string, object> preview)
+                preview["annotations"] = annotations.ToJson();
+            else
+                envelope["annotations"] = annotations.ToJson();
+        }
+
+        /// <summary>
         /// Plan 15's decision for a finished run, while its group is still open: what to keep,
         /// what to show, what to say. For <see cref="RunDecision.Prompt"/> this shows the approval
         /// window (modal) and logs the answer.
@@ -452,7 +480,9 @@ namespace VibeModel.Services.Claude
                     break;
                 case RunDecision.QueryModified:
                     run.Replace = CommandResult.Error(ChangeApprovalPolicy.QueryModifiedCode,
-                        ChangeApprovalPolicy.QueryModifiedMessage(run.Summary, batch), ChangeApprovalPolicy.QueryModifiedHint);
+                        ChangeApprovalPolicy.QueryModifiedMessage(run.Summary,
+                            batch ? "the batch" : IsExec(request.Command) ? "the snippet" : "the command"),
+                        ChangeApprovalPolicy.QueryModifiedHint);
                     break;
                 case RunDecision.ReadOnly:
                     run.Replace = CommandResult.Error(ChangeApprovalPolicy.ReadOnlyCode,
@@ -809,7 +839,8 @@ namespace VibeModel.Services.Claude
                 Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn);
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             if (checkLine != null) sb.AppendLine(checkLine);
-            var annotationLine = annotations?.ToTextLine();
+            annotations = ShownAnnotations(annotations, runControl, run);
+            var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
 
@@ -829,9 +860,8 @@ namespace VibeModel.Services.Claude
                     envelope["meta"] = stamp.ToMeta();
                 if (checkLine != null)
                     envelope["check"] = CheckEnvelope(checkLine, findings);
-                if (annotationLine != null)
-                    envelope["annotations"] = annotations.ToJson();
                 run.AddJson(envelope);
+                AddAnnotationsJson(envelope, annotations, run);
                 // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
                 if (run.Replace != null && run.Replace.ToJsonObject() is Dictionary<string, object> replaced &&
                     replaced.TryGetValue("error", out var error))
@@ -857,7 +887,7 @@ namespace VibeModel.Services.Claude
                     return "[read-only] rolled back — " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" +
                            run.Summary.PreviewLine() + "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
                 case RunDecision.QueryModified:
-                    return "[readonly] rolled back — " + run.Replace.Message + "\nHint: " + ChangeApprovalPolicy.QueryModifiedHint;
+                    return "[readonly=1] rolled back — " + run.Replace.Message + "\nHint: " + ChangeApprovalPolicy.QueryModifiedHint;
                 case RunDecision.Prompt:
                     if (run.Approval != null && run.Approval.Decision == ApprovalDecision.Discarded)
                         return "[approval] rolled back — " + ChangeApprovalPolicy.DiscardedMessage + " (#" + run.Approval.Id + ")" +

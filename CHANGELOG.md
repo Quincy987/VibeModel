@@ -12,10 +12,12 @@
   New elements never ask. `readonly` refuses every change (`READ_ONLY`, with what it would have
   changed) — for colleagues who only look.
 - `?preview=1` on any modifying command or batch: it runs, says what it would add/modify/delete,
-  and rolls everything back. `?readonly=1` on `exec`/`batch` fails (`QUERY_MODIFIED_MODEL`) instead
-  of changing the model.
+  and rolls everything back (an annotation it would re-host or remove is reported as `-- preview:`).
+  `?readonly=1` (meant for `exec`/`batch`) fails (`QUERY_MODIFIED_MODEL`) instead of changing the model.
 - `approvals` lists this session's decisions; a decision a client missed (it waits up to 10 min,
   then `APPROVAL_PENDING`) appears once in the next model-state stamp. Discarded runs are journaled.
+- The file-based fallback (only used when the HTTP port could not open) cannot ask or roll back, so
+  under `ask` or `readonly` it refuses changes instead of slipping past the setting.
 - IT can set it per machine: `ChangeApproval` in managed.json (locked in Settings); Diagnose names the
   source; `build.ps1 -Approval ask` for testing. Measured in Revit 2023: a window in 0.3–1.1 s, Keep is
   one Ctrl+Z (pile; floor + its spot elevation; an exec move), Discard leaves the edit counter as it was.

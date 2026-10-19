@@ -586,12 +586,12 @@ namespace VibeModel.Services.Claude
                 {
                     var type = TypeInMessage(e.Message);
                     if (type == null) continue;
-                    var member = NamedAtError(e, exclude: type);
+                    var member = NamedAtError(e, exclude: type, member: true);
                     if (member != null) Add(list, type.Substring(type.LastIndexOf('.') + 1) + "." + member);
                 }
                 else if (number == "CS0246")
                 {
-                    var name = NamedAtError(e, exclude: null);
+                    var name = NamedAtError(e, exclude: null, member: false);
                     if (name != null) Add(list, name);
                 }
             }
@@ -609,18 +609,32 @@ namespace VibeModel.Services.Claude
         }
 
         // The first identifier from the error's column on that the message names as a whole word
-        // (and that is not a segment of the type the message is about).
-        private static string NamedAtError(CompileError e, string exclude)
+        // (and that is not a segment of the type the message is about). For a missing member, one
+        // written after a '.' wins first: a variable named "type" must not match the message's
+        // "argument of type …" / "van het type …".
+        private static string NamedAtError(CompileError e, string exclude, bool member)
         {
             if (string.IsNullOrEmpty(e.Line)) return null;
             var from = Math.Max(0, Math.Min(e.Line.Length, e.Column - 1));
+            var rest = e.Line.Substring(from);
             var segments = exclude == null ? new HashSet<string>() : new HashSet<string>(exclude.Split('.'), StringComparer.Ordinal);
-            foreach (Match m in Identifier.Matches(e.Line.Substring(from)))
+            var named = Identifier.Matches(rest).Cast<Match>()
+                .Where(m => !segments.Contains(m.Value) &&
+                            Regex.IsMatch(e.Message, @"(?<![\w])" + Regex.Escape(m.Value) + @"(?![\w])"))
+                .ToList();
+            if (member)
             {
-                if (segments.Contains(m.Value)) continue;
-                if (Regex.IsMatch(e.Message, @"(?<![\w])" + Regex.Escape(m.Value) + @"(?![\w])")) return m.Value;
+                var accessed = named.FirstOrDefault(m => AfterDot(rest, m.Index));
+                if (accessed != null) return accessed.Value;
             }
-            return null;
+            return named.Count > 0 ? named[0].Value : null;
+        }
+
+        private static bool AfterDot(string text, int index)
+        {
+            int k = index - 1;
+            while (k >= 0 && char.IsWhiteSpace(text[k])) k--;
+            return k >= 0 && text[k] == '.';
         }
 
         private static void Add(List<string> list, string item)

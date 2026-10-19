@@ -190,8 +190,10 @@ namespace VibeModel.UI
         private static string ViewText(ApprovalRequest r)
         {
             if (r.IsolatedCount > 0) return Strings.Get(Strings.ApprovalIsolated, r.IsolatedCount);
-            if (r.ShowableCount == 0) return Strings.Get(Strings.ApprovalOnlyDeleted);
-            return Strings.Get(Strings.ApprovalNotVisible);
+            if (r.ShowableCount > 0) return Strings.Get(Strings.ApprovalNotVisible);
+            // Nothing to isolate: only deletions, or only views/types changed (a type's parameter).
+            bool onlyDeleted = r.Summary != null && r.Summary.Deleted.Count > 0 && r.Summary.Added.Count == 0;
+            return Strings.Get(onlyDeleted ? Strings.ApprovalOnlyDeleted : Strings.ApprovalNothingToShow);
         }
 
         private static TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool italic = false)

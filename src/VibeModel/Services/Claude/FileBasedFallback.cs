@@ -65,6 +65,18 @@ namespace VibeModel.Services.Claude
 
                 Logger.Info("[Fallback] Executing: " + commandText);
 
+                // Plan 15: the run group (approval, read-only) lives in RevitCommandHandler, which
+                // this path does not use — so while the policy is anything but "auto" a change is
+                // refused here rather than slipping past it.
+                var mode = ChangeApprovalPolicy.EffectiveMode;
+                if (mode != ChangeApprovalMode.Auto && _registry.IsModification(cmd))
+                {
+                    WriteOutput(commandText, "ERROR: Change approval is '" + ChangeApprovalPolicy.Name(mode) +
+                        "': the file-based fallback cannot ask or roll back, so it makes no changes.\nHint: " +
+                        "use the HTTP server (restart Revit when its port was blocked).");
+                    return;
+                }
+
                 // Same failure handling as the HTTP path: the application-level safety net only
                 // acts while a command runs, and exec turns a collected rollback into an error.
                 string output;

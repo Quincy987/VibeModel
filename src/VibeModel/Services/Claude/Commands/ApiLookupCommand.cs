@@ -34,11 +34,7 @@ namespace VibeModel.Services.Claude.Commands
         /// <summary>The shared engine (also used by exec's compile-error hint).</summary>
         internal static ApiLookup Engine => Shared.Value;
 
-        public string Execute(string args, UIApplication uiApp)
-        {
-            var r = ExecuteStructured(args, uiApp);
-            return r.Success ? r.Text : "ERROR: " + r.Message;
-        }
+        public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)
         {

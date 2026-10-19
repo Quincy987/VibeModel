@@ -369,8 +369,8 @@ namespace VibeModel.UI
             if (managed)
                 panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
             else if (source == ChangeApprovalSource.Environment)
-                panel.Children.Add(CreateLabel(ChangeApprovalPolicy.EnvVar + " = " + ChangeApprovalPolicy.Name(configured) +
-                                               " (" + ChangeApprovalPolicy.Describe(configured, source, false) + ")"));
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingApprovalEnv,
+                    ChangeApprovalPolicy.Name(configured), ChangeApprovalPolicy.EnvVar)));
 
             // Only while "don't ask again" was ticked in the approval window this Revit session.
             if (ChangeApprovalPolicy.DontAskThisSession)

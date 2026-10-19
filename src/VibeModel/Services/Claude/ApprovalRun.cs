@@ -32,7 +32,8 @@ namespace VibeModel.Services.Claude
             foreach (var id in ids)
             {
                 if (map.Count >= MaxPreRead) break;
-                Read(doc, new ElementId(id), map);
+                // An element the command names always counts, even a part that is otherwise hidden.
+                Read(doc, new ElementId(id), map, named: true);
                 Element e;
                 try { e = doc.GetElement(new ElementId(id)); } catch { e = null; }
                 if (e == null) continue;
@@ -42,7 +43,7 @@ namespace VibeModel.Services.Claude
                 foreach (var d in dependents)
                 {
                     if (map.Count >= MaxPreRead) break;
-                    Read(doc, d, map);
+                    Read(doc, d, map, named: false);
                 }
             }
             return map;
@@ -53,13 +54,13 @@ namespace VibeModel.Services.Claude
         // The value that marks a pre-read id as never shown.
         private const string HiddenMark = "";
 
-        private static void Read(Document doc, ElementId id, Dictionary<int, string> map)
+        private static void Read(Document doc, ElementId id, Dictionary<int, string> map, bool named)
         {
             if (map.ContainsKey(id.IntegerValue)) return;
             Element e;
             try { e = doc.GetElement(id); } catch { e = null; }
             if (e == null) return;
-            map[id.IntegerValue] = Hidden(e) ? HiddenMark : CategoryName(e);
+            map[id.IntegerValue] = !named && Hidden(e) ? HiddenMark : CategoryName(e) ?? e.GetType().Name;
         }
 
         /// <summary>The change set with categories (added/modified read live, deleted from <paramref name="preRead"/>).</summary>

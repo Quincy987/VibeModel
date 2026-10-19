@@ -195,8 +195,8 @@ namespace VibeModel.Tests
         public void Texts_ForTheClient()
         {
             Assert.Equal("-- approval: kept by the user (#7)", ChangeApprovalPolicy.KeptLine(7));
-            Assert.Equal("ERROR: Discarded by the user.\nHint: do not retry this change; ask the user what they want instead.",
-                ChangeApprovalPolicy.DiscardedText());
+            Assert.Equal("Discarded by the user.", ChangeApprovalPolicy.DiscardedMessage);
+            Assert.Equal("do not retry this change; ask the user what they want instead.", ChangeApprovalPolicy.DiscardedHint);
             Assert.Equal("Discarded by the user.", ChangeApprovalPolicy.DiscardedMessageFor(null));
             Assert.Equal("Discarded by the user. The command itself had failed: Runtime exception: boom",
                 ChangeApprovalPolicy.DiscardedMessageFor("ERROR: Runtime exception: boom\nmore"));
@@ -206,6 +206,23 @@ namespace VibeModel.Tests
             Assert.Equal(8, json["id"]);
             Assert.Equal("discarded", json["decision"]);
             Assert.Equal("user", json["by"]);
+        }
+    }
+
+    public class SavesOrClosesTests
+    {
+        [Theory]
+        [InlineData("trans.Commit(); doc.Save();", true)]
+        [InlineData("doc.SaveAs(@\"C:\\x.rvt\", new SaveAsOptions());", true)]
+        [InlineData("doc . Close ( false );", true)]
+        [InlineData("doc.SynchronizeWithCentral(t, s);", true)]
+        [InlineData("sb.AppendLine(doc.Title); var saved = 1;", false)]
+        [InlineData("SaveAs(1);", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void DecidedOnTheSnippet_NotOnRevitsWording(string code, bool expected)
+        {
+            Assert.Equal(expected, ChangeApprovalPolicy.SavesOrCloses(code));
         }
     }
 
@@ -247,8 +264,8 @@ namespace VibeModel.Tests
         {
             Assert.Equal("added 2, modified 1, deleted 0", Sample().PastCounts());
             Assert.Equal("the snippet changed the model (added 2, modified 1, deleted 0) and was rolled back.",
-                ChangeApprovalPolicy.QueryModifiedMessage(Sample(), batch: false));
-            Assert.StartsWith("the batch changed", ChangeApprovalPolicy.QueryModifiedMessage(Sample(), batch: true));
+                ChangeApprovalPolicy.QueryModifiedMessage(Sample(), "the snippet"));
+            Assert.StartsWith("the batch changed", ChangeApprovalPolicy.QueryModifiedMessage(Sample(), "the batch"));
         }
 
         [Fact]
@@ -374,7 +391,9 @@ namespace VibeModel.Tests
             Assert.Contains("do not retry", rules);
             Assert.Contains("600000", rules);
             Assert.Contains("approvals", rules);
-            Assert.DoesNotContain(ChatBackendBase.UndoRule, rules);
+            // The undo sentence stays: the AI still executes what was asked; the user decides after.
+            Assert.Contains("- " + ChatBackendBase.ApprovalAskRule, rules);
+            Assert.StartsWith(ChatBackendBase.UndoRule, ChatBackendBase.ApprovalAskRule);
         }
 
         [Fact]

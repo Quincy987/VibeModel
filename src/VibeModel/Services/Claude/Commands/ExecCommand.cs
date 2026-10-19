@@ -28,10 +28,11 @@ namespace VibeModel.Services.Claude.Commands
             int recordedBefore = Standards.CreatedElementsRecorder.RecordedCount;
             var text = Run(args, uiApp, clock);
             // Plan 15: inside a run group (preview / read-only / approval) Revit refuses to save,
-            // close or synchronize — say why instead of leaving Revit's bare message.
-            if (RunContext.InRunGroup && text != null &&
-                text.IndexOf("open transaction phase", StringComparison.OrdinalIgnoreCase) >= 0)
-                text = text.TrimEnd() + "\nHint: " + InRunGroupHint;
+            // close or synchronize — say why instead of leaving Revit's bare message. Decided on the
+            // snippet's own calls, not on the message text, which Revit words per UI language.
+            if (RunContext.InRunGroup && text != null && text.IndexOf("ERROR", StringComparison.Ordinal) >= 0 &&
+                ChangeApprovalPolicy.SavesOrCloses(args))
+                text = text.TrimEnd() + "\nHint: " + ChangeApprovalPolicy.InRunGroupHint;
             if (!clock.Fired) return CommandResult.Legacy(text);
             // Transactions the snippet committed itself before the loop check fired are kept.
             bool kept = Standards.CreatedElementsRecorder.RecordedCount > recordedBefore;
@@ -193,8 +194,6 @@ public static class DynamicCommand
             }
         }
 
-        internal const string InRunGroupHint =
-            "saving, closing or synchronizing is not allowed while VibeModel previews a change or waits for the user's approval (the run is one transaction group) - switch Settings → Wijzigingen door de AI to \"Nooit vragen\" for this snippet, or let the user save.";
 
         // A snippet can commit several transactions; only the one Revit refused is gone.
         internal const string RollbackHint = "Revit rolled back the transaction that failed; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";

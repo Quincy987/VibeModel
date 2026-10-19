@@ -326,7 +326,7 @@ namespace VibeModel.Services.Chat
         internal const string UndoRule =
             "Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.";
         internal const string ApprovalAskRule =
-            "Every modification through VibeModel is one Revit undo step (Ctrl+Z); deletions and edits the user asked for must simply be executed, never refused or redirected to manual steps. Change approval is on: the user keeps or discards a deletion or edit in Revit before you see the result (`-- approval: kept by the user` or `ERROR: Discarded by the user`). After a discard: do not retry, do not argue; ask what they want instead.";
+            UndoRule + " Change approval is on: the user keeps or discards a deletion or edit in Revit before you see the result (`-- approval: kept by the user` or `ERROR: Discarded by the user`). After a discard: do not retry, do not argue; ask what they want instead.";
         internal const string ApprovalWaitRule =
             "delete, set, phase, join, unjoin, an exec that changes the model and batches holding them wait for the user's Keep/Discard in Revit: when your shell tool has a timeout, set it to 600000 ms for those calls. If a call still times out (APPROVAL_PENDING), call approvals to learn the outcome; never re-run the change.";
         internal const string ApprovalReadOnlyRule =

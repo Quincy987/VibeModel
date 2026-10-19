@@ -417,8 +417,12 @@ curl -s http://localhost:18884/approvals                                  # This
 - **`?preview=1`** (any policy, single command or batch): the command runs inside a group that is
   always rolled back; the normal answer + `-- preview: nothing was changed. Would add 1 (Walls 1),
   modify 4 (Walls 3, Views 1), delete 1 (Walls 1). Ids are provisional.` (JSON `preview:{added,
-  modified,deleted:[{id,category}],rolledBack}`). Files a command writes (export, generated `.rfa`)
-  are still written. **`?readonly=1`** on exec or batch: a change → rolled back, `QUERY_MODIFIED_MODEL`.
+  modified,deleted:[{id,category}],rolledBack}`). Annotations the run would re-host or remove read
+  `-- preview: annotations: …` (JSON `preview.annotations`); after any other rollback (Discard,
+  READ_ONLY, QUERY_MODIFIED_MODEL) no annotations line is printed — nothing was re-hosted or removed.
+  Files a command writes (export, generated `.rfa`) are still written. **`?readonly=1`** on any
+  modifying command (meant for exec and batch): a change → rolled back, `QUERY_MODIFIED_MODEL` ("the
+  snippet / the batch / the command changed the model (added …) and was rolled back").
 - **Change sets**: added/modified are read live, deleted ones from categories pre-read for the ids the
   command names AND their `GetDependentElements` (≤ 5000). Internal elements, sketch lines and automatic
   sketch dimensions are never shown (measured: a new wall adds two plain Element objects; a floor's
@@ -432,9 +436,13 @@ curl -s http://localhost:18884/approvals                                  # This
   /`ApprovalReadOnlyRule`; auto = the old Undo sentence verbatim).
 - **Inside a run group** Revit refuses to save, close or synchronize ("Operation is not permitted when
   there is any open transaction phase started by API client" — measured; under `auto` an exec can
-  `trans.Commit(); doc.Save();`); exec adds a `Hint:` saying why. Rolled-back runs rewind the edit
+  `trans.Commit(); doc.Save();`); exec adds a `Hint:` saying why when the snippet calls `Save`,
+  `SaveAs`, `Close` or `SynchronizeWithCentral` (`ChangeApprovalPolicy.SavesOrCloses` — decided on the
+  source, since Revit words its refusal per UI language). Rolled-back runs rewind the edit
   counter (`ModelChangeTracker.RewindTo`) and leave `VibeModelCreated`; discarded runs are journaled
   (`· delete 1730959 · discarded by the user · chat …`), previews and refusals are not.
+- **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
+  group: while the policy is not `auto` it refuses every modifying command instead of bypassing it.
 - Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
   side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
   `ApprovalWindow`, `ApprovalSummary`, `ApprovalZoom`, `ApprovalDontAsk`, `ApprovalDiscard`,

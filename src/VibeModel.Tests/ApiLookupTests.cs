@@ -241,6 +241,18 @@ namespace VibeModel.Tests
             Assert.Equal(new[] { "Wall.Foo", "Wall.Widht", "Waal" }, ApiLookup.LookupsForCompileErrors(errors).ToArray());
         }
 
+        [Fact]
+        public void CompileErrors_AVariableNamedType_IsNotTheMember()
+        {
+            // "argument of type" / "van het type": the variable "type" is in the message too.
+            var e = new ApiLookup.CompileError
+            {
+                Number = "CS1061", Column = 9, Line = "var x = type.Widht;",
+                Message = "'Autodesk.Revit.DB.Wall' does not contain a definition for 'Widht' and no extension method 'Widht' accepting a first argument of type 'Autodesk.Revit.DB.Wall' could be found"
+            };
+            Assert.Equal(new[] { "Wall.Widht" }, ApiLookup.LookupsForCompileErrors(new[] { e }).ToArray());
+        }
+
         /// <summary>The real compiler exec uses (CodeDom), in whatever language this Windows speaks.</summary>
         [Fact]
         public void CompileErrors_FromTheRealCompiler()

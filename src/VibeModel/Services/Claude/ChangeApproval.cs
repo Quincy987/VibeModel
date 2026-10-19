@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace VibeModel.Services.Claude
 {
@@ -50,9 +51,6 @@ namespace VibeModel.Services.Claude
     /// </summary>
     public static class ChangeApprovalPolicy
     {
-        /// <summary>managed.json / settings.json key (same name in both).</summary>
-        public const string SettingKey = "ChangeApproval";
-
         /// <summary>Environment variable between managed.json and settings.json (build.ps1 -Approval sets it).</summary>
         public const string EnvVar = "VIBEMODEL_APPROVAL";
 
@@ -219,7 +217,7 @@ namespace VibeModel.Services.Claude
         public const string ReadOnlyHint = "Settings → Wijzigingen door de AI.";
 
         public const string QueryModifiedCode = "QUERY_MODIFIED_MODEL";
-        public const string QueryModifiedHint = "a read-only exec must not modify; drop ?readonly=1 to apply.";
+        public const string QueryModifiedHint = "a run with readonly=1 must not modify the model; drop readonly=1 to apply the change.";
 
         public const string PendingCode = "APPROVAL_PENDING";
         public const string PendingMessage = "still waiting for the user's decision in Revit.";
@@ -227,15 +225,25 @@ namespace VibeModel.Services.Claude
 
         public const string RunGroupCode = "RUN_GROUP_FAILED";
 
-        /// <summary>The message of <see cref="RunDecision.QueryModified"/>.</summary>
-        public static string QueryModifiedMessage(ChangeSetSummary changes, bool batch)
-            => (batch ? "the batch" : "the snippet") + " changed the model (" + changes.PastCounts() + ") and was rolled back.";
+        /// <summary>exec's hint when a snippet saves, closes or synchronizes inside a run group (Revit refuses that).</summary>
+        public const string InRunGroupHint =
+            "saving, closing or synchronizing is not allowed while VibeModel previews a change or waits for the user's approval (the run is one transaction group) - switch Settings → Wijzigingen door de AI to \"Nooit vragen\" for this snippet, or let the user save.";
+
+        private static readonly Regex SaveOrClose = new Regex(
+            @"\.\s*(Save|SaveAs|Close|SynchronizeWithCentral)\s*\(", RegexOptions.Compiled);
+
+        /// <summary>
+        /// True when an exec snippet calls Save, SaveAs, Close or SynchronizeWithCentral — decided on
+        /// the source, because Revit's refusal message is worded per UI language.
+        /// </summary>
+        public static bool SavesOrCloses(string code) => !string.IsNullOrEmpty(code) && SaveOrClose.IsMatch(code);
+
+        /// <summary>The message of <see cref="RunDecision.QueryModified"/>; <paramref name="what"/> = "the snippet", "the batch", "the command".</summary>
+        public static string QueryModifiedMessage(ChangeSetSummary changes, string what)
+            => what + " changed the model (" + changes.PastCounts() + ") and was rolled back.";
 
         /// <summary>"-- approval: kept by the user (#7)".</summary>
         public static string KeptLine(int id) => "-- approval: kept by the user (#" + id.ToString(CultureInfo.InvariantCulture) + ")";
-
-        /// <summary>The error text a discarded run returns (text mode).</summary>
-        public static string DiscardedText() => "ERROR: " + DiscardedMessage + "\nHint: " + DiscardedHint;
 
         /// <summary>
         /// The JSON "approval" object: <c>{id, decision:"kept"|"discarded", by:"user"}</c>.
