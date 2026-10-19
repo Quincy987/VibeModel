@@ -308,6 +308,10 @@ namespace VibeModel.Services.Chat
         internal const string ArgsRule =
             "Arguments always go in ?args=, URL-encoded, or in a POST /batch body; never in the path.";
 
+        // Plan 16: the API of THIS Revit, instead of a remembered one (members differ per year).
+        internal const string ApiLookupRule =
+            "Unsure about a Revit API type or member before writing exec code? Run apilookup first (e.g. apilookup Wall.Create, apilookup FilteredElementCollector --filter Where): signatures, how to get an instance, [Obsolete] markers - from this Revit. A failed exec compile also prints the matching lookup.";
+
         // Plan 15: per-request run options. Stated in the prompt file only (the API backends' tools
         // carry args alone).
         internal const string PreviewRule =
@@ -386,6 +390,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use /selected to inspect what the user has selected");
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
             sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
+            sb.AppendLine("- " + ApiLookupRule);
             sb.AppendLine();
             // The RULES block (language, undo, ask-first, compact answers) is not in this file: it
             // travels in every turn's --append-system-prompt, so a resumed session that read this

@@ -100,14 +100,25 @@ public static class DynamicCommand
                 var sb = new StringBuilder();
                 sb.AppendLine("COMPILATION ERRORS:");
                 sb.AppendLine();
+                var texts = new System.Collections.Generic.List<string>();
                 foreach (CompilerError error in results.Errors)
                 {
                     if (!error.IsWarning)
+                    {
                         sb.AppendLine("  Line " + error.Line + ": " + error.ErrorText);
+                        texts.Add(error.ErrorText);
+                    }
                 }
                 sb.AppendLine();
                 sb.AppendLine("Your code was wrapped in a method with: doc, uiDoc, uiApp, sb (StringBuilder)");
                 sb.AppendLine("Use sb.AppendLine(...) to produce output.");
+                // Plan 16: what the API really has for the member/type the compiler could not find.
+                var hint = ApiLookupCommand.CompileErrorHint(texts);
+                if (hint != null)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(hint);
+                }
                 return sb.ToString();
             }
 
