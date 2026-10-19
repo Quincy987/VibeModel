@@ -378,6 +378,9 @@ namespace VibeModel.Tests
         public void Auto_KeepsTheUndoSentence_Exactly()
         {
             var rules = ChatBackendBase.BuildBehaviourRules("nl");
+            // The sentence as it was before plan 15, letter for letter: the default must not change.
+            Assert.Equal("Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.",
+                ChatBackendBase.UndoRule);
             Assert.Contains("- " + ChatBackendBase.UndoRule, rules);
             Assert.DoesNotContain("approval", rules, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(rules, ChatBackendBase.BuildBehaviourRules("nl", ChangeApprovalMode.Auto));

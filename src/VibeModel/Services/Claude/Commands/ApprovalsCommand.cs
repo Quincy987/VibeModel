@@ -16,7 +16,7 @@ namespace VibeModel.Services.Claude.Commands
         public string Description => "This session's Keep/Discard decisions on AI changes (change approval), oldest first";
         public string Usage => "approvals";
 
-        public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).Text;
+        public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)
         {
