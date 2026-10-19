@@ -800,8 +800,8 @@ and in `auto` mode the safety classifier refused approved `delete`/`select` curl
 run, every other tool is denied, never prompted) — narrower than `bypassPermissions`, and unlike
 `Bash(curl:*)` it keeps the `cat > /tmp/q.cs` + `exec --data-binary` pattern working. Every
 VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with
-the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language)` — reply language,
-undo, ask-first for sheets/shared resources, compact answers); edit the wording there, both
+the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language, approval)` — reply language,
+undo (worded per change-approval policy), ask-first for sheets/shared resources, compact answers); edit the wording there, both
 backends use it. Settings → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
 reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`) —
 the only language source and the only Dutch/English tables; `UI/UiText.cs` just composes them.

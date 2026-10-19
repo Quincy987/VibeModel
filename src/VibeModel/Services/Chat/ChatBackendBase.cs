@@ -246,7 +246,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(Strings.Current, Claude.ChangeApprovalPolicy.EffectiveMode));
+            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode));
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
@@ -337,7 +337,7 @@ namespace VibeModel.Services.Chat
         /// reply language when the user's own language is unclear; <paramref name="approval"/> is
         /// the change-approval policy in force (plan 15; auto = the text as before).
         /// </summary>
-        internal static string BuildBehaviourRules(string language, Claude.ChangeApprovalMode approval = Claude.ChangeApprovalMode.Auto)
+        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto)
         {
             var fallback = Strings.LanguageName(language);
             var sb = new StringBuilder();
@@ -348,11 +348,11 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Undo");
             switch (approval)
             {
-                case Claude.ChangeApprovalMode.Ask:
+                case ChangeApprovalMode.Ask:
                     sb.AppendLine("- " + ApprovalAskRule);
                     sb.AppendLine("- " + ApprovalWaitRule);
                     break;
-                case Claude.ChangeApprovalMode.ReadOnly:
+                case ChangeApprovalMode.ReadOnly:
                     sb.AppendLine("- " + ApprovalReadOnlyRule);
                     break;
                 default:

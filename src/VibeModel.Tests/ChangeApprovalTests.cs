@@ -455,6 +455,44 @@ namespace VibeModel.Tests
         }
     }
 
+    public class InsertionOrderedIdSetTests
+    {
+        [Fact]
+        public void Cap_DropsTheOldestFirst()
+        {
+            var set = new VibeModel.Services.Standards.InsertionOrderedIdSet();
+            foreach (var v in new[] { 1, 2, 3 }) set.Add(v);
+            set.Trim(2);
+            Assert.False(set.Contains(1));
+            Assert.True(set.Contains(2) && set.Contains(3));
+        }
+
+        [Fact]
+        public void AReusedId_IsNotEvictedByItsStaleEntry()
+        {
+            // A rolled-back run's id is forgotten; Revit hands the same id out again later.
+            var set = new VibeModel.Services.Standards.InsertionOrderedIdSet();
+            foreach (var v in new[] { 1, 2, 3 }) set.Add(v);
+            set.Remove(1);
+            set.Add(1);
+            set.Add(4);
+            set.Trim(3);
+            Assert.True(set.Contains(1));
+            Assert.False(set.Contains(2));
+            Assert.True(set.Contains(3) && set.Contains(4));
+        }
+
+        [Fact]
+        public void ManyRemovals_CompactAndStayCorrect()
+        {
+            var set = new VibeModel.Services.Standards.InsertionOrderedIdSet();
+            for (int i = 0; i < 5000; i++) { set.Add(i); set.Remove(i); set.Trim(10); }
+            set.Add(99999);
+            set.Trim(10);
+            Assert.True(set.Contains(99999));
+        }
+    }
+
     public class ChangeApprovalJournalTests
     {
         [Fact]

@@ -19,7 +19,8 @@
 .PARAMETER Approval
     Change approval for the Revit it starts (sets VIBEMODEL_APPROVAL): auto (never ask, the
     default), ask (Keep/Discard window for deletions and edits), readonly (nothing is kept).
-    managed.json still wins over it; without it settings.json decides.
+    managed.json still wins over it; without it settings.json decides. Like -Debug, the variable
+    stays set in this PowerShell session (and then beats settings.json): Remove-Item Env:VIBEMODEL_APPROVAL.
 
 .EXAMPLE
     .\build.ps1

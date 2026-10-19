@@ -59,12 +59,12 @@ namespace VibeModel.Services.Standards
     public static class VibeModelCreated
     {
         private const int Cap = 50000;
-        private static readonly Dictionary<string, LinkedHashSet> ByDoc = new Dictionary<string, LinkedHashSet>();
+        private static readonly Dictionary<string, InsertionOrderedIdSet> ByDoc = new Dictionary<string, InsertionOrderedIdSet>();
 
         public static void Record(string docKey, ICollection<ElementId> added)
         {
             if (string.IsNullOrEmpty(docKey) || added == null || added.Count == 0) return;
-            if (!ByDoc.TryGetValue(docKey, out var set)) ByDoc[docKey] = set = new LinkedHashSet();
+            if (!ByDoc.TryGetValue(docKey, out var set)) ByDoc[docKey] = set = new InsertionOrderedIdSet();
             foreach (var id in added) if (id != null) set.Add(id.IntegerValue);
             set.Trim(Cap);
         }
@@ -85,17 +85,45 @@ namespace VibeModel.Services.Standards
             var key = Services.Claude.ModelChangeTracker.DocKey(doc.PathName, doc.Title);
             return ByDoc.TryGetValue(key, out var set) && set.Contains(id.IntegerValue);
         }
+    }
 
-        // Insertion-ordered set so the cap drops the oldest ids first.
-        private sealed class LinkedHashSet
+    // Insertion-ordered set so the cap drops the oldest ids first. Each id remembers the sequence
+    // number of its latest insertion: a removed id leaves a stale queue entry behind, and when
+    // Revit hands the same id out again (it reuses ids after a rollback) only the newest entry
+    // may evict it.
+    internal sealed class InsertionOrderedIdSet
+    {
+        private readonly Dictionary<int, long> _live = new Dictionary<int, long>();
+        private readonly Queue<KeyValuePair<int, long>> _order = new Queue<KeyValuePair<int, long>>();
+        private long _sequence;
+
+        public void Add(int v)
         {
-            private readonly HashSet<int> _set = new HashSet<int>();
-            private readonly Queue<int> _order = new Queue<int>();
-            public void Add(int v) { if (_set.Add(v)) _order.Enqueue(v); }
-            public bool Contains(int v) => _set.Contains(v);
-            // The queue keeps the stale entry; Trim dequeues it later without effect.
-            public void Remove(int v) => _set.Remove(v);
-            public void Trim(int cap) { while (_order.Count > cap) _set.Remove(_order.Dequeue()); }
+            if (_live.ContainsKey(v)) return;
+            _live[v] = ++_sequence;
+            _order.Enqueue(new KeyValuePair<int, long>(v, _sequence));
+        }
+
+        public bool Contains(int v) => _live.ContainsKey(v);
+
+        public void Remove(int v) => _live.Remove(v);
+
+        public void Trim(int cap)
+        {
+            while (_live.Count > cap && _order.Count > 0)
+            {
+                var oldest = _order.Dequeue();
+                if (_live.TryGetValue(oldest.Key, out var seq) && seq == oldest.Value) _live.Remove(oldest.Key);
+            }
+            // Stale entries of removed ids never outnumber the live ones for long.
+            if (_order.Count > 2 * cap + 1024) Compact();
+        }
+
+        private void Compact()
+        {
+            var keep = _order.Where(e => _live.TryGetValue(e.Key, out var seq) && seq == e.Value).ToList();
+            _order.Clear();
+            foreach (var e in keep) _order.Enqueue(e);
         }
     }
 
