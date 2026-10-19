@@ -176,6 +176,11 @@ namespace VibeModel.Services.Claude
                     {
                         client.SendTimeout = 305000;
                     }
+                    // Plan 17: an exec with ?timeout= may run up to 300 s before it answers.
+                    int q = request.Path.IndexOf('?');
+                    var timeoutAsked = q >= 0 ? QueryInt(request.Path.Substring(q + 1), "timeout") : null;
+                    if (timeoutAsked.HasValue)
+                        client.SendTimeout = Math.Max(client.SendTimeout, (ExecDeadline.BudgetSeconds(timeoutAsked) + 15) * 1000);
                     // Plan 15: under "ask" a delete/edit waits up to 10 min for the user's decision.
                     if (ChangeApprovalPolicy.EffectiveMode == ChangeApprovalMode.Ask)
                         client.SendTimeout = Math.Max(client.SendTimeout,
@@ -460,12 +465,30 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
-        /// <summary>Plan 15's per-request options: ?preview=1 and ?readonly=1.</summary>
+        /// <summary>Per-request options: ?preview=1 and ?readonly=1 (plan 15), ?timeout=&lt;s&gt; (plan 17, exec).</summary>
         internal static RunOptions ParseRunOptions(string query)
         {
             bool preview = QueryFlag(query, "preview");
             bool readOnly = QueryFlag(query, "readonly");
-            return preview || readOnly ? new RunOptions { Preview = preview, ReadOnly = readOnly } : RunOptions.None;
+            int? timeout = QueryInt(query, "timeout");
+            return preview || readOnly || timeout.HasValue
+                ? new RunOptions { Preview = preview, ReadOnly = readOnly, TimeoutSeconds = timeout }
+                : RunOptions.None;
+        }
+
+        /// <summary>A positive whole number for <paramref name="name"/> in the query string, else null.</summary>
+        internal static int? QueryInt(string query, string name)
+        {
+            if (string.IsNullOrEmpty(query)) return null;
+            foreach (var param in query.Split('&'))
+            {
+                var kv = param.Split(new[] { '=' }, 2);
+                if (kv.Length == 2 && kv[0].Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                    int.TryParse(kv[1].Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) &&
+                    v > 0)
+                    return v;
+            }
+            return null;
         }
 
         // Scans the query string for an explicit format=json pair (ignored by ParseQueryArgs).

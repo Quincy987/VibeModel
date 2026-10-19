@@ -312,6 +312,10 @@ namespace VibeModel.Services.Chat
         internal const string ApiLookupRule =
             "Unsure about a Revit API type or member before writing exec code? Run apilookup first (e.g. apilookup Wall.Create, apilookup FilteredElementCollector --filter Where): signatures, how to get an instance, [Obsolete] markers - from this Revit. A failed exec compile also prints the matching lookup.";
 
+        // Plan 17: exec's loop check; a deliberately long run asks for more time.
+        internal const string ExecTimeoutRule =
+            "exec stops at the start of a loop body written with { } after 25 s (EXEC_TIMEOUT, its transaction rolled back); for a deliberately long run add &timeout=<s> (max 300). Brace-less loops, recursion and one long Revit call are not checked - keep exec loops braced.";
+
         // Plan 15: per-request run options. Stated in the prompt file only (the API backends' tools
         // carry args alone).
         internal const string PreviewRule =
@@ -391,6 +395,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
             sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
             sb.AppendLine("- " + ApiLookupRule);
+            sb.AppendLine("- " + ExecTimeoutRule);
             sb.AppendLine();
             // The RULES block (language, undo, ask-first, compact answers) is not in this file: it
             // travels in every turn's --append-system-prompt, so a resumed session that read this

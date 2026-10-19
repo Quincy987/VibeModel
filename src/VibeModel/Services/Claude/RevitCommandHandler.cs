@@ -30,6 +30,15 @@ namespace VibeModel.Services.Claude
             => string.Equals(command, "export", StringComparison.OrdinalIgnoreCase) ? ExportTimeout : CommandTimeout;
 
         /// <summary>
+        /// Plan 17: exec waits for its loop-check budget (25 s, ?timeout= up to 300 s) plus 10 s for
+        /// compiling and answering — the check must fire before the client gives up.
+        /// </summary>
+        internal static TimeSpan TimeoutFor(string command, RunOptions options)
+            => ExecDeadline.Wait(TimeoutFor(command), IsExec(command), options?.TimeoutSeconds);
+
+        private static bool IsExec(string command) => string.Equals(command, "exec", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// True while the Execute method is processing commands on the main thread.
         /// Used by DialogBoxShowing handler to only dismiss dialogs during command execution.
         /// </summary>
@@ -85,13 +94,14 @@ namespace VibeModel.Services.Claude
                 // Plan 15: a delete/edit under "ask" waits for the user's Keep / Discard.
                 bool mayWait = ChangeApprovalPolicy.MayWaitForUser(ChangeApprovalPolicy.EffectiveMode,
                     ChangeApprovalPolicy.IsGuarded(command), _registry.IsModification(command), request.Options.Preview);
-                var timeout = ChangeApprovalPolicy.TimeoutFor(TimeoutFor(command), mayWait);
+                var timeout = ChangeApprovalPolicy.TimeoutFor(TimeoutFor(command, request.Options), mayWait);
                 if (!request.ResponseReady.Wait(timeout))
                 {
                     request.CancelAfterTimeout();
                     Logger.Warn("Command timed out: " + command);
                     if (mayWait) return PendingResponse(fmt);
-                    return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds + " seconds. Is Revit in a modal dialog?";
+                    return "ERROR: Revit did not respond within " + (int)timeout.TotalSeconds + " seconds. Is Revit in a modal dialog?" +
+                           (IsExec(command) ? "\nHint: " + ExecDeadline.UninterruptibleHint : "");
                 }
 
                 return request.Result;
@@ -138,7 +148,10 @@ namespace VibeModel.Services.Claude
             bool mayWait = ChangeApprovalPolicy.MayWaitForUser(ChangeApprovalPolicy.EffectiveMode,
                 ChangeApprovalPolicy.IsGuardedBatch(commands.Select(c => c.Command)),
                 commands.Any(c => _registry.IsModification(c.Command)), request.Options.Preview);
-            var timeout = ChangeApprovalPolicy.TimeoutFor(BatchTimeout(commands.Count), mayWait);
+            var usual = BatchTimeout(commands.Count);
+            // Plan 17: an exec in the batch may use its whole loop-check budget.
+            usual = ExecDeadline.Wait(usual, commands.Any(c => IsExec(c.Command)), request.Options.TimeoutSeconds);
+            var timeout = ChangeApprovalPolicy.TimeoutFor(usual, mayWait);
             try
             {
                 if (!request.ResponseReady.Wait(timeout))
@@ -185,6 +198,7 @@ namespace VibeModel.Services.Claude
                     try
                     {
                         TrackActiveDocument(app);
+                        RunContext.Current = request.Options;
                         if (request.IsBatch)
                         {
                             Logger.Info("Executing batch: " + request.Batch.Count + " commands" +
@@ -204,6 +218,7 @@ namespace VibeModel.Services.Claude
                     }
                     finally
                     {
+                        RunContext.Current = null;
                         try { request.ResponseReady.Set(); }
                         catch (ObjectDisposedException) { /* Timed-out request already disposed by HTTP thread */ }
                     }
@@ -952,7 +967,19 @@ namespace VibeModel.Services.Claude
         public bool Preview { get; set; }
         public bool ReadOnly { get; set; }
 
-        public bool IsEmpty => !Preview && !ReadOnly;
+        /// <summary>?timeout=&lt;s&gt; (plan 17): exec's loop-check budget; null = the default 25 s.</summary>
+        public int? TimeoutSeconds { get; set; }
+
+        public bool IsEmpty => !Preview && !ReadOnly && !TimeoutSeconds.HasValue;
+    }
+
+    /// <summary>
+    /// The options of the request running on the main thread right now (plan 17: exec reads its
+    /// budget here). Set by <see cref="RevitCommandHandler"/> around each request; null outside.
+    /// </summary>
+    public static class RunContext
+    {
+        public static RunOptions Current { get; internal set; }
     }
 
     /// <summary>

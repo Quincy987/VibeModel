@@ -18,6 +18,9 @@ namespace VibeModel.Services.Standards
 
         public static bool IsArmed => _ids != null;
 
+        /// <summary>How many ids were recorded so far (0 when not armed) — exec compares before/after (plan 17).</summary>
+        public static int RecordedCount => _ids == null ? 0 : _ids.Count + _modified.Count + _deleted.Count;
+
         public static void Arm()
         {
             _ids = new List<ElementId>();
