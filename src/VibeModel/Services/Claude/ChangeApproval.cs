@@ -313,11 +313,14 @@ namespace VibeModel.Services.Claude
         /// <summary>"add 2 (Walls 2), modify 1 (Floors 1), delete 0".</summary>
         public string Counts() => Part("add", Added) + ", " + Part("modify", Modified) + ", " + Part("delete", Deleted);
 
-        /// <summary>"added 1, modified 3, deleted 0".</summary>
-        public string PastCounts()
-            => "added " + Added.Count.ToString(CultureInfo.InvariantCulture) +
-               ", modified " + Modified.Count.ToString(CultureInfo.InvariantCulture) +
-               ", deleted " + Deleted.Count.ToString(CultureInfo.InvariantCulture);
+        /// <summary>"added 1, modified 3, deleted 0"; with <paramref name="nonZeroOnly"/> "added 1, modified 3".</summary>
+        public string PastCounts(bool nonZeroOnly = false)
+        {
+            var parts = new List<string>();
+            foreach (var p in new[] { Tuple.Create("added", Added.Count), Tuple.Create("modified", Modified.Count), Tuple.Create("deleted", Deleted.Count) })
+                if (!nonZeroOnly || p.Item2 > 0) parts.Add(p.Item1 + " " + p.Item2.ToString(CultureInfo.InvariantCulture));
+            return string.Join(", ", parts);
+        }
 
         /// <summary>"-- preview: nothing was changed. Would add 2 (Walls 2), modify 1 (Floors 1), delete 0. Ids are provisional."</summary>
         public string PreviewLine()
@@ -437,16 +440,6 @@ namespace VibeModel.Services.Claude
             sb.Append(e.Text).Append(" → ").Append(DecisionWord(e.Decision)).Append(" by the user");
             if (!string.IsNullOrEmpty(e.Counts)) sb.Append(" (").Append(e.Counts).Append(')');
             return sb.ToString();
-        }
-
-        /// <summary>"deleted 2" / "added 1, modified 3" — the non-zero counts for the log line.</summary>
-        public static string ShortCounts(ChangeSetSummary s)
-        {
-            var parts = new List<string>();
-            if (s.Added.Count > 0) parts.Add("added " + s.Added.Count.ToString(CultureInfo.InvariantCulture));
-            if (s.Modified.Count > 0) parts.Add("modified " + s.Modified.Count.ToString(CultureInfo.InvariantCulture));
-            if (s.Deleted.Count > 0) parts.Add("deleted " + s.Deleted.Count.ToString(CultureInfo.InvariantCulture));
-            return string.Join(", ", parts);
         }
 
         /// <summary>Tests: start empty, ids from 1.</summary>

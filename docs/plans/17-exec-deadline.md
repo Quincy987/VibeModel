@@ -31,7 +31,9 @@
   follows `?timeout=`.
 - **Firing**: `ExecClock.Tick` reads the performance counter on every call (tens of ns) — a
   loop whose body takes seconds is still stopped on time — and throws `ExecDeadlineException`;
-  once fired every later tick throws again. The wrapper re-throws after the snippet when the
+  once fired every later tick throws again — but only while its exec runs: exec stops the clock when
+  the snippet returns, so a loop it left behind (an Idling handler) never throws inside Revit's own
+  events later. The wrapper re-throws after the snippet when the
   clock fired (a snippet that caught the exception is still not committed), so its transaction is
   rolled back. exec answers `ERROR: exec stopped after 25 s at a loop check (nothing kept).` +
   `Hint: narrow the collector or raise ?timeout=<s> (max 300).` (JSON code `EXEC_TIMEOUT`). When
@@ -52,3 +54,5 @@
   (Exception) { }`) with `timeout=5` → stopped at 5.1 s, nothing kept.
 - Overhead: a `foreach` over every element of the model summing ids, three runs each: 9–10 ms
   instrumented, 9–11 ms brace-less (not instrumented) — not measurable.
+- **Changed in the code review, not re-run in Revit**: the clock is stopped when exec returns
+  (unit-tested), so a loop left behind in an event handler never throws later.

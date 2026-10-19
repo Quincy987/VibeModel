@@ -152,6 +152,47 @@ namespace VibeModel.Tests
             Assert.Equal("VibeModel.Tests.ApiFixture.WidgetFactory", Engine.Lookup("WidgetFact", null, false).Data["type"]);
         }
 
+        /// <summary>
+        /// Revit-named classes made at test time (a dynamic assembly — no clash with the real
+        /// RevitAPI): the collector line follows the API reference's ElementClassFilter exceptions.
+        /// </summary>
+        private static Dictionary<string, Type> RevitLikeTypes()
+        {
+            var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(
+                new System.Reflection.AssemblyName("RevitLike" + Guid.NewGuid().ToString("N")),
+                System.Reflection.Emit.AssemblyBuilderAccess.Run);
+            var module = assembly.DefineDynamicModule("RevitLike");
+            var types = new Dictionary<string, Type>();
+            Type Def(string name, Type parent)
+            {
+                var t = module.DefineType(name, System.Reflection.TypeAttributes.Public | System.Reflection.TypeAttributes.Class, parent).CreateType();
+                types[name.Substring(name.LastIndexOf('.') + 1)] = t;
+                return t;
+            }
+            var element = Def("Autodesk.Revit.DB.Element", typeof(object));
+            Def("Autodesk.Revit.DB.Wall", element);
+            var curve = Def("Autodesk.Revit.DB.CurveElement", element);
+            Def("Autodesk.Revit.DB.ModelLine", Def("Autodesk.Revit.DB.ModelCurve", curve));
+            Def("Autodesk.Revit.DB.Architecture.Room", Def("Autodesk.Revit.DB.SpatialElement", element));
+            Def("Autodesk.Revit.DB.CombinableElement", element);
+            return types;
+        }
+
+        [Fact]
+        public void CollectorLine_FollowsRevitsClassFilterExceptions()
+        {
+            var t = RevitLikeTypes();
+            Assert.Equal("new FilteredElementCollector(doc).OfClass(typeof(Wall)).Cast<Wall>()", ApiLookup.CollectorLine(t["Wall"]));
+            Assert.Equal("new FilteredElementCollector(doc).OfClass(typeof(CurveElement)).Cast<CurveElement>()", ApiLookup.CollectorLine(t["CurveElement"]));
+            Assert.Equal("new FilteredElementCollector(doc).OfClass(typeof(CurveElement)).OfType<ModelLine>()   (Revit refuses OfClass(typeof(ModelLine)))",
+                ApiLookup.CollectorLine(t["ModelLine"]));
+            Assert.Equal("new FilteredElementCollector(doc).OfClass(typeof(SpatialElement)).OfType<Room>()   (Revit refuses OfClass(typeof(Room)))",
+                ApiLookup.CollectorLine(t["Room"]));
+            Assert.Null(ApiLookup.CollectorLine(t["CombinableElement"]));   // no filterable base below Element
+            Assert.Null(ApiLookup.CollectorLine(t["Element"]));             // OfClass(typeof(Element)) is refused
+            Assert.Null(ApiLookup.CollectorLine(typeof(StringBuilder)));     // not an element
+        }
+
         [Fact]
         public void Factories_ConstructorsStaticsElsewhereAndSubtypes()
         {

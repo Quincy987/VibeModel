@@ -104,6 +104,16 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void Clock_Stopped_NeverThrows_EvenWhenExpired()
+        {
+            // A loop the snippet left behind (an Idling handler) runs after exec ended.
+            var clock = ExecClock.Expired();
+            clock.Stop();
+            clock.Tick();
+            Assert.False(clock.Fired);
+        }
+
+        [Fact]
         public void Clock_WithinBudget_DoesNothing()
         {
             var clock = new ExecClock(30);

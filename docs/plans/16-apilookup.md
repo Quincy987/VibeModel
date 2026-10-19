@@ -24,8 +24,13 @@
   events, enum values; `[Obsolete: message]` markers. `--all` adds inherited members (object's
   own are left out), `--filter` narrows by member name, 60 members max with a `--filter` hint.
 - **How to get one**: constructors; for an Element subclass the collector line
-  (`new FilteredElementCollector(doc).OfClass(typeof(Wall)).Cast<Wall>()` — not for Element
-  itself, which Revit refuses in OfClass); then every public method/property in the scanned
+  (`new FilteredElementCollector(doc).OfClass(typeof(Wall)).Cast<Wall>()`). The Revit API
+  reference (ElementClassFilter remarks) lists classes OfClass refuses — Room, Space, Area and
+  their tags and tag types, CombinableElement, Mullion, Panel, AnnotationSymbol(Type), the
+  reinforcement and truss types, and every subclass of Material, CurveElement, ConnectorElement
+  and HostedSweep; for those the line uses the nearest base class Revit accepts and narrows in code
+  (`OfClass(typeof(CurveElement)).OfType<ModelLine>()`, `OfClass(typeof(SpatialElement)).OfType<Room>()`),
+  and when none qualifies (CombinableElement, Element itself) there is no line. Then every public method/property in the scanned
   assemblies that returns the type or a subtype: static ones on the type first (`Wall.Create`),
   then static elsewhere, then instance members elsewhere (`doc.ActiveView`, receivers named
   `doc` / `uiDoc` / `uiApp` as in exec). An instance member of the type's own hierarchy is left
@@ -54,3 +59,6 @@
   the error number + the identifier at the error position; tested headless against the real CodeDom
   compiler. Live afterwards: `w.Widht` → `Hint: apilookup Wall.Widht … Closest: Wall.Width`;
   `typeof(Waal)` → `Hint: apilookup Waal … Closest: Autodesk.Revit.DB.Wall`.
+- **Changed in the code review, not re-run in Revit**: the collector line for classes OfClass
+  refuses (unit-tested with Revit-named classes built at test time); a variable named `type` no
+  longer taken for the missing member; constructors no longer offered as "closest member".

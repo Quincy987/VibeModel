@@ -503,7 +503,7 @@ namespace VibeModel.Services.Claude
                         commandFailed: cr != null && !cr.Success);
                     if (run.Prompt.DontAskAgain) ChangeApprovalPolicy.DontAskThisSession = true;
                     run.Approval = ApprovalLog.Add(DateTime.Now, commandText, run.Prompt.Decision,
-                        ApprovalLog.ShortCounts(run.Summary), delivered: true);
+                        run.Summary.PastCounts(nonZeroOnly: true), delivered: true);
                     request.AttachApproval(run.Approval.Id);
                     Logger.Info("Approval #" + run.Approval.Id + ": " + ApprovalLog.DecisionWord(run.Prompt.Decision) +
                                 " by the user — " + commandText);

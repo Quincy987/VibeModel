@@ -105,14 +105,6 @@ namespace VibeModel.Services.Claude
             public Dictionary<string, object> Data { get; set; }
         }
 
-        public Result Lookup(string args)
-        {
-            var q = ParseArgs(args);
-            if (q.Error != null)
-                return new Result { Found = false, Text = "ERROR: " + q.Error, Data = new Dictionary<string, object> { { "found", false }, { "error", q.Error } } };
-            return Lookup(q.Name, q.Filter, q.All);
-        }
-
         /// <summary>
         /// "Wall", "Autodesk.Revit.DB.Wall", "Wall.Create", "StructuralType.Footing". A type is
         /// matched exactly (full or simple name, case-insensitive), else by a unique substring of
@@ -144,7 +136,7 @@ namespace VibeModel.Services.Claude
                 var candidates = ambiguous ?? ClosestForDotted(name);
                 return NotFound(name, candidates, ambiguous != null);
             }
-            return member == null ? DescribeType(type, filter, all) : DescribeMember(type, member, all);
+            return member == null ? DescribeType(type, filter, all) : DescribeMember(type, member);
         }
 
         // "Autodesk.Revit.DB.Waal" → closest to "Waal"; "Wal.Create" (no such type) → nothing is
@@ -381,7 +373,7 @@ namespace VibeModel.Services.Claude
             return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data };
         }
 
-        private Result DescribeMember(Type type, string member, bool all)
+        private Result DescribeMember(Type type, string member)
         {
             var flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy;
             var members = SafeGet(() => type.GetMember(member, flags | BindingFlags.IgnoreCase))
@@ -393,7 +385,8 @@ namespace VibeModel.Services.Claude
             var fullName = DisplayFullName(type);
             if (members.Count == 0)
             {
-                var pool = SafeGet(() => type.GetMembers(flags)).Where(m => !(m is MethodInfo mi && mi.IsSpecialName))
+                var pool = SafeGet(() => type.GetMembers(flags))
+                    .Where(m => !(m is MethodInfo mi && mi.IsSpecialName) && !(m is ConstructorInfo))
                     .Select(m => m.Name).Distinct().ToList();
                 var candidates = Closest(member, pool);
                 var sb2 = new StringBuilder();
@@ -464,8 +457,8 @@ namespace VibeModel.Services.Claude
             foreach (var c in SafeGet(() => type.GetConstructors()).OrderBy(c => c.GetParameters().Length))
                 list.Add("new " + SimpleName(type) + "(" + Parameters(c) + ")" + Obs(c));
 
-            if (IsElementSubclass(type))
-                list.Add("new FilteredElementCollector(doc).OfClass(typeof(" + SimpleName(type) + ")).Cast<" + SimpleName(type) + ">()");
+            var collector = CollectorLine(type);
+            if (collector != null) list.Add(collector);
 
             if (type.IsPrimitive || type == typeof(string) || type.IsEnum) return list;
             var producers = Producers();
@@ -543,12 +536,62 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
+        private const string ElementClass = "Autodesk.Revit.DB.Element";
+
+        // ElementClassFilter (OfClass) refuses these — the Revit API reference, ElementClassFilter
+        // remarks (2020–2026): classes that exist in the API but not in Revit's native object model.
+        private static readonly HashSet<string> NotClassFilterable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Autodesk.Revit.DB.Architecture.Room", "Autodesk.Revit.DB.Mechanical.Space", "Autodesk.Revit.DB.Area",
+            "Autodesk.Revit.DB.Architecture.RoomTag", "Autodesk.Revit.DB.Mechanical.SpaceTag", "Autodesk.Revit.DB.AreaTag",
+            "Autodesk.Revit.DB.CombinableElement", "Autodesk.Revit.DB.Mullion", "Autodesk.Revit.DB.Panel",
+            "Autodesk.Revit.DB.AnnotationSymbol", "Autodesk.Revit.DB.Structure.AreaReinforcementType",
+            "Autodesk.Revit.DB.Structure.PathReinforcementType", "Autodesk.Revit.DB.AnnotationSymbolType",
+            "Autodesk.Revit.DB.Architecture.RoomTagType", "Autodesk.Revit.DB.Mechanical.SpaceTagType",
+            "Autodesk.Revit.DB.AreaTagType", "Autodesk.Revit.DB.Structure.TrussType"
+        };
+
+        // ...and every SUBCLASS of these (the class itself is fine: OfClass(typeof(CurveElement))).
+        private static readonly HashSet<string> SubclassesNotClassFilterable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Autodesk.Revit.DB.Material", "Autodesk.Revit.DB.CurveElement", "Autodesk.Revit.DB.ConnectorElement",
+            "Autodesk.Revit.DB.HostedSweep"
+        };
+
         private static bool IsElementSubclass(Type type)
         {
-            // Strict subclasses only: OfClass(typeof(Element)) is refused by Revit.
             for (var b = type.BaseType; b != null; b = b.BaseType)
-                if (b.FullName == "Autodesk.Revit.DB.Element") return true;
+                if (b.FullName == ElementClass) return true;
             return false;
+        }
+
+        /// <summary>True when Revit accepts <c>OfClass(typeof(t))</c>: a strict Element subclass outside the documented exceptions.</summary>
+        internal static bool IsClassFilterable(Type t)
+        {
+            if (t == null || !IsElementSubclass(t) || NotClassFilterable.Contains(t.FullName ?? "")) return false;
+            for (var b = t.BaseType; b != null; b = b.BaseType)
+                if (SubclassesNotClassFilterable.Contains(b.FullName ?? "")) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// How to collect an Element subclass: <c>OfClass(typeof(Wall)).Cast&lt;Wall&gt;()</c>, or — for a
+        /// class Revit's class filter refuses (Room, ModelLine, Mullion …) — the nearest base class it
+        /// accepts, narrowed in code: <c>OfClass(typeof(SpatialElement)).OfType&lt;Room&gt;()</c>, as the
+        /// API reference advises. Null for non-elements and when no base class qualifies.
+        /// </summary>
+        internal static string CollectorLine(Type type)
+        {
+            if (type == null || !IsElementSubclass(type)) return null;
+            var name = SimpleName(type);
+            for (var b = type; b != null && b.FullName != ElementClass; b = b.BaseType)
+            {
+                if (!IsClassFilterable(b)) continue;
+                return b == type
+                    ? "new FilteredElementCollector(doc).OfClass(typeof(" + name + ")).Cast<" + name + ">()"
+                    : "new FilteredElementCollector(doc).OfClass(typeof(" + SimpleName(b) + ")).OfType<" + name + ">()   (Revit refuses OfClass(typeof(" + name + ")))";
+            }
+            return null;
         }
 
         // ------------------------------------------------------------------ exec compile errors
@@ -737,7 +780,7 @@ namespace VibeModel.Services.Claude
         {
             var name = SimpleName(declaring);
             if (isStatic) return name;
-            // doc.X, uidoc.X, app.X, uiApp.X read naturally in an exec snippet.
+            // doc.X, uiDoc.X, uiApp.X: the names exec's wrapper gives them.
             switch (declaring.FullName)
             {
                 case "Autodesk.Revit.DB.Document": return "doc";
@@ -768,7 +811,7 @@ namespace VibeModel.Services.Claude
                    " { " + (get != null ? "get; " : "") + (set != null ? "set; " : "") + "}";
         }
 
-        /// <summary>": message" for an [Obsolete] member (": " alone without a message), else null.</summary>
+        /// <summary>": message" for an [Obsolete] member ("" when it has no message), else null.</summary>
         internal static string ObsoleteText(MemberInfo m)
         {
             try

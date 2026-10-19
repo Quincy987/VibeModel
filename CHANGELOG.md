@@ -25,7 +25,8 @@
 ### Added — `apilookup`: the Revit API of this Revit, for exec
 - Plan 16, after pyRevit's `lookup_revit_api`. `apilookup Wall`, `apilookup Wall.Create`,
   `apilookup FilteredElementCollector --filter Where`: namespace (and the full name to write in exec
-  when exec does not import it), how to get one, properties, methods by overload, enum values and
+  when exec does not import it), how to get one (the collector line goes through a base class for
+  Room, ModelLine and the other classes Revit's class filter refuses), properties, methods by overload, enum values and
   `[Obsolete]` with Revit's own replacement advice — reflected from the RevitAPI of the running year.
   Unknown names give the closest ones. 0.28 s the first time, then 0.01–0.03 s.
 - A failed exec compile now appends the matching lookup (`Hint: apilookup Wall.Widht … Closest:

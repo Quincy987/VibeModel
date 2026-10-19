@@ -333,11 +333,11 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void ShortCounts_OnlyNonZero()
+        public void PastCounts_NonZeroOnly_ForTheLogLine()
         {
             var s = new ChangeSetSummary(null, new[] { new ChangedElement(1, "Walls") }, new[] { new ChangedElement(2, "Walls"), new ChangedElement(3, "Walls") });
-            Assert.Equal("modified 1, deleted 2", ApprovalLog.ShortCounts(s));
-            Assert.Equal("", ApprovalLog.ShortCounts(new ChangeSetSummary(null, null, null)));
+            Assert.Equal("modified 1, deleted 2", s.PastCounts(nonZeroOnly: true));
+            Assert.Equal("", new ChangeSetSummary(null, null, null).PastCounts(nonZeroOnly: true));
         }
     }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -452,17 +453,19 @@ namespace VibeModel.Services.Claude
         /// Like format=json, these flags are ignored by <see cref="ParseQueryArgs"/>.
         /// </summary>
         internal static bool QueryFlag(string query, string name)
+            => QueryValues(query, name).Any(v => v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                                                v.Equals("yes", StringComparison.OrdinalIgnoreCase));
+
+        // The raw (trimmed, not unescaped) values of every name=value pair named <name>.
+        private static IEnumerable<string> QueryValues(string query, string name)
         {
-            if (string.IsNullOrEmpty(query)) return false;
+            if (string.IsNullOrEmpty(query)) yield break;
             foreach (var param in query.Split('&'))
             {
                 var kv = param.Split(new[] { '=' }, 2);
-                if (kv.Length != 2 || !kv[0].Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
-                var v = kv[1].Trim();
-                if (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) || v.Equals("yes", StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (kv.Length == 2 && kv[0].Equals(name, StringComparison.OrdinalIgnoreCase))
+                    yield return kv[1].Trim();
             }
-            return false;
         }
 
         /// <summary>Per-request options: ?preview=1 and ?readonly=1 (plan 15), ?timeout=&lt;s&gt; (plan 17, exec).</summary>
@@ -479,15 +482,9 @@ namespace VibeModel.Services.Claude
         /// <summary>A positive whole number for <paramref name="name"/> in the query string, else null.</summary>
         internal static int? QueryInt(string query, string name)
         {
-            if (string.IsNullOrEmpty(query)) return null;
-            foreach (var param in query.Split('&'))
-            {
-                var kv = param.Split(new[] { '=' }, 2);
-                if (kv.Length == 2 && kv[0].Equals(name, StringComparison.OrdinalIgnoreCase) &&
-                    int.TryParse(kv[1].Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) &&
-                    v > 0)
+            foreach (var value in QueryValues(query, name))
+                if (int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0)
                     return v;
-            }
             return null;
         }
 

@@ -26,7 +26,9 @@ namespace VibeModel.Services.Claude.Commands
         {
             var clock = new ExecClock(ExecDeadline.BudgetSeconds(RunContext.Current?.TimeoutSeconds));
             int recordedBefore = Standards.CreatedElementsRecorder.RecordedCount;
-            var text = Run(args, uiApp, clock);
+            string text;
+            try { text = Run(args, uiApp, clock); }
+            finally { clock.Stop(); }
             // Plan 15: inside a run group (preview / read-only / approval) Revit refuses to save,
             // close or synchronize — say why instead of leaving Revit's bare message. Decided on the
             // snippet's own calls, not on the message text, which Revit words per UI language.

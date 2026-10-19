@@ -457,7 +457,8 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
 ```
 - **`apilookup`** (plan 16, read-only, no document needed) reflects RevitAPI, RevitAPIUI and
   VibeModel's own assembly as loaded in THIS Revit: header, `using` line (or "exec does not import it:
-  write <full name>"), how to get one (constructors, the collector line for Element subclasses, static
+  write <full name>"), how to get one (constructors, the collector line for Element subclasses — through the nearest
+  accepted base class for the ones OfClass refuses, e.g. `OfClass(typeof(CurveElement)).OfType<ModelLine>()` —, static
   factories, members elsewhere returning it), properties, methods by overload, events, enum values,
   `[Obsolete: …]` with Revit's own advice; `--all` adds inherited members, 60 members max. Not found →
   the closest names; several substring hits are listed. Measured: first call 0.28 s (index), then

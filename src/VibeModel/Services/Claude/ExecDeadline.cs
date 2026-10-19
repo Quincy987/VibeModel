@@ -290,6 +290,14 @@ namespace VibeModel.Services.Claude
         /// <summary>True once the budget ran out at a loop check — even when the snippet caught the exception.</summary>
         public bool Fired { get; private set; }
 
+        private volatile bool _stopped;
+
+        /// <summary>
+        /// The exec run is over: a loop the snippet handed to something that runs later (an
+        /// Idling handler, a lambda kept around) must never throw inside Revit's own events.
+        /// </summary>
+        public void Stop() => _stopped = true;
+
         /// <summary>
         /// Called at the start of every braced loop body. Reading the performance counter costs
         /// tens of nanoseconds, so it is read every time: a loop whose body takes seconds is
@@ -297,6 +305,7 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public void Tick()
         {
+            if (_stopped) return;
             if (Fired) throw new ExecDeadlineException(Seconds);
             if (Stopwatch.GetTimestamp() <= _deadline) return;
             Fired = true;
