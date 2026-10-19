@@ -59,6 +59,11 @@
   the error number + the identifier at the error position; tested headless against the real CodeDom
   compiler. Live afterwards: `w.Widht` → `Hint: apilookup Wall.Widht … Closest: Wall.Width`;
   `typeof(Waal)` → `Hint: apilookup Waal … Closest: Autodesk.Revit.DB.Wall`.
-- **Changed in the code review, not re-run in Revit**: the collector line for classes OfClass
-  refuses (unit-tested with Revit-named classes built at test time); a variable named `type` no
-  longer taken for the missing member; constructors no longer offered as "closest member".
+- **Changed in the code review, re-checked live afterwards (2026-10-19, 18:08)**: `apilookup Wall` →
+  `OfClass(typeof(Wall)).Cast<Wall>()`; `ModelLine` → `OfClass(typeof(CurveElement)).OfType<ModelLine>()`;
+  `Room` → `OfClass(typeof(SpatialElement)).OfType<Room>()`; `Mullion` →
+  `OfClass(typeof(FamilyInstance)).OfType<Mullion>()`; `CombinableElement` → no collector line. Both
+  advised collectors ran in exec (609 model lines, 0 rooms), and Revit itself refused
+  `OfClass(typeof(ModelLine))`: "Input type(Autodesk.Revit.DB.ModelLine) is of an element type that
+  exists in the API, but not in Revit's native object model." `Wall.Wall` no longer offers `.ctor`.
+  The `type`-variable fix is unit-tested only.

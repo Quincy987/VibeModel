@@ -93,14 +93,15 @@ the policy switched per process (`Environment.SetEnvironmentVariable` through ex
   the organisation and there is no API key (see `docs/verify/server-lockdown-2026-10-16.md`), so no
   model call can run. Covered instead: the rules/turn-prompt text per policy and the in-pane
   `RevitWebClient` raising its timeouts to 605 s (unit tests).
-- **Changed in the code review after the live run (unit-tested where pure, NOT re-run in Revit):**
-  a rolled-back run no longer prints the `-- annotations: …` line (live, a Discard still said
-  "removed 1 spot elevation" although nothing was removed; a preview now says `-- preview:
-  annotations: …`); an element the command names is never hidden from the counts; the window says
-  "Niets te tonen in een view" when only views/types changed; the save hint is decided on the
-  snippet calling Save/SaveAs/Close/SynchronizeWithCentral, not on Revit's English message; the
-  file-based fallback refuses changes while the policy is not `auto`; Zoom in the window was never
-  clicked live.
+- **Changed in the code review, re-checked live afterwards (2026-10-19, 18:08, same model, 23/23
+  checks passed):** a rolled-back run no longer prints the `-- annotations: …` line — a Discard of
+  the floor with its spot answered only `ERROR: Discarded by the user.` + hint (JSON without an
+  `annotations` key) while the window still listed the spot it would remove, and floor and spot
+  stayed; a preview of the same delete reads `-- preview: annotations: removed 1 spot elevation …`
+  (JSON `preview.annotations`), spot untouched; *Inzoomen* clicked in the window, then Discard —
+  answered normally and Revit kept answering; the save hint appears for `trans.Commit(); doc.Save()`
+  under ask. Not exercised live: the file-based fallback refusing changes (it only runs when the
+  HTTP port cannot open) and the "Niets te tonen in een view" wording (needs a type-only change).
 - **Found and fixed live**: the floor's sketch in the counts (dependents pre-read), the view counted
   as something to show, `doc.Save()`'s bare message, a discarded failing command losing its own
   error, and the exec compile hint (plan 16) never firing on a Dutch compiler.

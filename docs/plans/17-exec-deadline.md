@@ -54,5 +54,7 @@
   (Exception) { }`) with `timeout=5` → stopped at 5.1 s, nothing kept.
 - Overhead: a `foreach` over every element of the model summing ids, three runs each: 9–10 ms
   instrumented, 9–11 ms brace-less (not instrumented) — not measurable.
-- **Changed in the code review, not re-run in Revit**: the clock is stopped when exec returns
-  (unit-tested), so a loop left behind in an event handler never throws later.
+- **Changed in the code review, re-checked live afterwards (2026-10-19, 18:08)**: an exec with
+  `timeout=1` subscribed an Idling handler holding a braced loop; 4 s and 7 s later the handler was
+  still running (it rewrote its file both times, no exception) — the clock stops with its exec. The
+  handler was removed afterwards.
