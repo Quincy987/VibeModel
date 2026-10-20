@@ -106,5 +106,62 @@ namespace VibeModel.UI
         public static string StepLabel(string command) => StatusVerbs.StepLabel(command);
 
         public static string StepLabel(string command, string language) => StatusVerbs.StepLabel(command, language);
+
+        // --- In-app updates (plan 19) ------------------------------------------------------
+
+        /// <summary>"12.3 MB" — sizes in the banner (one decimal, the language's decimal mark).</summary>
+        public static string Megabytes(long bytes, string language)
+        {
+            if (bytes < 0) return "?";
+            var culture = Strings.IsEnglish(language)
+                ? System.Globalization.CultureInfo.InvariantCulture
+                : System.Globalization.CultureInfo.GetCultureInfo("nl-NL");
+            return (bytes / 1048576.0).ToString("0.0", culture) + " MB";
+        }
+
+        /// <summary>
+        /// One line for the update state — the banner and Settings → Updates show it. Every state has
+        /// its own wording (a test checks both languages).
+        /// </summary>
+        public static string UpdateLine(Services.Update.UpdateStatus s, Services.Update.InstallProgress progress, string language)
+        {
+            language = Lang(language);
+            var latest = s?.Latest;
+            switch (s?.State ?? Services.Update.UpdateState.NotChecked)
+            {
+                case Services.Update.UpdateState.Disabled:
+                    return Strings.For(language, Strings.UpdateDisabled);
+                case Services.Update.UpdateState.UpToDate:
+                    return Strings.For(language, Strings.UpdateUpToDate, latest?.VersionText ?? "?");
+                case Services.Update.UpdateState.Available:
+                    // An install that just failed keeps the update available, with the reason.
+                    return s.Reason != null
+                        ? Strings.For(language, Strings.UpdateFailed, EndSentence(s.Reason))
+                        : Strings.For(language, Strings.UpdateAvailable, latest?.VersionText ?? "?", Megabytes(latest?.Size ?? -1, language));
+                case Services.Update.UpdateState.Installing:
+                    if (progress != null && progress.Phase == "unpack") return Strings.For(language, Strings.UpdateUnpacking);
+                    return Strings.For(language, Strings.UpdateDownloading,
+                        Megabytes(progress?.Bytes ?? 0, language), Megabytes(progress?.Total ?? latest?.Size ?? -1, language));
+                case Services.Update.UpdateState.ReadyAtRestart:
+                    // A pending version older than the running one is a rollback.
+                    return Services.Update.UpdateDecision.IsRollback(s.Pending, s.Running)
+                        ? Strings.For(language, Strings.UpdateRolledBack, s.Pending)
+                        : Strings.For(language, Strings.UpdateReady, s.Pending);
+                case Services.Update.UpdateState.InPlaceBuild:
+                    return Strings.For(language, Strings.UpdateDevBuild);
+                case Services.Update.UpdateState.LoaderTooOld:
+                    return Strings.For(language, Strings.UpdateLoaderTooOld, latest?.VersionText ?? "?");
+                case Services.Update.UpdateState.Failed:
+                    return Strings.For(language, Strings.UpdateCheckFailed, s.Reason ?? "?");
+                default:
+                    return Strings.For(language, Strings.UpdateNotChecked);
+            }
+        }
+
+        private static string EndSentence(string text)
+        {
+            var t = (text ?? "").Trim();
+            return t.Length == 0 || t.EndsWith(".", StringComparison.Ordinal) ? t : t + ".";
+        }
     }
 }

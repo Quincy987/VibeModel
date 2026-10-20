@@ -68,6 +68,13 @@ namespace VibeModel.UI
         private readonly List<RadioButton> _approvalRadios = new List<RadioButton>();
         private CheckBox _approvalSessionCheck;
 
+        // Updates (plan 19)
+        private CheckBox _updateCheckBox;
+        private TextBlock _updateStatusText;
+        private TextBlock _updatePendingText;
+        private Button _updateCheckNowButton;
+        private Button _updateRollbackButton;
+
         // Office standards
         private CheckBox _standardsEnabledCheck;
         private CheckBox _projectMemoryCheck;
@@ -144,6 +151,9 @@ namespace VibeModel.UI
 
             // Office standards (plan 11) — independent of the backend tabs.
             mainPanel.Children.Add(CreateStandardsPanel());
+
+            // In-app updates (plan 19).
+            mainPanel.Children.Add(CreateUpdatesPanel());
 
             // Status text
             _statusText = new TextBlock
@@ -531,6 +541,97 @@ namespace VibeModel.UI
             _standardsFolderBox = CreateTextBox(SettingsManager.GetStandardsFolder());
             panel.Children.Add(CreateFolderRow(_standardsFolderBox, "Documents|*.pdf;*.txt;*.md|All files|*.*"));
             return panel;
+        }
+
+        // --- Updates panel (plan 19) ---
+
+        private StackPanel CreateUpdatesPanel()
+        {
+            var engine = Services.Update.UpdateService.Engine;
+            var language = Strings.Current;
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = Strings.Get(Strings.SettingsUpdatesTitle),
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateInstalled,
+                Services.Update.UpdateManifest.ShortVersion(engine.Running.Version),
+                Services.Update.LoaderInfo.Version == null ? "-" : Services.Update.UpdateManifest.ShortVersion(Services.Update.LoaderInfo.ParsedVersion))));
+            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateRunsFrom,
+                engine.InPlace ? Strings.Get(Strings.UpdateDevBuild) : System.IO.Path.GetDirectoryName(engine.Running.PayloadPath))));
+            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateSource, engine.Source.Describe()) +
+                                           ManagedNote(ManagedSettings.UpdateSource)));
+
+            bool disabled = SettingsManager.IsUpdateDisabled();
+            _updateCheckBox = new CheckBox
+            {
+                Content = Strings.Get(Strings.SettingsUpdateCheck),
+                IsChecked = SettingsManager.GetUpdateCheck() && !disabled,
+                IsEnabled = !disabled,
+                Foreground = FgPrimary,
+                FontSize = 12,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckBox, "SettingsUpdateCheck");
+            panel.Children.Add(_updateCheckBox);
+            if (disabled)
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.UpdateDisabled) + " (" + Strings.Get(Strings.SettingManaged) + ")"));
+
+            _updateStatusText = CreateLabel("");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateStatusText, "SettingsUpdateStatus");
+            panel.Children.Add(_updateStatusText);
+            _updatePendingText = CreateLabel("");
+            panel.Children.Add(_updatePendingText);
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            _updateCheckNowButton = CreateButton(Strings.Get(Strings.SettingsUpdateCheckNow));
+            _updateCheckNowButton.IsEnabled = !disabled && !engine.InPlace;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckNowButton, "SettingsUpdateCheckNow");
+            _updateCheckNowButton.Click += async (s, e) =>
+            {
+                _updateCheckNowButton.IsEnabled = false;
+                _updateStatusText.Text = Strings.Get(Strings.UpdateChecking);
+                var status = await Services.Update.UpdateService.CheckAsync(manual: true);
+                _updateCheckNowButton.IsEnabled = true;
+                ShowUpdateState(status);
+            };
+            row.Children.Add(_updateCheckNowButton);
+
+            _updateRollbackButton = CreateButton("");
+            _updateRollbackButton.Background = Brushes.Transparent;
+            _updateRollbackButton.Foreground = FgSecondary;
+            _updateRollbackButton.BorderBrush = BorderColor;
+            _updateRollbackButton.BorderThickness = new Thickness(1);
+            _updateRollbackButton.Margin = new Thickness(8, 0, 0, 0);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateRollbackButton, "SettingsUpdateRollback");
+            _updateRollbackButton.Click += async (s, e) =>
+            {
+                _updateRollbackButton.IsEnabled = false;
+                var status = await Services.Update.UpdateService.RollbackAsync();
+                _updateRollbackButton.IsEnabled = true;
+                ShowUpdateState(status);
+            };
+            row.Children.Add(_updateRollbackButton);
+            panel.Children.Add(row);
+
+            ShowUpdateState(engine.Refresh());
+            return panel;
+        }
+
+        private void ShowUpdateState(Services.Update.UpdateStatus status)
+        {
+            var engine = Services.Update.UpdateService.Engine;
+            _updateStatusText.Text = UiText.UpdateLine(status, engine.Progress, Strings.Current);
+            _updatePendingText.Text = status.Pending != null ? Strings.Get(Strings.SettingsUpdatePending, status.Pending) : "";
+            _updatePendingText.Visibility = status.Pending != null ? Visibility.Visible : Visibility.Collapsed;
+            var target = engine.RollbackTarget;
+            _updateRollbackButton.Visibility = target != null ? Visibility.Visible : Visibility.Collapsed;
+            if (target != null) _updateRollbackButton.Content = Strings.Get(Strings.SettingsUpdateRollback, target);
         }
 
         // Text box + Browse (pick any file in the folder) + Clear. A file dialog avoids a
@@ -995,6 +1096,9 @@ namespace VibeModel.UI
                     SettingsManager.SetChangeApproval(mode);
             if (_approvalSessionCheck != null && _approvalSessionCheck.IsChecked != true)
                 ChangeApprovalPolicy.DontAskThisSession = false;
+
+            if (_updateCheckBox.IsEnabled)
+                SettingsManager.SetUpdateCheck(_updateCheckBox.IsChecked == true);
 
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
             SettingsManager.SetProjectMemoryEnabled(_projectMemoryCheck.IsChecked == true);

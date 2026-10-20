@@ -154,6 +154,35 @@ namespace VibeModel.Services.Chat
         public const string DiagnoseClose = "DiagnoseClose";
         public const string DiagnoseSendHint = "DiagnoseSendHint";
 
+        // In-app updates (plan 19): the chat pane's banner and Settings → Updates.
+        public const string UpdateAvailable = "UpdateAvailable";               // {0} = version, {1} = size
+        public const string UpdateInstall = "UpdateInstall";
+        public const string UpdateInstallTip = "UpdateInstallTip";
+        public const string UpdateNotes = "UpdateNotes";
+        public const string UpdateLater = "UpdateLater";
+        public const string UpdateDownloading = "UpdateDownloading";           // {0} = done, {1} = total
+        public const string UpdateUnpacking = "UpdateUnpacking";
+        public const string UpdateReady = "UpdateReady";                       // {0} = version
+        public const string UpdateRolledBack = "UpdateRolledBack";             // {0} = version
+        public const string UpdateFailed = "UpdateFailed";                     // {0} = reason
+        public const string UpdateRetry = "UpdateRetry";
+        public const string UpdateLoaderTooOld = "UpdateLoaderTooOld";         // {0} = version
+        public const string UpdateDownloadZip = "UpdateDownloadZip";
+        public const string UpdateUpToDate = "UpdateUpToDate";                 // {0} = latest version
+        public const string UpdateNotChecked = "UpdateNotChecked";
+        public const string UpdateCheckFailed = "UpdateCheckFailed";           // {0} = reason
+        public const string UpdateDisabled = "UpdateDisabled";
+        public const string UpdateDevBuild = "UpdateDevBuild";
+        public const string UpdateChecking = "UpdateChecking";
+        public const string SettingsUpdatesTitle = "SettingsUpdatesTitle";
+        public const string SettingsUpdateInstalled = "SettingsUpdateInstalled"; // {0} = version, {1} = loader
+        public const string SettingsUpdateRunsFrom = "SettingsUpdateRunsFrom";   // {0} = folder
+        public const string SettingsUpdateSource = "SettingsUpdateSource";       // {0} = source
+        public const string SettingsUpdateCheck = "SettingsUpdateCheck";
+        public const string SettingsUpdateCheckNow = "SettingsUpdateCheckNow";
+        public const string SettingsUpdateRollback = "SettingsUpdateRollback";   // {0} = version
+        public const string SettingsUpdatePending = "SettingsUpdatePending";     // {0} = version
+
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -282,6 +311,33 @@ namespace VibeModel.Services.Chat
                 { DiagnoseSaved, "Saved: {0}" },
                 { DiagnoseClose, "Close" },
                 { DiagnoseSendHint, "Something not working? Copy this report and send it to your VibeModel administrator." },
+                { UpdateAvailable, "VibeModel {0} is available ({1})" },
+                { UpdateInstall, "Update" },
+                { UpdateInstallTip, "Downloads the new version next to the current one. It becomes active when you restart Revit; nothing changes in the model." },
+                { UpdateNotes, "What's new" },
+                { UpdateLater, "Later" },
+                { UpdateDownloading, "Downloading… {0} / {1}" },
+                { UpdateUnpacking, "Unpacking…" },
+                { UpdateReady, "VibeModel {0} is ready - active after you restart Revit." },
+                { UpdateRolledBack, "Revit starts VibeModel {0} next time." },
+                { UpdateFailed, "Update failed: {0} Click Diagnose for details." },
+                { UpdateRetry, "Try again" },
+                { UpdateLoaderTooOld, "VibeModel {0} is available - it needs a one-time install from the zip (install.cmd)." },
+                { UpdateDownloadZip, "Download" },
+                { UpdateUpToDate, "Up to date ({0} is the latest version)." },
+                { UpdateNotChecked, "Not checked yet." },
+                { UpdateCheckFailed, "Check failed: {0}" },
+                { UpdateDisabled, "Updates are switched off by IT." },
+                { UpdateDevBuild, "A developer build in the Revit add-ins folder - updates do not apply." },
+                { UpdateChecking, "Checking…" },
+                { SettingsUpdatesTitle, "Updates" },
+                { SettingsUpdateInstalled, "Installed: VibeModel {0} · loader {1}" },
+                { SettingsUpdateRunsFrom, "Runs from: {0}" },
+                { SettingsUpdateSource, "Update source: {0}" },
+                { SettingsUpdateCheck, "Check for updates automatically (once a day, when Revit starts)" },
+                { SettingsUpdateCheckNow, "Check now" },
+                { SettingsUpdateRollback, "Back to {0}" },
+                { SettingsUpdatePending, "Next Revit start: VibeModel {0}" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -412,6 +468,33 @@ namespace VibeModel.Services.Chat
                 { DiagnoseSaved, "Opgeslagen: {0}" },
                 { DiagnoseClose, "Sluiten" },
                 { DiagnoseSendHint, "Werkt er iets niet? Kopieer dit rapport en stuur het naar je VibeModel-beheerder." },
+                { UpdateAvailable, "VibeModel {0} beschikbaar ({1})" },
+                { UpdateInstall, "Bijwerken" },
+                { UpdateInstallTip, "Downloadt de nieuwe versie naast de huidige. Die wordt actief als je Revit opnieuw start; in het model verandert niets." },
+                { UpdateNotes, "Wat is nieuw" },
+                { UpdateLater, "Niet nu" },
+                { UpdateDownloading, "Downloaden… {0} / {1}" },
+                { UpdateUnpacking, "Uitpakken…" },
+                { UpdateReady, "VibeModel {0} is klaar - actief na het opnieuw starten van Revit." },
+                { UpdateRolledBack, "Revit start de volgende keer VibeModel {0}." },
+                { UpdateFailed, "Bijwerken mislukt: {0} Klik op Diagnose voor details." },
+                { UpdateRetry, "Opnieuw" },
+                { UpdateLoaderTooOld, "VibeModel {0} beschikbaar - eenmalig installeren met install.cmd uit de zip." },
+                { UpdateDownloadZip, "Downloaden" },
+                { UpdateUpToDate, "Up-to-date ({0} is de nieuwste versie)." },
+                { UpdateNotChecked, "Nog niet gecontroleerd." },
+                { UpdateCheckFailed, "Controle mislukt: {0}" },
+                { UpdateDisabled, "Updates zijn uitgezet door IT." },
+                { UpdateDevBuild, "Een ontwikkelversie in de Revit-add-insmap - updates zijn niet van toepassing." },
+                { UpdateChecking, "Bezig met controleren…" },
+                { SettingsUpdatesTitle, "Versie en updates" },
+                { SettingsUpdateInstalled, "Geïnstalleerd: VibeModel {0} · loader {1}" },
+                { SettingsUpdateRunsFrom, "Draait vanuit: {0}" },
+                { SettingsUpdateSource, "Updatebron: {0}" },
+                { SettingsUpdateCheck, "Automatisch controleren op updates (eens per dag, bij het starten van Revit)" },
+                { SettingsUpdateCheckNow, "Nu controleren" },
+                { SettingsUpdateRollback, "Terug naar {0}" },
+                { SettingsUpdatePending, "Bij de volgende start van Revit: VibeModel {0}" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

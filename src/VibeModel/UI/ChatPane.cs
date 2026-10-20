@@ -40,6 +40,8 @@ namespace VibeModel.UI
         private TextBlock _statusText;
         private Button _examplesButton;
         private Border _infoBanner;
+        // "VibeModel 1.2.13 beschikbaar" (plan 19), under the header.
+        private UpdateBanner _updateBanner;
         // The compact card at the top of an empty chat (backend, model, project folder, chips).
         private Border _welcomeCard;
         // The one in-pane popup (a source, or the examples list).
@@ -134,6 +136,7 @@ namespace VibeModel.UI
 
             var mainGrid = new Grid();
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -142,6 +145,11 @@ namespace VibeModel.UI
             var header = CreateHeader();
             Grid.SetRow(header, 0);
             mainGrid.Children.Add(header);
+
+            // In-app updates (plan 19): its own row above the messages, so they never shift.
+            _updateBanner = new UpdateBanner();
+            Grid.SetRow(_updateBanner, 1);
+            mainGrid.Children.Add(_updateBanner);
 
             _messagePanel = new StackPanel
             {
@@ -159,19 +167,19 @@ namespace VibeModel.UI
             _scrollViewer.Content = _messagePanel;
             _scrollViewer.ScrollChanged += OnScrollChanged;
 
-            Grid.SetRow(_scrollViewer, 1);
+            Grid.SetRow(_scrollViewer, 2);
             mainGrid.Children.Add(_scrollViewer);
 
             _suggestionBar = CreateSuggestionBar();
-            Grid.SetRow(_suggestionBar, 2);
+            Grid.SetRow(_suggestionBar, 3);
             mainGrid.Children.Add(_suggestionBar);
 
             _attachmentBar = CreateAttachmentBar();
-            Grid.SetRow(_attachmentBar, 3);
+            Grid.SetRow(_attachmentBar, 4);
             mainGrid.Children.Add(_attachmentBar);
 
             var inputArea = CreateInputArea();
-            Grid.SetRow(inputArea, 4);
+            Grid.SetRow(inputArea, 5);
             mainGrid.Children.Add(inputArea);
 
             Content = mainGrid;
@@ -1947,6 +1955,7 @@ namespace VibeModel.UI
         public void Cleanup()
         {
             ActiveDocumentTracker.Changed -= OnActiveDocumentChanged;
+            _updateBanner?.Detach();
             _cts?.Cancel();
             _backend?.Cancel();
             // Persist whatever conversation is open when Revit shuts down.

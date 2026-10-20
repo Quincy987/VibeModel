@@ -33,8 +33,11 @@ namespace VibeModel
         public Result OnStartup(UIControlledApplication application)
         {
             Logger.Info("========================================");
-            Logger.Info("VibeModel v" + typeof(VibeModelApp).Assembly.GetName().Version + " - AI Integration for Revit");
+            Logger.Info("VibeModel v" + typeof(VibeModelApp).Assembly.GetName().Version + " - AI Integration for Revit (loader " +
+                        (Services.Update.LoaderInfo.Version ?? "none") + ", from " + typeof(VibeModelApp).Assembly.Location + ")");
             Logger.Info("Revit version: " + application.ControlledApplication.VersionNumber);
+            // In-app updates (plan 19) look for this Revit year's release.
+            Services.Update.UpdateService.RevitYear = application.ControlledApplication.VersionNumber;
             Logger.Info("========================================");
 
             try
@@ -102,6 +105,9 @@ namespace VibeModel
                 application.ControlledApplication.DocumentOpened += OnDocumentOpenedOrClosed;
                 application.ControlledApplication.DocumentClosed += OnDocumentOpenedOrClosed;
                 StartStandardsBackgroundWork();
+
+                // In-app updates (plan 19): one check 8 s from now, off the main thread.
+                Services.Update.UpdateService.ScheduleStartupCheck();
 
                 Logger.Info("VibeModel startup complete");
                 return Result.Succeeded;
