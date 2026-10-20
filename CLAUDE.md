@@ -794,7 +794,18 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   `max_tokens` → a note.
 - **Cost line**: `ChatActivityEvent.ForUsage(TurnUsage)` (API: `message_start`/`message_delta` usage;
   CLI: the result event's `usage` + `total_cost_usd`) → `TurnActivity.Usage` → one muted line under the
-  answer (`ModelPricing.Describe`, AutomationId `TurnUsage`), never stored. Prices: `ModelPricing` table.
+  answer, never stored: `3.9M tokens · zeer lang gesprek` (`ConversationLength.Describe`, AutomationId
+  `TurnUsage`) — no money on the line (users on a subscription read the API-price euros as a bill); the
+  tooltip explains the tokens and carries the conversation length and the `≈ €` estimate
+  (`ConversationLength.Tooltip`; prices: `ModelPricing` table). **Conversation length** is
+  `TurnUsage.ContextTokens` = the context of the turn's LAST API call (direct backend: each
+  `message_start`; CLI: the `usage` on each `assistant` event — the result event only has sums), never
+  the turn total, which counts tool steps (measured in chat-pane transcripts: a fresh chat's first call
+  carries 50–65k, +3–20k per question; one first question with 17 steps totals 1.4M). ≥ 120k = long
+  (orange ●), ≥ 200k = very long (red ●) and, once per chat (`ShouldNudge`; reset on New Chat, History
+  load, backend switch), a bar under the answer: why each question now costs more + **Nieuwe chat** /
+  **Niet nu** (AutomationIds `NudgeNewChat`, `NudgeNewChatButton`, `NudgeNewChatDismiss`). The welcome
+  card ends with the tip to start a new chat per task (`WelcomeTip`). Pure part: `Services/Chat/ConversationLength.cs`.
 - **Diagnose** (header button → `UI/DiagnoseWindow.cs`; `diagnose` command): `Services/Diagnostics/
   DiagnoseReport.Build()` — version, add-in path, Authenticode (WinVerifyTrust, cache-only), Revit,
   port, backend + key source (masked), CLI search, managed.json, proxy, DNS + HTTPS to the API host and

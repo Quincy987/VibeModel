@@ -20,6 +20,13 @@ namespace VibeModel.Services.Chat
         /// <summary>Set when the source states the cost itself (the CLI's total_cost_usd).</summary>
         public double? ReportedCostUsd { get; set; }
 
+        /// <summary>
+        /// How much conversation the turn's LAST API call carried (its input + cache write + cache
+        /// read): what every step of the next question starts from. 0 = unknown.
+        /// See <see cref="ConversationLength"/>.
+        /// </summary>
+        public long ContextTokens { get; set; }
+
         public long TotalTokens => InputTokens + OutputTokens + CacheWriteTokens + CacheReadTokens;
         public bool IsEmpty => TotalTokens == 0 && ReportedCostUsd == null;
 
@@ -32,6 +39,7 @@ namespace VibeModel.Services.Chat
             if (!string.IsNullOrWhiteSpace(model)) Model = model;
             _callOutput = 0;
             if (usage == null) return;
+            ContextTokens = ContextOf(usage);
             InputTokens += Long(usage, "input_tokens");
             CacheWriteTokens += Long(usage, "cache_creation_input_tokens");
             CacheReadTokens += Long(usage, "cache_read_input_tokens");
@@ -59,8 +67,13 @@ namespace VibeModel.Services.Chat
             OutputTokens = OutputTokens + _callOutput,
             CacheWriteTokens = CacheWriteTokens,
             CacheReadTokens = CacheReadTokens,
-            ReportedCostUsd = ReportedCostUsd
+            ReportedCostUsd = ReportedCostUsd,
+            ContextTokens = ContextTokens
         };
+
+        /// <summary>One API call's context: input + cache write + cache read tokens of its usage.</summary>
+        public static long ContextOf(IDictionary<string, object> usage) =>
+            Long(usage, "input_tokens") + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
 
         private static long Long(IDictionary<string, object> d, string key)
         {

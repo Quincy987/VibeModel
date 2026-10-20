@@ -490,7 +490,8 @@ namespace VibeModel.Tests
             foreach (var key in new[]
             {
                 Strings.WizardTitle, Strings.WizardApiOk, Strings.WizardCliInstall, Strings.WizardCliLoginHint,
-                Strings.DiagnoseSendHint, Strings.ApiRefusal, Strings.ApiUnreachable, Strings.UsageTip, Strings.SettingManaged
+                Strings.DiagnoseSendHint, Strings.ApiRefusal, Strings.ApiUnreachable, Strings.UsageTip, Strings.SettingManaged,
+                Strings.NudgeNewChatText, Strings.NudgeNewChatButton, Strings.WelcomeTipNewChat
             })
             {
                 Assert.True(Strings.HasDutch(key), key);
