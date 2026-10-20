@@ -372,6 +372,59 @@ namespace VibeModel.Infrastructure
 
         public static void SetProjectMemoryEnabled(bool enabled) => SetValue("ProjectMemoryEnabled", enabled);
 
+        // --- Updates (plan 19) ---------------------------------------------------------------
+
+        /// <summary>IT switched in-app updates off (managed DisableUpdates): no check, no banner, no install.</summary>
+        public static bool IsUpdateDisabled() => ManagedSettings.GetBool(ManagedSettings.DisableUpdates) == true;
+
+        /// <summary>
+        /// Where updates come from: managed.json UpdateSource, else settings.json UpdateSource (for a
+        /// test mirror), else empty = GitHub releases. An https URL or a share / local folder.
+        /// </summary>
+        public static string GetUpdateSource() => ManagedOrSetting(ManagedSettings.UpdateSource, "");
+
+        /// <summary>Settings → "Automatisch controleren op updates" (default on). A manual check always runs.</summary>
+        public static bool GetUpdateCheck()
+        {
+            var settings = Load();
+            object val;
+            if (settings.TryGetValue("UpdateCheck", out val))
+            {
+                if (val is bool b) return b;
+                if (val is string s) return !s.Equals("false", StringComparison.OrdinalIgnoreCase);
+            }
+            return true;
+        }
+
+        public static void SetUpdateCheck(bool enabled) => SetValue("UpdateCheck", enabled);
+
+        /// <summary>When the last check that reached the source ran (UTC); null when never.</summary>
+        public static DateTime? GetUpdateLastChecked()
+        {
+            var s = GetString("UpdateLastChecked", "");
+            return DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var t)
+                ? t : (DateTime?)null;
+        }
+
+        /// <summary>The last check's time (UTC, ISO 8601) and its one-line result, in one write.</summary>
+        public static void SetUpdateLastCheck(DateTime utc, string result)
+        {
+            // The update check runs on a background thread: read and write in one locked step (Load
+            // and Save take the same, re-entrant lock), so a Settings save at that moment is never
+            // overwritten with an older copy of settings.json.
+            lock (Lock)
+            {
+                var settings = Load();
+                settings["UpdateLastChecked"] = utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
+                settings["UpdateLastResult"] = result ?? "";
+                Save(settings);
+            }
+        }
+
+        /// <summary>The last check's one-line result ("1.2.13 available", "up to date", "failed: …").</summary>
+        public static string GetUpdateLastResult() => GetString("UpdateLastResult", "");
+
         // --- Project folder context (plan 10) ----------------------------------------------
 
         private const string ProjectFoldersKey = "ProjectContextFolders";

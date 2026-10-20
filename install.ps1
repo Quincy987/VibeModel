@@ -4,12 +4,22 @@
     administrator rights needed.
 
 .DESCRIPTION
-    Copies VibeModel.dll, VibeModel.addin, Markdig.dll and the VibeModel.PdfText helper to the
-    add-in folder of the Revit version this build is for (revit-year.txt in the release zip;
-    %APPDATA%\Autodesk\Revit\Addins\<year>), removes the "downloaded from the internet" mark,
-    and checks the result. Other Revit versions are named and left alone: a build only loads in
-    the Revit it was compiled against. Connecting to Claude is not done here: Revit's chat
-    pane shows a "Connect to Claude" card the first time.
+    Two parts, for the Revit version this build is for (revit-year.txt in the release zip):
+    - the LOADER (VibeModel.Loader.dll + VibeModel.addin) goes to
+      %APPDATA%\Autodesk\Revit\Addins\<year>. That is the file Revit asks about ("Always Load")
+      and it does not change between versions;
+    - the ADD-IN itself (VibeModel.dll, Markdig.dll, the VibeModel.PdfText helper) goes to its own
+      version folder %LOCALAPPDATA%\VibeModel\versions\Revit<year>\<version>\, and
+      versions\Revit<year>\current.txt names the version the loader starts.
+    In-app updates (plan 19) add version folders the same way. A VibeModel.dll left in the add-ins
+    folder by an older install is removed (it would be started instead of any update).
+    Removes the "downloaded from the internet" mark and checks the result. Other Revit versions
+    are named and left alone: a build only loads in the Revit it was compiled against.
+    Connecting to Claude is not done here: Revit's chat pane shows a "Connect to Claude" card the
+    first time.
+
+    Revit has to be closed only when the loader or the .addin change (or old files must go); a new
+    version of the add-in alone installs while Revit runs and is active after Revit restarts.
 
     Double-click install.cmd, or run this script with PowerShell. The window stays open at the
     end (and after an error) so the result can be read. Every line is also written to
@@ -20,24 +30,31 @@
     Do not wait for Enter at the end (scripted use).
 
 .PARAMETER Quiet
-    For IT deployment: no questions, no pause, a running Revit is an error (exit 2) instead of
-    a prompt, and so is a missing Revit for this build (exit 3). Output still goes to install.log.
+    For IT deployment: no questions, no pause, a running Revit that has to be closed is an error
+    (exit 2) instead of a prompt, and so is a missing Revit for this build (exit 3). Output still
+    goes to install.log.
 
 .PARAMETER InstallClaudeCode
     Also install Claude Code with Anthropic's official per-user installer
     (irm https://claude.ai/install.ps1 | iex) and check `claude --version`. Optional: the chat
     works with an API key alone, and the chat pane can install Claude Code too.
 
+.PARAMETER AllowDowngrade
+    Start this version even when a newer one is installed (by the in-app update or an earlier
+    install). Without it an older zip is installed next to the newer version, which stays active.
+
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -Quiet
     .\install.ps1 -InstallClaudeCode
+    .\install.ps1 -AllowDowngrade
 #>
 
 param(
     [switch]$NoPause,
     [switch]$Quiet,
-    [switch]$InstallClaudeCode
+    [switch]$InstallClaudeCode,
+    [switch]$AllowDowngrade
 )
 
 $ErrorActionPreference = 'Stop'
@@ -85,18 +102,18 @@ Write-Host ""
 # --- Locate source files ---
 
 $scriptDir = $PSScriptRoot
-$sourceFiles = @("VibeModel.dll", "VibeModel.addin", "Markdig.dll")
+# The loader + manifest go to Revit's add-ins folder; the add-in to its version folder.
+$loaderFiles = @("VibeModel.Loader.dll", "VibeModel.addin")
+$payloadFiles = @("VibeModel.dll", "Markdig.dll")
+$sourceFiles = $loaderFiles + $payloadFiles
 
 # Search directories - the release zip (next to this script), else build output dirs
-$searchDirs = @(
-    $scriptDir,
-    (Join-Path $scriptDir "bin\Release\Revit2023"),
-    (Join-Path $scriptDir "bin\Release\Revit2024"),
-    (Join-Path $scriptDir "bin\Release\Revit2022"),
-    (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2023"),
-    (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2024"),
-    (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit2022")
-)
+$searchDirs = @($scriptDir)
+foreach ($year in @("2023", "2024", "2022")) {
+    $searchDirs += (Join-Path $scriptDir "bin\Release\Revit$year")
+    $searchDirs += (Join-Path $scriptDir "src\VibeModel\bin\Release\Revit$year")
+    $searchDirs += (Join-Path $scriptDir "src\VibeModel.Loader\bin\Release\Revit$year")
+}
 # Only Revit 2022-2024 can load this add-in (.NET Framework 4.8); Revit 2025+ runs on .NET 8.
 
 # Resolve each file independently (DLLs may be in build output, .addin in repo root)
@@ -130,24 +147,19 @@ if (-not $resolvedFiles.ContainsKey("VibeModel.dll")) {
         "Unzip the whole release zip first, then run install.cmd from the unzipped folder."
     )
 }
-
-$script:installerVersion = (Get-Item $resolvedFiles["VibeModel.dll"]).VersionInfo.FileVersion
-Log ("start in " + $scriptDir + " as " + $env:USERNAME + (@("", " (quiet)")[[int][bool]$Quiet]))
-Say ("VibeModel " + $script:installerVersion) "White"
-
-# --- Revit must be closed: it keeps VibeModel.dll locked, so the copy would fail ---
-
-$revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
-if ($revitProcs.Count -gt 0) {
-    if ($Quiet) { Fail @("Revit is running - close it and run the installer again.") 2 }
-    Write-Host ""
-    Say "Revit is running ($($revitProcs.Count) window(s)). Close Revit first - it keeps the add-in files locked." "Yellow"
-    Read-Host "  Close Revit, then press Enter here to continue" | Out-Null
-    $revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
-    if ($revitProcs.Count -gt 0) {
-        Fail @("Revit is still running. Close it and run the installer again.")
+foreach ($file in $loaderFiles) {
+    if (-not $resolvedFiles.ContainsKey($file)) {
+        Fail @("Cannot find $file next to this script.",
+               "Unzip the whole release zip first, then run install.cmd from the unzipped folder.")
     }
 }
+
+$script:installerVersion = (Get-Item $resolvedFiles["VibeModel.dll"]).VersionInfo.FileVersion
+# The version folder's name: "1.2.13" (a 4th part only when it is not 0) - as the in-app update names it.
+$parsed = [version]$script:installerVersion
+$versionName = if ($parsed.Revision -gt 0) { $parsed.ToString() } else { "{0}.{1}.{2}" -f $parsed.Major, $parsed.Minor, [Math]::Max($parsed.Build, 0) }
+Log ("start in " + $scriptDir + " as " + $env:USERNAME + (@("", " (quiet)")[[int][bool]$Quiet]))
+Say ("VibeModel " + $versionName) "White"
 
 # --- Which Revit: the one this build is for ---
 
@@ -191,6 +203,50 @@ if ($buildYear) {
     }
 }
 
+function VersionsRoot([string]$year) { Join-Path $env:LOCALAPPDATA "VibeModel\versions\Revit$year" }
+
+function SameFile([string]$a, [string]$b) {
+    (Test-Path $b) -and ((Get-FileHash $a).Hash -eq (Get-FileHash $b).Hash)
+}
+
+# Files from installs before the loader, in the add-ins folder: VibeModel.dll there would be
+# started instead of the installed version (the loader's rule for a developer build).
+$legacyNames = @("VibeModel.dll", "Markdig.dll", "VibeModel.pdb", "VibeModel.PdfText")
+
+# --- Revit must be closed only when something it holds open changes ---
+# Revit keeps the loader (and, from older installs, VibeModel.dll in the add-ins folder) locked.
+
+$needsClosedRevit = @()
+foreach ($version in $revitVersions) {
+    $targetDir = Join-Path $addinsBase $version
+    foreach ($file in $loaderFiles) {
+        if (-not (SameFile $resolvedFiles[$file] (Join-Path $targetDir $file))) { $needsClosedRevit += "$file (Revit $version)" }
+    }
+    foreach ($name in $legacyNames) {
+        if (Test-Path (Join-Path $targetDir $name)) { $needsClosedRevit += "old $name in the add-ins folder (Revit $version)" }
+    }
+    # The same version again with different files (a rebuilt test version): its folder may be in use.
+    $installedDll = Join-Path (Join-Path (VersionsRoot $version) $versionName) "VibeModel.dll"
+    if ((Test-Path $installedDll) -and -not (SameFile $resolvedFiles["VibeModel.dll"] $installedDll)) {
+        $needsClosedRevit += "VibeModel $versionName itself (rebuilt, Revit $version)"
+    }
+}
+
+$revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
+$revitWasRunning = $revitProcs.Count -gt 0
+if ($revitWasRunning -and $needsClosedRevit.Count -gt 0) {
+    Log ("Revit must be closed for: " + ($needsClosedRevit -join "; "))
+    if ($Quiet) { Fail @("Revit is running - close it and run the installer again.") 2 }
+    Write-Host ""
+    Say "Revit is running ($($revitProcs.Count) window(s)). Close Revit first - it keeps the add-in files locked." "Yellow"
+    Read-Host "  Close Revit, then press Enter here to continue" | Out-Null
+    $revitProcs = @(Get-Process -Name "Revit" -ErrorAction SilentlyContinue)
+    if ($revitProcs.Count -gt 0) {
+        Fail @("Revit is still running. Close it and run the installer again.")
+    }
+    $revitWasRunning = $false
+}
+
 Say "Installing for Revit $($revitVersions -join ', ')" "Green"
 Write-Host ""
 
@@ -198,7 +254,7 @@ Write-Host ""
 
 function Copy-IfChanged([string]$source, [string]$targetDir) {
     $target = Join-Path $targetDir (Split-Path $source -Leaf)
-    if ((Test-Path $target) -and ((Get-FileHash $source).Hash -eq (Get-FileHash $target).Hash)) {
+    if (SameFile $source $target) {
         Unblock-File -Path $target -ErrorAction SilentlyContinue
         return $false
     }
@@ -208,35 +264,46 @@ function Copy-IfChanged([string]$source, [string]$targetDir) {
     return $true
 }
 
+# PDF text helper for the office-standards document index (own subfolder so its dependencies
+# never load into Revit). Without it only .txt sources can be indexed.
+$pdfTextSource = @(
+    (Join-Path $scriptDir "VibeModel.PdfText"),
+    (Join-Path $scriptDir "src\VibeModel.PdfText\bin\Release")
+) | Where-Object { Test-Path (Join-Path $_ "VibeModel.PdfText.exe") } | Select-Object -First 1
+
 foreach ($version in $revitVersions) {
     $targetDir = Join-Path $addinsBase $version
-
-    if (-not (Test-Path $targetDir)) {
-        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    $versionsRoot = VersionsRoot $version
+    $payloadDir = Join-Path $versionsRoot $versionName
+    foreach ($dir in @($targetDir, $payloadDir)) {
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     }
 
-    Say "Revit ${version}: $targetDir" "White"
+    Say "Revit ${version}: loader in $targetDir" "White"
+    foreach ($file in $loaderFiles) {
+        if (Copy-IfChanged $resolvedFiles[$file] $targetDir) { Say "  installed $file" }
+        else { Say "  $file already up to date" }
+    }
 
-    foreach ($file in $sourceFiles) {
+    foreach ($name in $legacyNames) {
+        $old = Join-Path $targetDir $name
+        if (Test-Path $old) {
+            Remove-Item $old -Recurse -Force
+            Say "  removed the old $name from the add-ins folder (the loader now starts the installed version)"
+        }
+    }
+
+    Say "Revit ${version}: VibeModel $versionName in $payloadDir" "White"
+    foreach ($file in $payloadFiles) {
         if ($resolvedFiles.ContainsKey($file)) {
-            if (Copy-IfChanged $resolvedFiles[$file] $targetDir) {
-                Say "  installed $file"
-            } else {
-                Say "  $file already up to date (v$($script:installerVersion))"
-            }
+            if (Copy-IfChanged $resolvedFiles[$file] $payloadDir) { Say "  installed $file" }
+            else { Say "  $file already up to date (v$versionName)" }
         } else {
             Say "  WARNING: $file not found, skipped" "Yellow"
         }
     }
-
-    # PDF text helper for the office-standards document index (own subfolder so its
-    # dependencies never load into Revit). Without it only .txt sources can be indexed.
-    $pdfTextSource = @(
-        (Join-Path $scriptDir "VibeModel.PdfText"),
-        (Join-Path $scriptDir "src\VibeModel.PdfText\bin\Release")
-    ) | Where-Object { Test-Path (Join-Path $_ "VibeModel.PdfText.exe") } | Select-Object -First 1
     if ($pdfTextSource) {
-        $pdfTextTarget = Join-Path $targetDir "VibeModel.PdfText"
+        $pdfTextTarget = Join-Path $payloadDir "VibeModel.PdfText"
         New-Item -ItemType Directory -Path $pdfTextTarget -Force | Out-Null
         $changed = 0
         Get-ChildItem $pdfTextSource -File | Where-Object { $_.Extension -in ".exe", ".dll", ".config" } | ForEach-Object {
@@ -245,20 +312,43 @@ foreach ($version in $revitVersions) {
         if ($changed -gt 0) { Say "  installed the VibeModel.PdfText helper ($changed files)" }
         else { Say "  VibeModel.PdfText helper already up to date" }
     }
+
+    # The version the loader starts next time (ASCII, one line - what the in-app update writes too).
+    # Never a silent downgrade: a login script that re-runs an older zip must not undo an update
+    # the user installed in the app. -AllowDowngrade (or the app's own rollback) goes back on purpose.
+    $currentFile = Join-Path $versionsRoot "current.txt"
+    $current = if (Test-Path $currentFile) { (Get-Content $currentFile -TotalCount 1 | Out-String).Trim() } else { "" }
+    $currentVersion = $null
+    $newer = $current -and [version]::TryParse($current, [ref]$currentVersion) -and
+             (Test-Path (Join-Path (Join-Path $versionsRoot $current) "VibeModel.dll")) -and
+             ($currentVersion -gt [version]$versionName)
+    if ($newer -and -not $AllowDowngrade) {
+        $script:startsNext = $current
+        Say "  VibeModel $current (newer, installed earlier) stays active; $versionName is installed next to it." "Yellow"
+        Say "  Run install.cmd -AllowDowngrade to start $versionName instead, or use Settings -> rollback in the chat pane." "Yellow"
+    } else {
+        $script:startsNext = $versionName
+        Set-Content -Path $currentFile -Value $versionName -Encoding ASCII
+        Say "  current.txt -> $versionName"
+    }
 }
 
 # --- Verify: every installed file must be there and unblocked ---
 
 $problems = @()
 foreach ($version in $revitVersions) {
-    $targetDir = Join-Path $addinsBase $version
-    foreach ($file in $sourceFiles) {
-        $installed = Join-Path $targetDir $file
+    $checks = @()
+    foreach ($file in $loaderFiles) { $checks += (Join-Path (Join-Path $addinsBase $version) $file) }
+    foreach ($file in $payloadFiles) { $checks += (Join-Path (Join-Path (VersionsRoot $version) $versionName) $file) }
+    foreach ($installed in $checks) {
         if (-not (Test-Path $installed)) {
             $problems += "$installed is missing"
         } elseif (Get-Item $installed -Stream Zone.Identifier -ErrorAction SilentlyContinue) {
             $problems += "$installed is still blocked by Windows (right-click > Properties > Unblock)"
         }
+    }
+    if (Test-Path (Join-Path (Join-Path $addinsBase $version) "VibeModel.dll")) {
+        $problems += "an old VibeModel.dll is still in $(Join-Path $addinsBase $version) - it would be started instead"
     }
 }
 if ($problems.Count -gt 0) {
@@ -268,15 +358,15 @@ if ($problems.Count -gt 0) {
 Write-Host ""
 Say "Files installed and unblocked." "Green"
 
-# --- Signature: what Revit will see when it loads the add-in ---
+# --- Signature: what Revit will see when it loads the add-in (the loader) ---
 
-$dllForSignature = Join-Path (Join-Path $addinsBase $revitVersions[0]) "VibeModel.dll"
+$dllForSignature = Join-Path (Join-Path $addinsBase $revitVersions[0]) "VibeModel.Loader.dll"
 $sig = Get-AuthenticodeSignature -FilePath $dllForSignature
 # What Revit 2023 does (measured): trusted signature -> loads silently; unsigned -> asks once
 # ("Always Load" remembers it); signed but untrusted -> "Invalid Signature" on every start.
 switch ($sig.Status) {
     "Valid" { Say ("Signed by " + $sig.SignerCertificate.Subject + " (trusted) - Revit loads it without asking.") "Green" }
-    "NotSigned" { Say "The add-in is not signed: Revit asks once whether to load it (again after each update) - choose 'Always Load'." "Yellow" }
+    "NotSigned" { Say "The loader is not signed: Revit asks once whether to load it - choose 'Always Load'. In-app updates do not change the loader, so it does not ask again after them." "Yellow" }
     default {
         $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "?" }
         Say ("Signed by " + $subject + ", but this computer does not trust that certificate (" + $sig.Status + ").") "Yellow"
@@ -304,7 +394,11 @@ if ($InstallClaudeCode) {
 }
 
 Write-Host ""
-Say "Done! Start Revit -> tab VibeModel -> Chat. The first time, the chat asks how to connect to Claude." "Cyan"
+if ($revitWasRunning) {
+    Say "Done! Revit is still running: VibeModel $($script:startsNext) is active after you restart Revit." "Cyan"
+} else {
+    Say "Done! Start Revit -> tab VibeModel -> Chat. The first time, the chat asks how to connect to Claude." "Cyan"
+}
 Finish 0
 
 } catch {

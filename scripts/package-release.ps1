@@ -3,10 +3,15 @@
     Builds the add-in in Release and packs it as the zip that goes on a GitHub release.
 
 .DESCRIPTION
-    Output: release\VibeModel-v<version>-Revit<year>.zip (the release folder is gitignored).
-    The zip unpacks to a flat folder that install.cmd / install.ps1 install from:
-      VibeModel.dll, Markdig.dll, VibeModel.addin, VibeModel.PdfText\, install.cmd, install.ps1,
-      README.txt (three install steps), CHANGELOG.md, LICENSE.
+    Output in release\ (gitignored); all three go on the GitHub release:
+      VibeModel-v<version>-Revit<year>.zip         the add-in
+      VibeModel-v<version>-Revit<year>.zip.sha256  its checksum ("<hex>  <zip name>")
+      latest-Revit<year>.json                      the in-app update manifest (plan 19): version,
+                                                    zip, sha256, size, published, notes, minLoader
+    The zip unpacks to a flat folder that install.cmd / install.ps1 install from - and that the
+    in-app update unpacks into %LOCALAPPDATA%\VibeModel\versions\<version>\:
+      VibeModel.Loader.dll, VibeModel.addin, VibeModel.dll, Markdig.dll, VibeModel.PdfText\,
+      install.cmd, install.ps1, README.txt (three install steps), CHANGELOG.md, LICENSE.
     GitHub's own "Source code (zip)" has no DLL in it - this zip is what users download.
 
 .PARAMETER RevitVersion
@@ -60,22 +65,31 @@ if (-not $NoBuild) {
 }
 
 $binDir = Join-Path $root "src\VibeModel\bin\Release\Revit$RevitVersion"
+$loaderDir = Join-Path $root "src\VibeModel.Loader\bin\Release\Revit$RevitVersion"
 $pdfDir = Join-Path $root "src\VibeModel.PdfText\bin\Release"
 foreach ($required in @("VibeModel.dll", "Markdig.dll")) {
     if (-not (Test-Path (Join-Path $binDir $required))) { throw "Missing $required in $binDir - build first" }
 }
 if (-not (Test-Path (Join-Path $pdfDir "VibeModel.PdfText.exe"))) { throw "Missing VibeModel.PdfText.exe in $pdfDir" }
+if (-not (Test-Path (Join-Path $loaderDir "VibeModel.Loader.dll"))) { throw "Missing VibeModel.Loader.dll in $loaderDir - build first" }
+# The loader has its own version (1.0.0); the manifest names the oldest loader this build runs under.
+$loaderVersion = (Get-Item (Join-Path $loaderDir "VibeModel.Loader.dll")).VersionInfo.FileVersion
+$minLoader = "1.0.0"
 
 $releaseDir = Join-Path $root "release"
 $stageName = "VibeModel-v$version-Revit$RevitVersion"
 $stage = Join-Path $releaseDir $stageName
 $zip = Join-Path $releaseDir "$stageName.zip"
 
+$shaFile = "$zip.sha256"
+$manifestFile = Join-Path $releaseDir "latest-Revit$RevitVersion.json"
+
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-if (Test-Path $zip) { Remove-Item $zip -Force }
+foreach ($old in @($zip, $shaFile, $manifestFile)) { if (Test-Path $old) { Remove-Item $old -Force } }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage "VibeModel.PdfText") -Force | Out-Null
 
+Copy-Item (Join-Path $loaderDir "VibeModel.Loader.dll") $stage
 Copy-Item (Join-Path $binDir "VibeModel.dll") $stage
 Copy-Item (Join-Path $binDir "Markdig.dll") $stage
 Copy-Item (Join-Path $root "VibeModel.addin") $stage
@@ -110,6 +124,10 @@ Install (no administrator rights needed):
      paste the API key you got from your administrator, or install / log in to Claude Code
      with one click. No terminal, no Node.js.
 
+Updates: when a newer version is published the chat pane says "VibeModel <version> beschikbaar"
+- click Bijwerken (Update); it is active after you restart Revit. No installer, no new security
+question. Settings -> Updates checks now or goes back to the previous version.
+
 Something not working? Click Diagnose in the chat pane, copy the report and send it to your
 administrator. The installer writes %LOCALAPPDATA%\VibeModel\logs\install.log.
 
@@ -123,8 +141,28 @@ Docs, source and newer versions: https://github.com/Quincy987/VibeModel
 Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
 Remove-Item $stage -Recurse -Force
 
+# Checksum + the in-app update manifest (plan 19). The add-in refuses a download whose size or
+# sha256 differs from the manifest, and the zip name must be exactly this one.
+$sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+$zipName = Split-Path $zip -Leaf
+Set-Content $shaFile "$sha  $zipName" -Encoding ASCII
+$manifest = [ordered]@{
+    version   = $version
+    revitYear = $RevitVersion
+    zip       = $zipName
+    sha256    = $sha
+    size      = (Get-Item $zip).Length
+    published = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+    notes     = "https://github.com/Quincy987/VibeModel/releases/tag/v$version"
+    minLoader = $minLoader
+}
+# ASCII, no BOM: the add-in reads it as JSON.
+[System.IO.File]::WriteAllText($manifestFile, ($manifest | ConvertTo-Json -Compress), [System.Text.Encoding]::ASCII)
+
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 Write-Host "Packed $zip ($size MB)" -ForegroundColor Green
+Write-Host "Checksum: $shaFile" -ForegroundColor Green
+Write-Host "Update manifest: $manifestFile (loader $loaderVersion, minLoader $minLoader)" -ForegroundColor Green
 Write-Host "Contents:" -ForegroundColor Gray
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::OpenRead($zip).Entries | ForEach-Object { Write-Host "  $($_.FullName)" -ForegroundColor Gray }

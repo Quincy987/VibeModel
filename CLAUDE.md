@@ -680,7 +680,8 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
 - **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
 - **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
-  e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`.
+  e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`
+  (the loader's folder, Revit's add-ins folder — stable across in-app updates; `StandardsPackRegistry.AddinStandardsRoot`).
   A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
   background (startup, `--refresh`, Settings → Save) and only the mirror is read.
   Settings → *Office source documents folder* (`StandardsFolder`) is what `standards --index` reads.
@@ -815,9 +816,46 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   main thread; measured 0.6 s). `Logger` now always writes WARN/ERROR; INFO only with `VIBEMODEL_DEBUG=1`.
 - **Signing, measured in Revit 2023**: unsigned → "Security - Unsigned Add-In" once per new DLL
   (*Always Load* is remembered per build in `HKCU\Software\Autodesk\Revit\Autodesk Revit 2023\CodeSigning`
-  under the add-in's ClientId); trusted signature → no dialog; self-signed/untrusted → "Security -
-  Invalid Signature" (Load / Do Not Load, every start). `scripts/sign.ps1`, `package-release.ps1 -Sign
-  -Thumbprint …` (refuses a self-signed signature without `-AllowSelfSigned`).
+  under the add-in's ClientId — saved when Revit closes normally; a killed Revit asks again); trusted
+  signature → no dialog; self-signed/untrusted → "Security - Invalid Signature" (Load / Do Not Load,
+  every start). Only the assembly the `.addin` names is checked — since plan 19 the loader.
+  `scripts/sign.ps1`, `package-release.ps1 -Sign -Thumbprint …` (refuses a self-signed signature without
+  `-AllowSelfSigned`).
+- **Loader + in-app updates** (plan 19, `docs/plans/19-in-app-updates.md`). `VibeModel.addin` names
+  `VibeModel.Loader.dll` (`src/VibeModel.Loader/`, own version 1.0.0, RevitAPI only, same ClientId). It
+  starts (`LoaderPaths.Choose`, pure, compiled into both assemblies): (a) `VibeModel.dll` next to itself
+  — a developer build, what `build.ps1` deploys, wins; (b) the folder
+  `%LOCALAPPDATA%\VibeModel\versions\Revit<year>\current.txt` names; (c) the newest complete version
+  folder; else one dialog. `Assembly.LoadFrom` + an AssemblyResolve fallback for the payload folder;
+  it sets `Services.Update.LoaderInfo` (Version/Path/Rule) by reflection before OnStartup and writes
+  `logs\loader.log`. The update service (`Services/Update/`: `UpdateManifest`, `UpdateSource`,
+  `UpdateDecision`, `UpdateLayout` + `ZipSafety` pure; `UpdateEngine` I/O with `IUpdateTransport` /
+  `IUpdateSettings`; `UpdateService` the session facade) checks `latest-Revit<year>.json` 8 s after
+  startup (once a day; the manifest is cached in `%LOCALAPPDATA%\VibeModel\updates\`), downloads the zip
+  through `AnthropicHttp.CreateHandler()`, verifies size + SHA-256, unpacks it into
+  `versions\Revit<year>\<version>\`, writes current.txt, prunes (keeps running, current, one older). Never
+  touches the running folder or the loader; active after the next Revit start. Source: managed.json /
+  settings.json `UpdateSource` (https URL or folder), default GitHub `releases/latest/download/` (API
+  fallback `PickFromReleases`); managed `DisableUpdates`; settings `UpdateCheck`, `UpdateLastChecked`,
+  `UpdateLastResult`. UI: `UI/UpdateBanner.cs` (row 1 of the pane; AutomationIds `UpdateText`,
+  `UpdateInstall`, `UpdateNotes`, `UpdateLater` — the Border itself has no automation peer), Settings →
+  *Versie en updates* (`SettingsUpdateCheck`, `SettingsUpdateCheckNow`, `SettingsUpdateRollback`,
+  `SettingsUpdateStatus`), Diagnose `== Updates` (+ a `Loader signature` line next to `Signature`).
+  Code that looks next to VibeModel.dll (`DocumentIndex.PdfToolPath`) finds what the zip ships in the
+  version folder; the user's `<add-in folder>\standards\` is the loader's folder (`AddinStandardsRoot`).
+  Commands:
+  ```bash
+  curl -s -H "X-VibeModel-Token: $TOKEN" http://127.0.0.1:18884/update              # check now + state
+  curl -s -H "X-VibeModel-Token: $TOKEN" "http://127.0.0.1:18884/update?args=--install"   # background install
+  curl -s -H "X-VibeModel-Token: $TOKEN" "http://127.0.0.1:18884/update?args=--rollback"  # previous version next start
+  ```
+  A failed check with a cached manifest keeps that state and sets `UpdateStatus.LastError` (never shown
+  as a failed install); one English wording `UpdateDecision.Describe`, the pane's `UiText.UpdateLine`.
+  `install.ps1` never downgrades silently (`-AllowDowngrade`).
+  States: notChecked, disabled, upToDate, available (+ the last failed install's reason), installing,
+  readyAtRestart (also a pending rollback), inPlaceBuild (a developer build — never updates),
+  loaderTooOld (manifest `minLoader` → run install.cmd), failed. `package-release.ps1` writes the zip,
+  `<zip>.sha256` and `latest-Revit<year>.json`; `release.yml` uploads all three.
 
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:

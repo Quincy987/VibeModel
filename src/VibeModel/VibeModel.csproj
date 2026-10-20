@@ -21,7 +21,7 @@
     <!-- Assembly configuration -->
     <AssemblyName>VibeModel</AssemblyName>
     <RootNamespace>VibeModel</RootNamespace>
-    <Version>1.2.13</Version>
+    <Version>1.2.14</Version>
     <Authors>VibeModel</Authors>
     <Description>AI integration for Autodesk Revit - talk to your model in natural language</Description>
 
@@ -78,6 +78,17 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
     </ProjectReference>
+    <!-- The loader Revit starts (plan 19): built and deployed with the add-in, never referenced. -->
+    <ProjectReference Include="..\VibeModel.Loader\VibeModel.Loader.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- The loader's path rules, compiled in here too: the update service reports and changes what
+       the loader starts next time (one source, no reference either way). -->
+  <ItemGroup>
+    <Compile Include="..\VibeModel.Loader\LoaderPaths.cs" Link="Services\Update\LoaderPaths.cs" />
   </ItemGroup>
 
   <!-- Expose internal parsing helpers to the test project (net48-safe, no Revit needed). -->
@@ -96,6 +107,8 @@
     <!-- DPAPI (ProtectedData) for the API key at rest. -->
     <Reference Include="System.Security" />
     <Reference Include="System.IO.Compression" />
+    <!-- ZipFile: unpacking an in-app update (plan 19). -->
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 
   <!-- Embedded resources for ribbon icons -->
@@ -118,6 +131,13 @@
 
     <!-- Create target folder if it doesn't exist -->
     <MakeDir Directories="$(RevitAddinFolder)" Condition="!Exists('$(RevitAddinFolder)')" />
+
+    <!-- The loader the .addin names (plan 19). VibeModel.dll right next to it is what it starts
+         (a developer build in place - rule (a), ahead of any installed version). -->
+    <Copy
+      SourceFiles="$(MSBuildProjectDirectory)\..\VibeModel.Loader\bin\$(Configuration)\Revit$(RevitVersion)\VibeModel.Loader.dll"
+      DestinationFolder="$(RevitAddinFolder)"
+      SkipUnchangedFiles="true" />
 
     <!-- Copy DLL and dependency assemblies -->
     <Copy

@@ -5,25 +5,28 @@
   This add-in provides an embedded HTTP server that allows AI assistants
   (Claude, etc.) to inspect and modify Revit models via simple curl commands.
 
-  Deployment:
-    Copy this file and VibeModel.dll to:
-    %APPDATA%\Autodesk\Revit\Addins\{version}\
-
-  Where {version} is 2023, 2024, or 2025.
+  Deployment (install.cmd does this):
+    This file and VibeModel.Loader.dll go to
+      %APPDATA%\Autodesk\Revit\Addins\{version}\      ({version} = 2022, 2023 or 2024)
+    The add-in itself (VibeModel.dll, Markdig.dll, VibeModel.PdfText\) goes to
+      %LOCALAPPDATA%\VibeModel\versions\Revit{version}\<VibeModel version>\
+    and current.txt next to those folders names the version to start. The loader starts it, or a
+    VibeModel.dll right next to it (a developer build). Updating = a new version folder; the
+    loader - the file Revit asks about ("Always Load") - stays the same.
 -->
 <RevitAddIns>
   <AddIn Type="Application">
-    <!-- Unique GUID for this add-in -->
+    <!-- Unique GUID for this add-in (unchanged since the first release: Revit sees one add-in) -->
     <ClientId>B2C3D4E5-F6A7-8901-BCDE-F12345678901</ClientId>
 
     <!-- Display name in Revit's Add-In Manager -->
     <Name>VibeModel - AI Integration</Name>
 
-    <!-- DLL containing the add-in code -->
-    <Assembly>VibeModel.dll</Assembly>
+    <!-- The loader; it starts the installed VibeModel.dll -->
+    <Assembly>VibeModel.Loader.dll</Assembly>
 
-    <!-- Full class name of IExternalApplication implementation -->
-    <FullClassName>VibeModel.VibeModelApp</FullClassName>
+    <!-- Full class name of the loader's IExternalApplication -->
+    <FullClassName>VibeModel.Loader.LoaderApp</FullClassName>
 
     <!-- Vendor identification -->
     <VendorId>VIBEMODEL</VendorId>

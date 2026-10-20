@@ -50,6 +50,9 @@ namespace VibeModel.Services.Diagnostics
                 return path == null ? null : path + " (" + version + ")";
             });
             var signature = Task.Run(() => SignatureOf(typeof(DiagnoseReport).Assembly.Location));
+            // Revit's security prompt is about the assembly the .addin names: the loader (plan 19).
+            var loaderPath = Update.LoaderInfo.Path;
+            var loaderSignature = loaderPath == null ? null : Task.Run(() => SignatureOf(loaderPath));
             var deadline = DateTime.UtcNow + Deadline;
 
             var sb = new StringBuilder();
@@ -61,6 +64,8 @@ namespace VibeModel.Services.Diagnostics
             sb.AppendLine("Version: " + asm.GetName().Version);
             sb.AppendLine("Add-in: " + asm.Location);
             sb.AppendLine("Signature: " + Await(signature, deadline, "(check timed out)"));
+            if (loaderSignature != null)
+                sb.AppendLine("Loader signature (what Revit asks about): " + Await(loaderSignature, deadline, "(check timed out)"));
             sb.AppendLine("Revit: " + (RevitVersion ?? "?") + " · .NET " + Environment.Version + " · Windows " + Environment.OSVersion.Version);
             sb.AppendLine("HTTP server: " + (FileFallback ? "not running - file-based fallback (C:\\RevitClaudeLink)" : "port " + HttpPort));
             if (!FileFallback)
@@ -97,6 +102,9 @@ namespace VibeModel.Services.Diagnostics
                 }
             sb.AppendLine();
 
+            AppendUpdates(sb);
+            sb.AppendLine();
+
             sb.AppendLine("== Network");
             var proxy = AnthropicHttp.SystemProxyFor(AnthropicHttp.MessagesUrl);
             sb.AppendLine("Windows proxy for the API: " + (proxy == null ? "none (direct)" : proxy.GetLeftPart(UriPartial.Authority)));
@@ -120,6 +128,38 @@ namespace VibeModel.Services.Diagnostics
             foreach (var kv in SettingsManager.Load().OrderBy(k => k.Key))
                 sb.AppendLine(kv.Key + " = " + MaskIfSecret(kv.Key, kv.Value));
             return sb.ToString();
+        }
+
+        // In-app updates (plan 19): what runs, from where, what the loader starts next, what is installed.
+        private static void AppendUpdates(StringBuilder sb)
+        {
+            sb.AppendLine("== Updates");
+            try
+            {
+                var engine = Update.UpdateService.Engine;
+                var status = engine.Status;
+                sb.AppendLine("Loader: " + Update.LoaderInfo.Describe() +
+                              (Update.LoaderInfo.Rule != null ? " - picked the add-in by rule " + Update.LoaderInfo.Rule : ""));
+                sb.AppendLine("Running from: " + Update.UpdateService.DescribeRunningFrom());
+                var current = engine.Layout.ReadCurrent();
+                sb.AppendLine("current.txt: " + (current ?? "none") + " (" + engine.Layout.CurrentFile + ")");
+                var installed = engine.Layout.Installed();
+                var running = engine.RunningFolder;
+                sb.AppendLine("Versions installed: " + (installed.Count == 0 ? "none" : string.Join(", ", installed.Select(kv =>
+                    kv.Key + (string.Equals(kv.Key, running, StringComparison.OrdinalIgnoreCase) ? " (running)" : "")))));
+                sb.AppendLine("Source: " + engine.Source.Describe() + Managed(ManagedSettings.UpdateSource));
+                sb.AppendLine("Updates: " + (SettingsManager.IsUpdateDisabled() ? "switched off by IT (DisableUpdates)" :
+                              "automatic check " + (SettingsManager.GetUpdateCheck() ? "on" : "off")));
+                var last = SettingsManager.GetUpdateLastChecked();
+                sb.AppendLine("Last check: " + (last.HasValue ? last.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + " - " + SettingsManager.GetUpdateLastResult() : "never"));
+                sb.AppendLine("State now: " + Update.UpdateDecision.Describe(status));
+                if (status.LastError != null) sb.AppendLine("Last check/action failed: " + status.LastError);
+                if (status.Note != null) sb.AppendLine("Note: " + status.Note);
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine("could not read the update state: " + ex.Message);
+            }
         }
 
         private static string Managed(string key) => ManagedSettings.IsManaged(key) ? " (managed by IT)" : "";

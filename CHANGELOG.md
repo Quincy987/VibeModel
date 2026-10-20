@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+## v1.2.14 — Update From Inside Revit (2026-10-20)
+
+### Added — Update from inside Revit
+- Plan 19. When a newer version is published, the chat pane shows a slim banner: *VibeModel 1.2.15
+  beschikbaar (2,6 MB)* with **Bijwerken** (Update), *Wat is nieuw* and *Niet nu*. Bijwerken downloads
+  the release zip in the background, checks its size and SHA-256 against the published manifest, puts
+  it in its own version folder and says *klaar - actief na het opnieuw starten van Revit*. Revit is
+  never restarted for you and nothing in the model changes. A download that does not match the
+  manifest is refused and nothing is installed. Measured in Revit 2023 with unsigned test builds:
+  each new version was active after the next start, and an update did not make Revit ask *Always
+  Load* again.
+- A small, stable **loader** is now what Revit starts (`VibeModel.Loader.dll`, same add-in id): it
+  starts the installed version from `%LOCALAPPDATA%\VibeModel\versions\Revit<year>\<version>\`, or a
+  developer build right next to it, and writes one line per start to `logs\loader.log`. Updates add a
+  version folder and never replace the loader — the only file Revit's security prompt is about.
+- Settings → *Versie en updates*: installed version and loader, where it runs from, the update source,
+  *Automatisch controleren op updates* (once a day, at start), *Nu controleren*, and *Terug naar
+  <version>* (rollback at the next start; the previous version is kept). Diagnose has an `== Updates`
+  section and shows the loader's signature (what Revit asks about); `update`, `update --install`,
+  `update --rollback` do the same from the chat or a terminal.
+- A standards pack in `<add-in folder>\standards\` is still found: that is Revit's add-ins folder,
+  where the loader sits, not the version folder an update replaces.
+- For IT: `managed.json` `DisableUpdates` (switch it off) and `UpdateSource` (your own share or https
+  mirror of the release assets; an access token in the mirror URL's query is kept for the zip too).
+  Each release now carries `latest-Revit<year>.json` and a `.sha256`
+  next to the zip, and the loader is signed along with the add-in. See *Updates* in docs/deployment.md.
+
+### Changed
+- `install.cmd` installs the loader into the add-ins folder and the add-in into its version folder,
+  and removes the add-in an older install left in the add-ins folder. A new version alone installs
+  while Revit runs (active after a restart); Revit only has to be closed when the loader changes or
+  such old files must go. It never downgrades silently: an older zip is installed next to a newer
+  version, which stays active (`-AllowDowngrade` to switch on purpose) — a login script that re-runs
+  the same zip cannot undo an in-app update. This first release with the loader is installed with
+  `install.cmd` once; later versions can come through the app.
+
 ## v1.2.13 — Start a New Chat in Time (2026-10-20)
 
 ### Changed — the chat tells you when to start a new chat

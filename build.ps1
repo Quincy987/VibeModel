@@ -108,14 +108,18 @@ Write-Host "[3/4] Verifying deployment..." -ForegroundColor Yellow
 $addinFolder = "$env:APPDATA\Autodesk\Revit\Addins\$RevitVersion"
 
 $dllPath = "$addinFolder\VibeModel.dll"
+$loaderPath = "$addinFolder\VibeModel.Loader.dll"
 $addinPath = "$addinFolder\VibeModel.addin"
 
-if ((Test-Path $dllPath) -and (Test-Path $addinPath)) {
+if ((Test-Path $dllPath) -and (Test-Path $loaderPath) -and (Test-Path $addinPath)) {
     $dllInfo = Get-Item $dllPath
     Write-Host "    DLL deployed: $($dllInfo.LastWriteTime)" -ForegroundColor Green
+    # Plan 19: the .addin starts the loader; a VibeModel.dll next to it (this developer build)
+    # wins over any installed version in %LOCALAPPDATA%\VibeModel\versions\Revit<year>.
+    Write-Host "    Loader will start: this developer build (in place, ahead of installed versions)" -ForegroundColor Gray
 } else {
     Write-Host "    WARNING: Files not found in Addins folder!" -ForegroundColor Red
-    Write-Host "    Expected: $dllPath" -ForegroundColor Gray
+    Write-Host "    Expected: $dllPath, $loaderPath, $addinPath" -ForegroundColor Gray
 }
 
 # Step 4: Restart Revit

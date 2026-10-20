@@ -44,6 +44,7 @@ namespace VibeModel.Services.Chat
                 { "diagnose", "Checking the setup…" },
                 { "approvals", "Reading decisions…" },
                 { "apilookup", "Looking up the Revit API…" },
+                { "update", "Checking for updates…" },
 
                 // Modify
                 { "wall", "Creating wall…" },
@@ -152,6 +153,7 @@ namespace VibeModel.Services.Chat
                 { "diagnose", "Installatie controleren…" },
                 { "approvals", "Beslissingen lezen…" },
                 { "apilookup", "Revit-API opzoeken…" },
+                { "update", "Controleren op updates…" },
 
                 // Wijzigen
                 { "wall", "Wand maken…" },

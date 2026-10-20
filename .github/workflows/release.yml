@@ -1,7 +1,8 @@
 name: Release
 
 # Tag v<version> (matching <Version> in src/VibeModel/VibeModel.csproj) and push the tag:
-# this builds the Revit 2023 zip with scripts/package-release.ps1 and attaches it to the
+# this builds the Revit 2023 zip with scripts/package-release.ps1 and attaches it (with its
+# checksum and the in-app update manifest) to the
 # GitHub release for that tag (created as a draft when none exists yet).
 # Signing stays a manual step on a machine with the office certificate
 # (package-release.ps1 -Sign -Thumbprint ...): no certificate or secret lives in CI.
@@ -42,10 +43,15 @@ jobs:
           }
           Write-Host "Packaged $($zip.Name)"
 
-      - name: Upload zip to the GitHub release
+      # The zip, its .sha256 and latest-Revit<year>.json (the in-app update manifest, plan 19).
+      # The app only sees a release once it is published (drafts are invisible to it).
+      - name: Upload zip, checksum and update manifest to the GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.zip
+          files: |
+            release/*.zip
+            release/*.sha256
+            release/*.json
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true
