@@ -52,6 +52,7 @@ namespace VibeModel.Services.Claude.Commands
                     if (status.State == UpdateState.Available)
                     {
                         UpdateService.InstallAsync();
+                        status = status.With(UpdateState.Installing);
                         action = "Install of VibeModel " + status.Latest.VersionText + " started in the background; run `update` for progress. " +
                                  "It becomes active after Revit restarts.";
                     }
@@ -172,7 +173,10 @@ namespace VibeModel.Services.Claude.Commands
                     return "VibeModel " + s.Latest?.VersionText + " is available - `update --install` (or the chat pane's Update button)" +
                            (s.Reason != null ? "; the last attempt failed: " + s.Reason : "");
                 case UpdateState.Installing: return "installing VibeModel " + s.Latest?.VersionText;
-                case UpdateState.ReadyAtRestart: return "VibeModel " + s.Pending + " is installed and becomes active after Revit restarts";
+                case UpdateState.ReadyAtRestart:
+                    return UpdateDecision.IsRollback(s.Pending, s.Running)
+                        ? "rolled back - Revit starts VibeModel " + s.Pending + " next time"
+                        : "VibeModel " + s.Pending + " is installed and becomes active after Revit restarts";
                 case UpdateState.InPlaceBuild: return "developer build / no loader - " + s.Reason;
                 case UpdateState.LoaderTooOld: return "needs install.cmd - " + s.Reason;
                 case UpdateState.Failed: return "check failed - " + s.Reason;

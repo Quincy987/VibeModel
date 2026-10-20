@@ -205,7 +205,7 @@ function SameFile([string]$a, [string]$b) {
 
 # Files from installs before the loader, in the add-ins folder: VibeModel.dll there would be
 # started instead of the installed version (the loader's rule for a developer build).
-$legacyNames = @("VibeModel.dll", "Markdig.dll", "VibeModel.PdfText")
+$legacyNames = @("VibeModel.dll", "Markdig.dll", "VibeModel.pdb", "VibeModel.PdfText")
 
 # --- Revit must be closed only when something it holds open changes ---
 # Revit keeps the loader (and, from older installs, VibeModel.dll in the add-ins folder) locked.

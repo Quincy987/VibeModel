@@ -60,6 +60,10 @@ namespace VibeModel.Services.Update
         private UpdateManifest _manifest;
         private Uri _manifestUri;
         private InstallProgress _progress;
+        // The last failed install (version + reason): a later check of the same version still says
+        // why, until an install succeeds.
+        private string _installErrorVersion;
+        private string _installError;
         private DateTime _lastProgressEventUtc;
 
         /// <summary>Raised (on a background thread) whenever <see cref="Status"/> or <see cref="Progress"/> changes.</summary>
@@ -245,11 +249,11 @@ namespace VibeModel.Services.Update
                         }
                         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                         {
-                            return Fail("the download did not finish within " + UpdateTransport.DownloadTimeout.TotalMinutes + " minutes", record: false);
+                            return InstallFailed(m.VersionText, "the download did not finish within " + UpdateTransport.DownloadTimeout.TotalMinutes + " minutes");
                         }
                         catch (Exception ex) when (!(ex is OperationCanceledException))
                         {
-                            return Fail("the download of " + DescribeUri(zipUri) + " failed: " + Plain(ex), record: false);
+                            return InstallFailed(m.VersionText, "the download of " + DescribeUri(zipUri) + " failed: " + Plain(ex));
                         }
                     }
 
@@ -258,9 +262,8 @@ namespace VibeModel.Services.Update
                     if (length != m.Size || !string.Equals(hash, m.Sha256, StringComparison.OrdinalIgnoreCase))
                     {
                         TryDelete(partial);
-                        return Fail("the download did not match the published checksum (got " + length + " bytes, sha256 " +
-                                    hash.Substring(0, 12) + "…; expected " + m.Size + " bytes, " + m.Sha256.Substring(0, 12) + "…) - nothing was installed",
-                                    record: false);
+                        return InstallFailed(m.VersionText, "the download did not match the published checksum (got " + length + " bytes, sha256 " +
+                                    hash.Substring(0, 12) + "...; expected " + m.Size + " bytes, " + m.Sha256.Substring(0, 12) + "...) - nothing was installed");
                     }
                     TryDelete(zip);
                     File.Move(partial, zip);
@@ -271,7 +274,7 @@ namespace VibeModel.Services.Update
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
                     ZipSafety.ExtractTo(zip, tmp);
                     if (!File.Exists(Path.Combine(tmp, LoaderPaths.PayloadFile)))
-                        return Fail("the update zip has no " + LoaderPaths.PayloadFile + " at its top level - nothing was installed", record: false);
+                        return InstallFailed(m.VersionText, "the update zip has no " + LoaderPaths.PayloadFile + " at its top level - nothing was installed");
 
                     var final = _layout.FolderPath(folder);
                     if (Directory.Exists(final)) Directory.Delete(final, true);   // incomplete leftover (no VibeModel.dll)
@@ -281,6 +284,7 @@ namespace VibeModel.Services.Update
                 }
 
                 var note = LoaderNote(_layout.FolderPath(folder), m);
+                lock (_lock) _installError = _installErrorVersion = null;
                 _layout.WriteCurrent(folder);
                 var removed = _layout.Prune(RunningFolder, folder);
 
@@ -299,7 +303,7 @@ namespace VibeModel.Services.Update
             }
             catch (Exception ex)
             {
-                return Fail("the install failed: " + Plain(ex), record: false);
+                return InstallFailed(Status.Latest?.VersionText, "the install failed: " + Plain(ex));
             }
             finally
             {
@@ -360,9 +364,29 @@ namespace VibeModel.Services.Update
         private UpdateStatus Decide(string checkError)
         {
             UpdateManifest m;
-            lock (_lock) m = _manifest;
-            return UpdateDecision.Decide(_settings.Disabled, _running.Version, InPlace, _running.LoaderVersion,
+            string failedVersion, failure;
+            lock (_lock)
+            {
+                m = _manifest;
+                failedVersion = _installErrorVersion;
+                failure = _installError;
+            }
+            var status = UpdateDecision.Decide(_settings.Disabled, _running.Version, InPlace, _running.LoaderVersion,
                 Pending, m, checkError);
+            if (status.State == UpdateState.Available && status.Reason == null && failure != null &&
+                string.Equals(failedVersion, m?.VersionText, StringComparison.OrdinalIgnoreCase))
+                status.Reason = failure;
+            return status;
+        }
+
+        private UpdateStatus InstallFailed(string version, string reason)
+        {
+            lock (_lock)
+            {
+                _installErrorVersion = version;
+                _installError = reason;
+            }
+            return Fail(reason, record: false);
         }
 
         private UpdateStatus Fail(string reason, bool record)

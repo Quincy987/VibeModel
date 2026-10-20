@@ -359,6 +359,33 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void FailedInstall_StaysNamed_AfterANewCheck()
+        {
+            Publish("1.2.13", tamper: zip =>
+            {
+                var bytes = File.ReadAllBytes(zip);
+                bytes[bytes.Length / 2] ^= 0xFF;
+                File.WriteAllBytes(zip, bytes);
+            });
+            var engine = Engine();
+            engine.Install();
+            var s = engine.Check(manual: true);
+            Assert.Equal(UpdateState.Available, s.State);
+            Assert.Contains("checksum", s.Reason);
+            Assert.Contains("the last attempt failed", UpdateCommand.StateText(s));
+        }
+
+        [Fact]
+        public void Rollback_IsWordedAsARollback()
+        {
+            InstallFolder("1.2.11");
+            var s = Engine().Rollback();
+            Assert.StartsWith("rolled back", UpdateCommand.StateText(s));
+            Assert.Equal("Revit start de volgende keer VibeModel 1.2.11.", UiText.UpdateLine(s, null, "nl"));
+        }
+
+
+        [Fact]
         public void Install_AlreadyInstalledVersion_NeedsNoDownload()
         {
             var zip = Publish("1.2.13");
