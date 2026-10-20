@@ -179,6 +179,30 @@ never replace the running file, and never takes effect before Revit restarts. So
 - An https mirror's query (a folder-wide access token) stays on the manifest and the zip address;
   before, a folder URL with a query got the file name appended after the query.
 
+## Final live verification (after review rounds 1-5, Revit 2023, 2026-10-20)
+
+Branch head built as 1.2.13 (the merged development version) and a test 1.2.14 from the same code;
+the live add-ins folder and settings.json backed up and restored afterwards.
+- `install.cmd -Quiet` (1.2.13 zip): loader + .addin in place, old VibeModel.dll / Markdig.dll /
+  VibeModel.pdb / VibeModel.PdfText removed from the add-ins folder, `versions\Revit2023\1.2.13`,
+  current.txt 1.2.13, exit 0. First start: one "Always Load" (a newly built loader), loader.log
+  `starts VibeModel 1.2.13.0 … (current.txt)`.
+- `update` → *VibeModel 1.2.14 is available*; banner *VibeModel 1.2.14 beschikbaar (2,6 MB)* with
+  Bijwerken / Wat is nieuw / Niet nu.
+- Diagnose: `Signature: not signed` and `Loader signature (what Revit asks about): not signed`;
+  `== Updates` with loader rule Current, current.txt, versions, source, last check, state.
+- Inside Revit: `AddinStandardsRoot` = `…\Revit\Addins\2023\standards` (the loader's folder);
+  `PdfToolPath` = `…\versions\Revit2023\1.2.13\VibeModel.PdfText\VibeModel.PdfText.exe`.
+- Bijwerken → about 12 s → *VibeModel 1.2.14 is klaar - actief na het opnieuw starten van Revit.*;
+  `versions\Revit2023\1.2.14` complete, current.txt 1.2.14, no `.partial` or `.tmp.<pid>` left.
+- Manifest made unreadable → `update`: state stays *1.2.14 is installed and becomes active after Revit
+  restarts*, plus `Last check/action failed: could not read …` (not a failed install).
+- Revit closed normally and started: no security prompt, loader started 1.2.14, `update` → up to date.
+- Tampered 1.2.15 (wrong sha256) → refused, nothing installed; a new check still says *the last
+  install failed: the download did not match the published checksum …*. `update --rollback` →
+  current.txt 1.2.13.
+- No ERROR lines in the VibeModel log during the run; Revit closed normally at the end.
+
 ## Not done / later
 
 - No signed build yet: with an office certificate the one remaining prompt (a new loader) disappears too.
