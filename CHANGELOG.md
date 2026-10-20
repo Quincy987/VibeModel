@@ -12,7 +12,8 @@
   dot from three times. The tooltip explains what the tokens are, the conversation length, and the
   API-price estimate (which a subscription does not bill per question).
 - Once per chat, after a very long one, a bar under the answer explains why and offers **Nieuwe chat**
-  (or **Niet nu**). The welcome card of an empty chat ends with the tip to start a new chat per task.
+  (or **Niet nu**). The welcome card of an empty chat ends with the tip to start a new chat per task
+  (not with a local model, which has no limit).
 - Length is judged on how much the turn's last call carried, not on the turn's total — a single first
   question with many tool steps is not a long conversation.
 

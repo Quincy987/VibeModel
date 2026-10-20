@@ -148,21 +148,14 @@ namespace VibeModel.Services.Chat
                     usage.CacheWriteTokens * p.CacheWrite + usage.CacheReadTokens * p.CacheRead) / 1000000.0;
         }
 
-        /// <summary>"12.3k tokens · ≈ €0,04" (nl) / "12.3k tokens · ≈ €0.04" (en); tokens only when the price is unknown.</summary>
-        public static string Describe(TurnUsage usage, string language)
+        /// <summary>The cost estimate in euros, "0,04" (nl) / "0.04" (en), three decimals under a cent; null when unknown.</summary>
+        public static string EstimateEuro(TurnUsage usage, string language)
         {
-            if (usage == null || usage.IsEmpty) return null;
-            var parts = new List<string>();
-            if (usage.TotalTokens > 0) parts.Add(Tokens(usage.TotalTokens) + " tokens");
             var usd = CostUsd(usage);
-            if (usd.HasValue)
-            {
-                var culture = Strings.IsEnglish(language) ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo("nl-NL");
-                var eur = usd.Value * UsdToEur;
-                var format = eur > 0 && eur < 0.01 ? "0.000" : "0.00";
-                parts.Add("≈ €" + eur.ToString(format, culture));
-            }
-            return parts.Count == 0 ? null : string.Join(" · ", parts);
+            if (!usd.HasValue) return null;
+            var culture = Strings.IsEnglish(language) ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo("nl-NL");
+            var eur = usd.Value * UsdToEur;
+            return eur.ToString(eur > 0 && eur < 0.01 ? "0.000" : "0.00", culture);
         }
 
         /// <summary>"950", "12.3k", "1.2M" (never "1000k": the boundaries follow the rounding).</summary>

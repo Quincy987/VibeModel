@@ -128,6 +128,9 @@ namespace VibeModel.UI
         private static readonly SolidColorBrush BgButtonHover = new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xAC));
         private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
         private static readonly SolidColorBrush FgError = new SolidColorBrush(Color.FromRgb(0xF4, 0x43, 0x36));
+        // The usage line's dot: a long / very long conversation (ConversationLength).
+        private static readonly SolidColorBrush DotLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x9A, 0x2E));
+        private static readonly SolidColorBrush DotVeryLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x55, 0x45));
         private static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
         public ChatPane()
@@ -530,16 +533,20 @@ namespace VibeModel.UI
                     chips.Children.Add(CreateExampleChip(example, Strings.For(language, Strings.WelcomeChipTip)));
                 panel.Children.Add(chips);
 
-                var tip = new TextBlock
+                // A local model has no usage limit (and reports no tokens), so no tip there.
+                if (!(_backend is LocalLlmBackend))
                 {
-                    Text = Strings.For(language, Strings.WelcomeTipNewChat),
-                    Foreground = FgSecondary,
-                    FontSize = 11,
-                    Margin = new Thickness(0, 2, 0, 0),
-                    TextWrapping = TextWrapping.Wrap
-                };
-                System.Windows.Automation.AutomationProperties.SetAutomationId(tip, "WelcomeTip");
-                panel.Children.Add(tip);
+                    var tip = new TextBlock
+                    {
+                        Text = Strings.For(language, Strings.WelcomeTipNewChat),
+                        Foreground = FgSecondary,
+                        FontSize = 11,
+                        Margin = new Thickness(0, 2, 0, 0),
+                        TextWrapping = TextWrapping.Wrap
+                    };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tip, "WelcomeTip");
+                    panel.Children.Add(tip);
+                }
             }
             else
             {
@@ -1200,9 +1207,6 @@ namespace VibeModel.UI
             if (ConversationLength.ShouldNudge(turn.Model.Usage, _nudgedThisChat))
                 AddNewChatNudge(usageLine ?? (UIElement)turn.AnswerBorder);
         }
-
-        private static readonly SolidColorBrush DotLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x9A, 0x2E));
-        private static readonly SolidColorBrush DotVeryLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x55, 0x45));
 
         // "3.9M tokens · lang gesprek" under the answer (a coloured dot once the conversation is
         // long; the euro estimate in the tooltip) — UI only, never stored with the chat.

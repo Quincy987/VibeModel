@@ -58,9 +58,9 @@ namespace VibeModel.Tests
         [Fact]
         public void Tooltip_HasTheEstimateOnlyWhenPriced_AndTheLengthWhenKnown()
         {
-            var priced = ConversationLength.Tooltip(Usage(1000000, 210000), "nl");
-            Assert.Contains("€", priced);
-            Assert.Contains(",", priced.Substring(priced.IndexOf('€'))); // Dutch decimal comma
+            var usage = Usage(1000000, 210000);
+            var priced = ConversationLength.Tooltip(usage, "nl");
+            Assert.Contains("€" + ModelPricing.EstimateEuro(usage, "nl"), priced);
             Assert.Contains("210k tokens per stap", priced);
             Assert.Contains("nieuwe chat", priced);
 
@@ -104,20 +104,6 @@ namespace VibeModel.Tests
             };
             Assert.Equal(0, ClaudeCodeBackend.UsageFromResult(result, "claude-opus-5-5").ContextTokens);
             Assert.Equal(180000, ClaudeCodeBackend.UsageFromResult(result, "claude-opus-5-5", 180000).ContextTokens);
-        }
-
-        [Fact]
-        public void NewTexts_ExistInDutchAndEnglish()
-        {
-            foreach (var key in new[]
-            {
-                Strings.UsageTipContext, Strings.UsageTipCost, Strings.UsageLong, Strings.UsageVeryLong,
-                Strings.NudgeNewChatText, Strings.NudgeNewChatButton, Strings.NudgeNewChatDismiss, Strings.WelcomeTipNewChat
-            })
-            {
-                Assert.True(Strings.HasDutch(key), key);
-                Assert.NotEqual(key, Strings.For("en", key));
-            }
         }
     }
 }

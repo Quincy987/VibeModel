@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace VibeModel.Services.Chat
 {
     /// <summary>
@@ -54,13 +52,9 @@ namespace VibeModel.Services.Chat
             if (usage == null) return text;
             if (usage.ContextTokens > 0)
                 text += "\n" + Strings.For(language, Strings.UsageTipContext, ModelPricing.Tokens(usage.ContextTokens));
-            var usd = ModelPricing.CostUsd(usage);
-            if (usd.HasValue)
-            {
-                var culture = Strings.IsEnglish(language) ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo("nl-NL");
-                var eur = usd.Value * ModelPricing.UsdToEur;
-                text += "\n" + Strings.For(language, Strings.UsageTipCost, eur.ToString(eur > 0 && eur < 0.01 ? "0.000" : "0.00", culture));
-            }
+            var euro = ModelPricing.EstimateEuro(usage, language);
+            if (euro != null)
+                text += "\n" + Strings.For(language, Strings.UsageTipCost, euro);
             return text;
         }
 

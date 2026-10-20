@@ -797,7 +797,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   answer, never stored: `3.9M tokens · zeer lang gesprek` (`ConversationLength.Describe`, AutomationId
   `TurnUsage`) — no money on the line (users on a subscription read the API-price euros as a bill); the
   tooltip explains the tokens and carries the conversation length and the `≈ €` estimate
-  (`ConversationLength.Tooltip`; prices: `ModelPricing` table). **Conversation length** is
+  (`ConversationLength.Tooltip`; `ModelPricing.EstimateEuro`, prices: `ModelPricing` table). **Conversation length** is
   `TurnUsage.ContextTokens` = the context of the turn's LAST API call (direct backend: each
   `message_start`; CLI: the `usage` on each `assistant` event — the result event only has sums), never
   the turn total, which counts tool steps (measured in chat-pane transcripts: a fresh chat's first call
@@ -805,7 +805,8 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   (orange ●), ≥ 200k = very long (red ●) and, once per chat (`ShouldNudge`; reset on New Chat, History
   load, backend switch), a bar under the answer: why each question now costs more + **Nieuwe chat** /
   **Niet nu** (AutomationIds `NudgeNewChat`, `NudgeNewChatButton`, `NudgeNewChatDismiss`). The welcome
-  card ends with the tip to start a new chat per task (`WelcomeTip`). Pure part: `Services/Chat/ConversationLength.cs`.
+  card ends with the tip to start a new chat per task (`WelcomeTip`; not for a local model, which has no
+  limit and reports no tokens). Pure part: `Services/Chat/ConversationLength.cs`.
 - **Diagnose** (header button → `UI/DiagnoseWindow.cs`; `diagnose` command): `Services/Diagnostics/
   DiagnoseReport.Build()` — version, add-in path, Authenticode (WinVerifyTrust, cache-only), Revit,
   port, backend + key source (masked), CLI search, managed.json, proxy, DNS + HTTPS to the API host and
@@ -882,7 +883,8 @@ event, else `ANTHROPIC_MODEL` / `~/.claude/settings.json`), the open model + pro
 up to four **starter chips** (`Services/Chat/Starters.cs`, no model call): "Wat heb ik geselecteerd?"
 when something is selected, "Zet deze views passend op dit blad" on a sheet, "Controleer dit model
 tegen de kantoorstandaard" with an active office pack, "Welke documenten zitten in de projectmap?"
-when the folder has documents, then the fixed examples. The facts come from `ActiveDocumentTracker`
+when the folder has documents, then the fixed examples, and a muted tip to start a new chat per task
+(not for a local model). The facts come from `ActiveDocumentTracker`
 (active view, sheet flag and selection size — sampled on Idling at most every 400 ms, on view
 activation and in every command's stamp) and a cached off-thread project-folder listing. The card
 rebuilds in place after Settings closes and, while the chat is still empty, whenever a tracked fact

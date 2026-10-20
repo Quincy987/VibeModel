@@ -326,23 +326,24 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void Price_DatedOrPrefixedIdMatchesItsBase_UnknownShowsTokensOnly()
+        public void Price_DatedOrPrefixedIdMatchesItsBase_UnknownHasNoEstimate()
         {
             Assert.True(ModelPricing.TryGet("claude-sonnet-5-5-20261001", out _));
             Assert.True(ModelPricing.TryGet("anthropic.claude-haiku-5-5", out _));
             Assert.False(ModelPricing.TryGet("gpt-oss-20b", out _));
             var unknown = new TurnUsage { Model = "my-local-model", InputTokens = 12345 };
-            Assert.Equal("12.3k tokens", ModelPricing.Describe(unknown, "nl"));
+            Assert.Null(ModelPricing.EstimateEuro(unknown, "nl"));
         }
 
         [Fact]
-        public void Describe_DutchUsesDecimalComma_ReportedCostWins()
+        public void EstimateEuro_DutchUsesDecimalComma_ReportedCostWins()
         {
             var u = new TurnUsage { Model = "whatever", InputTokens = 900, ReportedCostUsd = 0.10 };
-            var nl = ModelPricing.Describe(u, "nl");
-            Assert.Equal("900 tokens · ≈ €" + (0.10 * ModelPricing.UsdToEur).ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("nl-NL")), nl);
+            var nl = ModelPricing.EstimateEuro(u, "nl");
+            Assert.Equal((0.10 * ModelPricing.UsdToEur).ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("nl-NL")), nl);
             Assert.Contains(",", nl);
-            Assert.Contains(".", ModelPricing.Describe(u, "en").Replace("tokens", ""));
+            Assert.Contains(".", ModelPricing.EstimateEuro(u, "en"));
+            Assert.Equal("0.005", ModelPricing.EstimateEuro(new TurnUsage { ReportedCostUsd = 0.005 / ModelPricing.UsdToEur }, "en"));
         }
 
         [Fact]
@@ -490,8 +491,7 @@ namespace VibeModel.Tests
             foreach (var key in new[]
             {
                 Strings.WizardTitle, Strings.WizardApiOk, Strings.WizardCliInstall, Strings.WizardCliLoginHint,
-                Strings.DiagnoseSendHint, Strings.ApiRefusal, Strings.ApiUnreachable, Strings.UsageTip, Strings.SettingManaged,
-                Strings.NudgeNewChatText, Strings.NudgeNewChatButton, Strings.WelcomeTipNewChat
+                Strings.DiagnoseSendHint, Strings.ApiRefusal, Strings.ApiUnreachable, Strings.UsageTip, Strings.SettingManaged
             })
             {
                 Assert.True(Strings.HasDutch(key), key);
