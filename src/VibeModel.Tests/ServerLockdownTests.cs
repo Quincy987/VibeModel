@@ -489,14 +489,22 @@ namespace VibeModel.Tests
         [Fact]
         public void ARealUserCreatedFile_IsNotTrusted()
         {
-            // The scenario the check exists for: this (non-elevated) test creates a file; it is
-            // owned by the current user, so it must not pass.
+            // The scenario the check exists for: an ordinary user creates a file; it is owned by
+            // that user, so it must not pass. An ELEVATED process (GitHub's Windows runners run as
+            // an elevated administrator) hands its new files to BUILTIN\Administrators instead -
+            // then the file really is an administrator's, the check rightly trusts it, and this
+            // test has nothing to say.
             var path = Path.Combine(Path.GetTempPath(), "vm-trust-" + Guid.NewGuid().ToString("N") + ".json");
             File.WriteAllText(path, "{}");
             try
             {
+                var owner = new FileInfo(path).GetAccessControl().GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+                if (owner != null && (owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid) ||
+                                      owner.IsWellKnown(WellKnownSidType.LocalSystemSid)))
+                    return; // elevated: see above
                 var problem = FileTrust.Check(path);
                 Assert.NotNull(problem);
+                Assert.Contains("not owned by Administrators or SYSTEM", problem);
             }
             finally { File.Delete(path); }
         }
