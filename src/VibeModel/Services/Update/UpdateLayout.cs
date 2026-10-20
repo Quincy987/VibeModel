@@ -40,10 +40,18 @@ namespace VibeModel.Services.Update
             if (!LoaderPaths.IsPlainFolderName(folder))
                 throw new ArgumentException("not a version folder name: " + folder);
             Directory.CreateDirectory(VersionsRoot);
-            var tmp = CurrentFile + ".tmp";
+            // A name of its own: another Revit (or install.cmd) may write current.txt at the same time.
+            var tmp = CurrentFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllText(tmp, folder + Environment.NewLine);
-            if (File.Exists(CurrentFile)) File.Replace(tmp, CurrentFile, null);
-            else File.Move(tmp, CurrentFile);
+            try
+            {
+                if (File.Exists(CurrentFile)) File.Replace(tmp, CurrentFile, null);
+                else File.Move(tmp, CurrentFile);
+            }
+            finally
+            {
+                if (File.Exists(tmp)) File.Delete(tmp);
+            }
         }
 
         /// <summary>True when the version folder holds VibeModel.dll.</summary>
@@ -120,7 +128,8 @@ namespace VibeModel.Services.Update
                     continue;
                 }
                 bool isVersion = LoaderPaths.TryParseFolderVersion(name, out _);
-                bool isStaleTmp = name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) &&
+                // "<version>.tmp.<pid>": an unpack that never finished (a crashed Revit), after an hour.
+                bool isStaleTmp = name.IndexOf(".tmp", StringComparison.OrdinalIgnoreCase) >= 0 &&
                                   Directory.GetLastWriteTimeUtc(dir) < DateTime.UtcNow.AddHours(-1);
                 if ((!isVersion && !isStaleTmp) || keep.Contains(name)) continue;
                 if (TryRemove(dir)) removed.Add(name);

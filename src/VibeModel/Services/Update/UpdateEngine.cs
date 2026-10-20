@@ -217,7 +217,6 @@ namespace VibeModel.Services.Update
         {
             if (Interlocked.CompareExchange(ref _installing, 1, 0) != 0) return Status;
             string partial = null;
-            string zip = null;
             string tmp = null;
             try
             {
@@ -242,8 +241,9 @@ namespace VibeModel.Services.Update
                 {
                     var zipUri = UpdateSource.ZipUri(manifestUri ?? Source.Manifest, m);
                     Directory.CreateDirectory(_layout.DownloadDir);
-                    partial = Path.Combine(_layout.DownloadDir, m.Zip + ".partial");
-                    zip = Path.Combine(_layout.DownloadDir, m.Zip);
+                    // Per-process names: two Revits of the same year may update at the same time.
+                    var unique = "." + Process.GetCurrentProcess().Id;
+                    partial = Path.Combine(_layout.DownloadDir, m.Zip + unique + ".partial");
                     TryDelete(partial);
 
                     SetProgress(new InstallProgress { Phase = "download", Bytes = 0, Total = m.Size }, force: true);
@@ -274,21 +274,21 @@ namespace VibeModel.Services.Update
                         return InstallFailed(m.VersionText, "the download did not match the published checksum (got " + length + " bytes, sha256 " +
                                     hash.Substring(0, 12) + "...; expected " + m.Size + " bytes, " + m.Sha256.Substring(0, 12) + "...) - nothing was installed");
                     }
-                    TryDelete(zip);
-                    File.Move(partial, zip);
-                    partial = null;
-
                     SetProgress(new InstallProgress { Phase = "unpack", Bytes = m.Size, Total = m.Size }, force: true);
-                    tmp = _layout.FolderPath(folder + ".tmp");
+                    tmp = _layout.FolderPath(folder + ".tmp" + unique);
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
-                    ZipSafety.ExtractTo(zip, tmp);
+                    ZipSafety.ExtractTo(partial, tmp);   // the verified download itself, never renamed
                     if (!File.Exists(Path.Combine(tmp, LoaderPaths.PayloadFile)))
                         return InstallFailed(m.VersionText, "the update zip has no " + LoaderPaths.PayloadFile + " at its top level - nothing was installed");
 
-                    var final = _layout.FolderPath(folder);
-                    if (Directory.Exists(final)) Directory.Delete(final, true);   // incomplete leftover (no VibeModel.dll)
-                    Directory.Move(tmp, final);
-                    tmp = null;
+                    // Another Revit may have finished the same version meanwhile: then that folder stands.
+                    if (!_layout.IsComplete(folder))
+                    {
+                        var final = _layout.FolderPath(folder);
+                        if (Directory.Exists(final)) Directory.Delete(final, true);   // incomplete leftover (no VibeModel.dll)
+                        Directory.Move(tmp, final);
+                        tmp = null;
+                    }
                 }
 
                 var note = LoaderNote(_layout.FolderPath(folder), m);
@@ -315,9 +315,9 @@ namespace VibeModel.Services.Update
             }
             finally
             {
-                // Nothing half-done stays behind; the next attempt downloads again.
+                // The download is not kept (unpacked or not), and neither is a half-unpacked folder:
+                // a next attempt downloads again.
                 TryDelete(partial);
-                TryDelete(zip);
                 if (tmp != null) TryDeleteDir(tmp);
                 lock (_lock) _progress = null;
                 Interlocked.Exchange(ref _installing, 0);

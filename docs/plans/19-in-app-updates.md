@@ -72,12 +72,18 @@ never replace the running file, and never takes effect before Revit restarts. So
     `UpdateNotFoundException`; the releases API answered (49 kB), `PickFromReleases` → none (no release
     has a manifest yet); the v1.2.10 zip downloaded through GitHub's redirect (2,609,123 bytes) — also
     with the `Accept: application/json` header `GetText` sends.
-  - `Install()`: download to `updates\<zip>.partial` (10 min deadline; a stalled connection is closed
-    by the cancellation), size + SHA-256 must match ("the download did not match the published
-    checksum … nothing was installed"), unpack into `<version>.tmp`, check `VibeModel.dll` is at its top,
-    rename to `<version>`, write current.txt, prune (keep the running, the current and one older
-    version; a folder another Revit still uses cannot be renamed and is left alone), delete the zip. An
-    already complete folder skips the download; a failed one leaves no zip, `.partial` or `.tmp` behind.
+  - `Install()`: download to `updates\<zip>.<pid>.partial` (10 min deadline; a stalled connection is
+    closed by the cancellation), size + SHA-256 must match ("the download did not match the published
+    checksum … nothing was installed"), unpack that verified file into `<version>.tmp.<pid>`, check
+    `VibeModel.dll` is at its top, rename to `<version>` (unless another Revit finished the same version
+    meanwhile — then that folder stands), write current.txt (through a temp file of its own), prune
+    (keep the running, the current and one older version), delete the download. Temp names carry the
+    process id because two Revits of the same year can update at once (review round 3). An already
+    complete folder skips the download; a failed install leaves no download or half-unpacked folder.
+  - Prune renames a folder before deleting it. Measured (review round 3): Windows refuses to rename a
+    folder while another process has a DLL from it loaded ("Toegang tot het pad … is geweigerd"; after
+    that process ended the rename succeeded) — so a version another Revit still runs is skipped, never
+    half-deleted.
   - Three kinds of failure, worded in one place (`Failure`): a failed **install** keeps the update
     *Available* with its `Reason` (the banner says *Bijwerken mislukt*), also after a later check, until
     an install succeeds; a failed **check** is `Failed` only when no manifest is known — with a cached

@@ -106,6 +106,7 @@ namespace VibeModel.Tests
         public void TmpAndOtherFolders_AreNotVersions()
         {
             AddVersion("1.2.13.tmp");
+            AddVersion("1.2.14.tmp.4711");
             AddVersion("_old");
             AddVersion("1.2.12");
             Assert.Equal("1.2.12", LoaderPaths.NewestInstalled(_versions));

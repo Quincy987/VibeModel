@@ -337,7 +337,7 @@ namespace VibeModel.Tests
             Assert.True(File.Exists(Path.Combine(_versions, "1.2.13", "VibeModel.dll")));
             Assert.True(File.Exists(Path.Combine(_versions, "1.2.13", "VibeModel.PdfText", "VibeModel.PdfText.exe")));
             Assert.Equal("payload 1.2.12", File.ReadAllText(Path.Combine(_versions, "1.2.12", "VibeModel.dll")));   // the running one untouched
-            Assert.False(Directory.Exists(Path.Combine(_versions, "1.2.13.tmp")));
+            Assert.Empty(Directory.GetDirectories(_versions, "*.tmp*"));
             Assert.Empty(Directory.GetFiles(_downloads, "*.zip*"));
             Assert.Contains(UpdateState.Installing, events);
             Assert.Equal("1.2.12", engine.RollbackTarget);
@@ -527,7 +527,7 @@ namespace VibeModel.Tests
             Assert.Contains("no VibeModel.dll at its top level", s.Reason);
             Assert.Empty(Directory.GetFiles(_downloads, "*.zip*"));
             Assert.False(Directory.Exists(Path.Combine(_versions, "1.2.13")));
-            Assert.False(Directory.Exists(Path.Combine(_versions, "1.2.13.tmp")));
+            Assert.Empty(Directory.GetDirectories(_versions, "*.tmp*"));
         }
 
         [Fact]

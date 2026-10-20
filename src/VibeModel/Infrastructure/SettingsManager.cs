@@ -410,10 +410,16 @@ namespace VibeModel.Infrastructure
         /// <summary>The last check's time (UTC, ISO 8601) and its one-line result, in one write.</summary>
         public static void SetUpdateLastCheck(DateTime utc, string result)
         {
-            var settings = Load();
-            settings["UpdateLastChecked"] = utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
-            settings["UpdateLastResult"] = result ?? "";
-            Save(settings);
+            // The update check runs on a background thread: read and write in one locked step (Load
+            // and Save take the same, re-entrant lock), so a Settings save at that moment is never
+            // overwritten with an older copy of settings.json.
+            lock (Lock)
+            {
+                var settings = Load();
+                settings["UpdateLastChecked"] = utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
+                settings["UpdateLastResult"] = result ?? "";
+                Save(settings);
+            }
         }
 
         /// <summary>The last check's one-line result ("1.2.13 available", "up to date", "failed: …").</summary>
