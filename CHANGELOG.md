@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.14 — Update From Inside Revit (2026-10-20)
+
 ### Added — Update from inside Revit
 - Plan 19. When a newer version is published, the chat pane shows a slim banner: *VibeModel 1.2.15
   beschikbaar (2,6 MB)* with **Bijwerken** (Update), *Wat is nieuw* and *Niet nu*. Bijwerken downloads
