@@ -145,16 +145,23 @@ namespace VibeModel.Services.Chat
         internal static string Quote(ChatTurnRef turn)
             => "chat " + turn.Id + (string.IsNullOrEmpty(turn.Question) ? "" : " \"" + turn.Question.Replace("\"", "'") + "\"");
 
+        /// <summary>Plan 15: the journal marker of a run the user discarded in the approval window.</summary>
+        public const string DiscardedOutcome = "discarded by the user";
+
         /// <summary>
         /// "- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 ·
-        /// chat t3f9a2c "maak een muur van 5 m"". Empty id groups and the chat part are left out.
+        /// chat t3f9a2c "maak een muur van 5 m"". Empty id groups and the chat part are left out;
+        /// <paramref name="outcome"/> (plan 15: "discarded by the user") goes before the chat part.
         /// </summary>
         public static string FormatCommandLine(DateTime local, string command, string args,
-            IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn, IList<string> written = null)
+            IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn, IList<string> written = null,
+            string outcome = null)
         {
             var parts = new List<string> { "- " + Stamp(local), Shorten((command ?? "") + (string.IsNullOrWhiteSpace(args) ? "" : " " + args), MaxArgsChars) };
             foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted), Files("wrote", written) })
                 if (p != null) parts.Add(p);
+            // Plan 15: a run the user discarded in the approval window ("discarded by the user").
+            if (!string.IsNullOrWhiteSpace(outcome)) parts.Add(outcome.Trim());
             if (turn != null) parts.Add(Quote(turn));
             return string.Join(Sep, parts);
         }

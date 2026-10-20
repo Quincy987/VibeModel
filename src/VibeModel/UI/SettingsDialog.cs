@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using VibeModel.Infrastructure;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Claude;
 
 namespace VibeModel.UI
 {
@@ -63,6 +64,9 @@ namespace VibeModel.UI
 
         // Chat language ("nl" / "en")
         private ComboBox _languageCombo;
+        // Plan 15: "Wijzigingen door de AI" (auto / ask / readonly) + the session's "don't ask again".
+        private readonly List<RadioButton> _approvalRadios = new List<RadioButton>();
+        private CheckBox _approvalSessionCheck;
 
         // Office standards
         private CheckBox _standardsEnabledCheck;
@@ -131,6 +135,9 @@ namespace VibeModel.UI
 
             // Chat language — independent of the backend tabs.
             mainPanel.Children.Add(CreateLanguagePanel());
+
+            // Change approval (plan 15) — what happens to the AI's deletions and edits.
+            mainPanel.Children.Add(CreateApprovalPanel());
 
             // Project folder (plan 10) — this model's reference documents.
             mainPanel.Children.Add(CreateProjectFolderPanel(documentTitle));
@@ -312,6 +319,72 @@ namespace VibeModel.UI
             {
                 _languageCombo.IsEnabled = false;
                 panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
+            }
+            return panel;
+        }
+
+        // --- Change approval panel (plan 15) ---
+
+        private StackPanel CreateApprovalPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = Strings.Get(Strings.SettingApprovalTitle),
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            var configured = SettingsManager.GetChangeApproval(out var source);
+            bool managed = source == ChangeApprovalSource.Managed;
+            var current = managed ? configured : SettingsManager.GetChangeApprovalSetting();
+            var options = new[]
+            {
+                Tuple.Create(ChangeApprovalMode.Auto, Strings.SettingApprovalAuto, Strings.SettingApprovalAutoHint, "SettingApprovalAuto"),
+                Tuple.Create(ChangeApprovalMode.Ask, Strings.SettingApprovalAsk, Strings.SettingApprovalAskHint, "SettingApprovalAsk"),
+                Tuple.Create(ChangeApprovalMode.ReadOnly, Strings.SettingApprovalReadOnly, Strings.SettingApprovalReadOnlyHint, "SettingApprovalReadOnly"),
+            };
+            foreach (var o in options)
+            {
+                var radio = new RadioButton
+                {
+                    Content = Strings.Get(o.Item2),
+                    Tag = o.Item1,
+                    GroupName = "ChangeApproval",
+                    IsChecked = current == o.Item1,
+                    IsEnabled = !managed,
+                    Foreground = FgPrimary,
+                    FontSize = 12,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(radio, o.Item4);
+                _approvalRadios.Add(radio);
+                panel.Children.Add(radio);
+                var hint = CreateLabel(Strings.Get(o.Item3));
+                hint.Margin = new Thickness(20, 0, 0, 2);
+                panel.Children.Add(hint);
+            }
+            if (managed)
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
+            else if (source == ChangeApprovalSource.Environment)
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingApprovalEnv,
+                    ChangeApprovalPolicy.Name(configured), ChangeApprovalPolicy.EnvVar)));
+
+            // Only while "don't ask again" was ticked in the approval window this Revit session.
+            if (ChangeApprovalPolicy.DontAskThisSession)
+            {
+                _approvalSessionCheck = new CheckBox
+                {
+                    Content = Strings.Get(Strings.SettingApprovalSession),
+                    IsChecked = true,
+                    Foreground = FgSecondary,
+                    FontSize = 12,
+                    Margin = new Thickness(0, 6, 0, 2)
+                };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(_approvalSessionCheck, "SettingApprovalSession");
+                panel.Children.Add(_approvalSessionCheck);
             }
             return panel;
         }
@@ -915,6 +988,13 @@ namespace VibeModel.UI
 
             if (_languageCombo.IsEnabled)
                 SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
+
+            // Change approval (plan 15): the user's own choice; IT's (managed.json) is locked.
+            foreach (var radio in _approvalRadios)
+                if (radio.IsEnabled && radio.IsChecked == true && radio.Tag is ChangeApprovalMode mode)
+                    SettingsManager.SetChangeApproval(mode);
+            if (_approvalSessionCheck != null && _approvalSessionCheck.IsChecked != true)
+                ChangeApprovalPolicy.DontAskThisSession = false;
 
             SettingsManager.SetStandardsEnabled(_standardsEnabledCheck.IsChecked == true);
             SettingsManager.SetProjectMemoryEnabled(_projectMemoryCheck.IsChecked == true);

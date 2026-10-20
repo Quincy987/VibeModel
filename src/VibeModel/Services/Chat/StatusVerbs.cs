@@ -42,6 +42,8 @@ namespace VibeModel.Services.Chat
                 { "journal", "Reading the project journal…" },
                 { "chatlog", "Reading the chat history…" },
                 { "diagnose", "Checking the setup…" },
+                { "approvals", "Reading decisions…" },
+                { "apilookup", "Looking up the Revit API…" },
 
                 // Modify
                 { "wall", "Creating wall…" },
@@ -148,6 +150,8 @@ namespace VibeModel.Services.Chat
                 { "journal", "Projectjournaal lezen…" },
                 { "chatlog", "Chatgeschiedenis lezen…" },
                 { "diagnose", "Installatie controleren…" },
+                { "approvals", "Beslissingen lezen…" },
+                { "apilookup", "Revit-API opzoeken…" },
 
                 // Wijzigen
                 { "wall", "Wand maken…" },

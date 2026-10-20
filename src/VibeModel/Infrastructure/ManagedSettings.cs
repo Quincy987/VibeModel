@@ -33,11 +33,12 @@ namespace VibeModel.Infrastructure
         public const string ClaudeCliPath = "ClaudeCliPath";
         public const string Language = "Language";
         public const string OpenServer = "OpenServer";
+        public const string ChangeApproval = "ChangeApproval";
 
         /// <summary>The keys IT can set (documented in docs/deployment.md).</summary>
         public static readonly string[] Keys =
         {
-            PreferredBackend, Model, ApiBaseUrl, AnthropicApiKey, DisableClaudeCode, ClaudeCliPath, Language, OpenServer
+            PreferredBackend, Model, ApiBaseUrl, AnthropicApiKey, DisableClaudeCode, ClaudeCliPath, Language, OpenServer, ChangeApproval
         };
 
         private static readonly object Lock = new object();

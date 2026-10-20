@@ -118,6 +118,31 @@ namespace VibeModel.Services.Chat
         public const string WizardRecheck = "WizardRecheck";
         public const string WizardLocal = "WizardLocal";
         public const string WizardFailedToStart = "WizardFailedToStart";       // {0} = reason
+        // Change approval (plan 15): the approval window and the Settings section.
+        public const string ApprovalTitle = "ApprovalTitle";
+        public const string ApprovalAdded = "ApprovalAdded";
+        public const string ApprovalModified = "ApprovalModified";
+        public const string ApprovalDeleted = "ApprovalDeleted";
+        public const string ApprovalOther = "ApprovalOther";
+        public const string ApprovalModifiedNote = "ApprovalModifiedNote";
+        public const string ApprovalCommandFailed = "ApprovalCommandFailed";
+        public const string ApprovalIsolated = "ApprovalIsolated";             // {0} = count
+        public const string ApprovalNotVisible = "ApprovalNotVisible";
+        public const string ApprovalOnlyDeleted = "ApprovalOnlyDeleted";
+        public const string ApprovalNothingToShow = "ApprovalNothingToShow";
+        public const string ApprovalZoom = "ApprovalZoom";
+        public const string ApprovalDontAsk = "ApprovalDontAsk";
+        public const string ApprovalDiscard = "ApprovalDiscard";
+        public const string ApprovalKeep = "ApprovalKeep";
+        public const string SettingApprovalTitle = "SettingApprovalTitle";
+        public const string SettingApprovalAuto = "SettingApprovalAuto";
+        public const string SettingApprovalAutoHint = "SettingApprovalAutoHint";
+        public const string SettingApprovalAsk = "SettingApprovalAsk";
+        public const string SettingApprovalAskHint = "SettingApprovalAskHint";
+        public const string SettingApprovalReadOnly = "SettingApprovalReadOnly";
+        public const string SettingApprovalReadOnlyHint = "SettingApprovalReadOnlyHint";
+        public const string SettingApprovalSession = "SettingApprovalSession";
+        public const string SettingApprovalEnv = "SettingApprovalEnv";          // {0} = mode, {1} = variable
         // Diagnose (header button, `diagnose` command).
         public const string DiagnoseTitle = "DiagnoseTitle";
         public const string DiagnoseTip = "DiagnoseTip";
@@ -224,6 +249,30 @@ namespace VibeModel.Services.Chat
                 { WizardRecheck, "Check again" },
                 { WizardLocal, "Local model (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
                 { WizardFailedToStart, "Could not start it: {0}" },
+                { ApprovalTitle, "VibeModel wants to keep this change" },
+                { ApprovalAdded, "Added" },
+                { ApprovalModified, "Modified" },
+                { ApprovalDeleted, "Deleted" },
+                { ApprovalOther, "other" },
+                { ApprovalModifiedNote, "Revit also counts elements it only updated (joins, dimensions, the view)." },
+                { ApprovalCommandFailed, "Note: the command reported an error; this is what it changed anyway." },
+                { ApprovalIsolated, "Isolated and selected in this view: {0}" },
+                { ApprovalNotVisible, "Not visible in this view - Zoom shows them." },
+                { ApprovalOnlyDeleted, "Only deletions: there is nothing to show." },
+                { ApprovalNothingToShow, "Nothing to show in a view (only views or types changed)." },
+                { ApprovalZoom, "Zoom" },
+                { ApprovalDontAsk, "Don't ask again this Revit session" },
+                { ApprovalDiscard, "Discard" },
+                { ApprovalKeep, "Keep" },
+                { SettingApprovalTitle, "Changes by the AI" },
+                { SettingApprovalAuto, "Never ask - every change is one Ctrl+Z (default)" },
+                { SettingApprovalAutoHint, "As before: the AI carries out changes directly." },
+                { SettingApprovalAsk, "Ask before a deletion or edit is kept" },
+                { SettingApprovalAskHint, "delete, parameter values, phases, joins and exec first show what changes; new elements never ask." },
+                { SettingApprovalReadOnly, "Read-only - the AI may not change anything" },
+                { SettingApprovalReadOnlyHint, "For viewers: every change is rolled back and refused; reading still works." },
+                { SettingApprovalSession, "Not asking for the rest of this Revit session (ticked in the approval window) - untick to ask again" },
+                { SettingApprovalEnv, "In force now: '{0}' from the environment variable {1}, which overrides the choice above." },
                 { DiagnoseTitle, "VibeModel diagnosis" },
                 { DiagnoseTip, "What VibeModel sees of this computer: versions, connection, proxy, recent errors. Secrets are masked." },
                 { DiagnoseRunning, "Checking (network checks take up to 5 s each)…" },
@@ -330,6 +379,30 @@ namespace VibeModel.Services.Chat
                 { WizardRecheck, "Opnieuw controleren" },
                 { WizardLocal, "Lokaal taalmodel (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
                 { WizardFailedToStart, "Kon het niet starten: {0}" },
+                { ApprovalTitle, "VibeModel wil deze wijziging behouden" },
+                { ApprovalAdded, "Toegevoegd" },
+                { ApprovalModified, "Gewijzigd" },
+                { ApprovalDeleted, "Verwijderd" },
+                { ApprovalOther, "overig" },
+                { ApprovalModifiedNote, "Revit telt ook elementen mee die het alleen heeft bijgewerkt (aansluitingen, maatvoering, de view)." },
+                { ApprovalCommandFailed, "Let op: de opdracht meldde een fout; dit is wat er toch al gewijzigd is." },
+                { ApprovalIsolated, "Geïsoleerd en geselecteerd in deze view: {0}" },
+                { ApprovalNotVisible, "Niet zichtbaar in deze view - Inzoomen toont ze." },
+                { ApprovalOnlyDeleted, "Alleen verwijderingen: er is niets te tonen." },
+                { ApprovalNothingToShow, "Niets te tonen in een view (alleen views of types gewijzigd)." },
+                { ApprovalZoom, "Inzoomen" },
+                { ApprovalDontAsk, "Deze Revit-sessie niet meer vragen" },
+                { ApprovalDiscard, "Ongedaan maken" },
+                { ApprovalKeep, "Behouden" },
+                { SettingApprovalTitle, "Wijzigingen door de AI" },
+                { SettingApprovalAuto, "Nooit vragen - elke wijziging is één Ctrl+Z (standaard)" },
+                { SettingApprovalAutoHint, "Zoals altijd: de AI voert wijzigingen direct uit." },
+                { SettingApprovalAsk, "Vragen voordat een verwijdering of bewerking blijft staan" },
+                { SettingApprovalAskHint, "Verwijderen, parameterwaarden, fases, joins en exec tonen eerst wat er verandert; nieuwe elementen vragen nooit." },
+                { SettingApprovalReadOnly, "Alleen lezen - de AI mag niets wijzigen" },
+                { SettingApprovalReadOnlyHint, "Voor meekijkers: elke wijziging wordt teruggedraaid en geweigerd; lezen kan wel." },
+                { SettingApprovalSession, "Deze Revit-sessie wordt niet meer gevraagd (aangevinkt in het venster) - vink uit om weer te vragen" },
+                { SettingApprovalEnv, "Nu in werking: '{0}' uit de omgevingsvariabele {1}, die de keuze hierboven overschrijft." },
                 { DiagnoseTitle, "VibeModel-diagnose" },
                 { DiagnoseTip, "Wat VibeModel van deze computer ziet: versies, verbinding, proxy, recente fouten. Geheimen zijn afgeschermd." },
                 { DiagnoseRunning, "Bezig met controleren (netwerkcontroles duren elk tot 5 s)…" },

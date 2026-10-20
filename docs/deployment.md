@@ -120,6 +120,7 @@ create-rights; a folder created by Intune/SCCM as SYSTEM already has the right o
 | `ClaudeCliPath` | Full path to `claude.exe` if it lives elsewhere; `none` switches discovery off |
 | `Language` | `nl` or `en`: the pane's texts and the fallback reply language |
 | `OpenServer` | `true` runs the local HTTP server **without** a token, as before 1.2.11 (default `false`). Only for scripts that cannot read the token from `%LOCALAPPDATA%\VibeModel\servers\<port>.json`; a set `VIBEMODEL_TOKEN` still wins. |
+| `ChangeApproval` | What happens to the AI's deletions and edits: `auto` (default, nothing changes), `ask` (the user keeps or discards each one in a window in Revit), `readonly` (every change is refused — for people who only look at models). Locked in Settings when set here. |
 
 Key precedence: `managed.json` → `ANTHROPIC_API_KEY` → the user's own (encrypted) key.
 A key from `managed.json` or the environment is never copied into the user's settings.

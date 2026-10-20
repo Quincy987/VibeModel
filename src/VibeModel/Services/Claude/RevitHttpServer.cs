@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -176,6 +177,15 @@ namespace VibeModel.Services.Claude
                     {
                         client.SendTimeout = 305000;
                     }
+                    // Plan 17: an exec with ?timeout= may run up to 300 s before it answers.
+                    int q = request.Path.IndexOf('?');
+                    var timeoutAsked = q >= 0 ? QueryInt(request.Path.Substring(q + 1), "timeout") : null;
+                    if (timeoutAsked.HasValue)
+                        client.SendTimeout = Math.Max(client.SendTimeout, (ExecDeadline.BudgetSeconds(timeoutAsked) + 15) * 1000);
+                    // Plan 15: under "ask" a delete/edit waits up to 10 min for the user's decision.
+                    if (ChangeApprovalPolicy.EffectiveMode == ChangeApprovalMode.Ask)
+                        client.SendTimeout = Math.Max(client.SendTimeout,
+                            (int)ChangeApprovalPolicy.ApprovalTimeout.TotalMilliseconds + 5000);
 
                     var response = ProcessRequest(request);
                     SendResponse(stream, response.StatusCode, response.Body, response.ContentType);
@@ -368,9 +378,12 @@ namespace VibeModel.Services.Claude
                 return Unauthorized(fmt);
             }
 
+            // Plan 15: ?preview=1 / ?readonly=1.
+            var options = ParseRunOptions(rawQuery);
+
             if (path == "batch" && request.Method == "POST")
             {
-                return HandleBatch(request.Body, rawQuery, fmt, request.Turn);
+                return HandleBatch(request.Body, rawQuery, fmt, request.Turn, options);
             }
 
             // Single command — use POST body as args if no query args
@@ -380,7 +393,7 @@ namespace VibeModel.Services.Claude
                 args = request.Body.TrimEnd('\r', '\n');
             }
 
-            var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn);
+            var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn, options);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }
@@ -435,6 +448,46 @@ namespace VibeModel.Services.Claude
             return diff == 0;
         }
 
+        /// <summary>
+        /// True when the query string carries <paramref name="name"/>=1|true|yes (case-insensitive).
+        /// Like format=json, these flags are ignored by <see cref="ParseQueryArgs"/>.
+        /// </summary>
+        internal static bool QueryFlag(string query, string name)
+            => QueryValues(query, name).Any(v => v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                                                v.Equals("yes", StringComparison.OrdinalIgnoreCase));
+
+        // The raw (trimmed, not unescaped) values of every name=value pair named <name>.
+        private static IEnumerable<string> QueryValues(string query, string name)
+        {
+            if (string.IsNullOrEmpty(query)) yield break;
+            foreach (var param in query.Split('&'))
+            {
+                var kv = param.Split(new[] { '=' }, 2);
+                if (kv.Length == 2 && kv[0].Equals(name, StringComparison.OrdinalIgnoreCase))
+                    yield return kv[1].Trim();
+            }
+        }
+
+        /// <summary>Per-request options: ?preview=1 and ?readonly=1 (plan 15), ?timeout=&lt;s&gt; (plan 17, exec).</summary>
+        internal static RunOptions ParseRunOptions(string query)
+        {
+            bool preview = QueryFlag(query, "preview");
+            bool readOnly = QueryFlag(query, "readonly");
+            int? timeout = QueryInt(query, "timeout");
+            return preview || readOnly || timeout.HasValue
+                ? new RunOptions { Preview = preview, ReadOnly = readOnly, TimeoutSeconds = timeout }
+                : RunOptions.None;
+        }
+
+        /// <summary>A positive whole number for <paramref name="name"/> in the query string, else null.</summary>
+        internal static int? QueryInt(string query, string name)
+        {
+            foreach (var value in QueryValues(query, name))
+                if (int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0)
+                    return v;
+            return null;
+        }
+
         // Scans the query string for an explicit format=json pair (ignored by ParseQueryArgs).
         internal static bool QueryHasFormatJson(string query)
         {
@@ -450,14 +503,14 @@ namespace VibeModel.Services.Claude
             return false;
         }
 
-        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt, Chat.ChatTurnRef turn)
+        private HttpResponse HandleBatch(string body, string rawQuery, ResponseFormat fmt, Chat.ChatTurnRef turn, RunOptions options)
         {
             var parsed = BatchParser.Parse(body, rawQuery);
             if (!parsed.IsValid)
                 return new HttpResponse(400, parsed.Error);
 
             // One request → one TransactionGroup → one undo entry.
-            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt, turn);
+            var result = _commandHandler.EnqueueBatchAndWait(parsed.Commands, parsed.Atomic, fmt, turn, options);
             return new HttpResponse(200, result,
                 fmt == ResponseFormat.Json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
         }

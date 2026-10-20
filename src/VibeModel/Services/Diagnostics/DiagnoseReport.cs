@@ -65,6 +65,8 @@ namespace VibeModel.Services.Diagnostics
             sb.AppendLine("HTTP server: " + (FileFallback ? "not running - file-based fallback (C:\\RevitClaudeLink)" : "port " + HttpPort));
             if (!FileFallback)
                 sb.AppendLine("Server access: " + ServerAuth.Describe(HttpPort) + "; browser requests (Origin / Sec-Fetch / foreign Host) refused");
+            var approval = SettingsManager.GetChangeApproval(out var approvalSource);
+            sb.AppendLine("Change approval: " + ChangeApprovalPolicy.Describe(approval, approvalSource, ChangeApprovalPolicy.DontAskThisSession));
             sb.AppendLine("Debug log: " + (Logger.DebugEnabled ? "on" : "off (warnings and errors only)") + " - " + Logger.LogDirectory);
             sb.AppendLine();
 

@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
+
+### Added — approve before keeping, preview, read-only runs (Settings → "Wijzigingen door de AI")
+- Plan 15, after pyRevit 7.0's agent runtime (2026-10-06). **Off by default**: `auto` keeps every
+  answer exactly as it was. `ask` makes deletions and edits (`delete`, `exec`, `set`, `join`,
+  `unjoin`, `phase`, and batches holding one) wait for the user: Revit isolates and selects what
+  changed and a window shows the question, the command and the counts by category; **Behouden**
+  keeps it as ONE undo step, **Ongedaan maken** (or Esc / closing) rolls everything back and tells
+  the AI not to retry. "Deze Revit-sessie niet meer vragen" switches it off until Revit closes.
+  New elements never ask. `readonly` refuses every change (`READ_ONLY`, with what it would have
+  changed) — for colleagues who only look.
+- `?preview=1` on any modifying command or batch: it runs, says what it would add/modify/delete,
+  and rolls everything back (an annotation it would re-host or remove is reported as `-- preview:`).
+  `?readonly=1` (meant for `exec`/`batch`) fails (`QUERY_MODIFIED_MODEL`) instead of changing the model.
+- `approvals` lists this session's decisions; a decision a client missed (it waits up to 10 min,
+  then `APPROVAL_PENDING`) appears once in the next model-state stamp. Discarded runs are journaled.
+- The file-based fallback (only used when the HTTP port could not open) cannot ask or roll back, so
+  under `ask` or `readonly` it refuses changes instead of slipping past the setting.
+- IT can set it per machine: `ChangeApproval` in managed.json (locked in Settings); Diagnose names the
+  source; `build.ps1 -Approval ask` for testing. Measured in Revit 2023: a window in 0.3–1.1 s, Keep is
+  one Ctrl+Z (pile; floor + its spot elevation; an exec move), Discard leaves the edit counter as it was.
+
+### Added — `apilookup`: the Revit API of this Revit, for exec
+- Plan 16, after pyRevit's `lookup_revit_api`. `apilookup Wall`, `apilookup Wall.Create`,
+  `apilookup FilteredElementCollector --filter Where`: namespace (and the full name to write in exec
+  when exec does not import it), how to get one (the collector line goes through a base class for
+  Room, ModelLine and the other classes Revit's class filter refuses), properties, methods by overload, enum values and
+  `[Obsolete]` with Revit's own replacement advice — reflected from the RevitAPI of the running year.
+  Unknown names give the closest ones. 0.28 s the first time, then 0.01–0.03 s.
+- A failed exec compile now appends the matching lookup (`Hint: apilookup Wall.Widht … Closest:
+  Wall.Width`) — matched by error number, so the Dutch compiler messages work too.
+
+### Added — exec stops runaway loops
+- Plan 17. An endless loop in an exec snippet froze Revit until it was killed. Every loop body
+  written with `{ }` now checks a deadline: after 25 s (`?timeout=<s>`, up to 300) the snippet stops,
+  its transaction is rolled back and exec answers `EXEC_TIMEOUT` — measured 25.1 s, Revit answered
+  the next command at once, no measurable overhead on normal loops. Brace-less loops, recursion and a
+  single long Revit call are still not interruptible (the timeout message says so).
+
 ### Added — quay walls, capstones and curved runs as real families (`profile`, `extrude`, `sweep`, `lwall`)
 - Plan 12 phase 1. A composite cross-section used to be an `exec` DirectShape: no family or type,
   no Volume in a schedule, `join` refused. Four commands now generate a real Revit family on the

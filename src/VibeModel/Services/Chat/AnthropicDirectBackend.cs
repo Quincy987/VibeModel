@@ -821,6 +821,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- You can SEE the model with revit_screenshot. Decide on your own when looking helps — you do not need to be asked. Take one after creating/moving/deleting visible geometry to verify it looks right, when the user asks how something looks or where things are, or when a spatial/layout decision needs visual context.");
             sb.AppendLine("- Do NOT screenshot for pure data queries (counts, parameters, IDs) or when nothing changed visually — it wastes time and tokens. Use judgement.");
             sb.AppendLine("- For complex operations, use revit_exec to run arbitrary C# code against the Revit API.");
+            sb.AppendLine("- Unsure about a Revit API type or member? Call revit_apilookup first (e.g. Wall.Create): the signatures of this Revit; a failed revit_exec compile prints the matching lookup too.");
         }
 
         private List<SseEvent> StreamRequest(string apiKey, Dictionary<string, object> body, CancellationToken ct)

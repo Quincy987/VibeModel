@@ -96,13 +96,13 @@ namespace VibeModel.Services.Claude
         /// counter, atomically. Only call when the stamp will actually be delivered — the
         /// reset means "the client has been told".
         /// </summary>
-        public static ModelStamp TakeStamp(string docKey, string viewName, int selectedCount)
+        public static ModelStamp TakeStamp(string docKey, string viewName, int selectedCount, string approval = null)
         {
             lock (Sync)
             {
                 var state = GetOrAdd(docKey);
                 var stamp = new ModelStamp(state.TotalEdits, state.UserEditsSinceLastStamp,
-                    viewName, selectedCount);
+                    viewName, selectedCount, approval);
                 state.UserEditsSinceLastStamp = 0;
                 return stamp;
             }
@@ -118,6 +118,22 @@ namespace VibeModel.Services.Claude
             lock (Sync)
             {
                 return Docs.TryGetValue(docKey ?? "", out var state) ? state.TotalEdits : 0;
+            }
+        }
+
+        /// <summary>
+        /// A VibeModel run whose TransactionGroup was rolled back (preview, read-only, discarded —
+        /// plan 15) changed nothing net, yet its inner transactions were counted as they
+        /// committed. Puts the counter back to <paramref name="mark"/> (taken before the run) —
+        /// never forward, and never below what the user did meanwhile (nothing: the run blocks
+        /// Revit's main thread).
+        /// </summary>
+        public static void RewindTo(string docKey, long mark)
+        {
+            lock (Sync)
+            {
+                if (Docs.TryGetValue(docKey ?? "", out var state) && state.TotalEdits > mark)
+                    state.TotalEdits = mark;
             }
         }
 
@@ -153,12 +169,19 @@ namespace VibeModel.Services.Claude
         public string ViewName { get; }
         public int SelectedCount { get; }
 
-        public ModelStamp(long totalEdits, long userEdits, string viewName, int selectedCount)
+        /// <summary>
+        /// "approval #8: discarded" — a Keep / Discard decision (plan 15) the client never received
+        /// because its request timed out first; shown once. Null almost always.
+        /// </summary>
+        public string Approval { get; }
+
+        public ModelStamp(long totalEdits, long userEdits, string viewName, int selectedCount, string approval = null)
         {
             TotalEdits = totalEdits;
             UserEdits = userEdits;
             ViewName = viewName;
             SelectedCount = selectedCount;
+            Approval = string.IsNullOrEmpty(approval) ? null : approval;
         }
 
         /// <summary>
@@ -175,6 +198,7 @@ namespace VibeModel.Services.Claude
             }
             line += " | view: " + (string.IsNullOrEmpty(ViewName) ? "unknown" : ViewName) +
                     " | selected: " + SelectedCount;
+            if (Approval != null) line += " | " + Approval;
             return line;
         }
 
@@ -189,13 +213,15 @@ namespace VibeModel.Services.Claude
         /// <summary>The additive JSON "meta" object.</summary>
         public Dictionary<string, object> ToMeta()
         {
-            return new Dictionary<string, object>
+            var meta = new Dictionary<string, object>
             {
                 { "edits", TotalEdits },
                 { "userEditsSinceLastCommand", UserEdits },
                 { "activeView", ViewName },
                 { "selectedCount", SelectedCount }
             };
+            if (Approval != null) meta["approval"] = Approval;
+            return meta;
         }
     }
 }

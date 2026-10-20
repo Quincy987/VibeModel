@@ -57,7 +57,7 @@ namespace VibeModel.Services.Chat
 
         private static WebClient NewRevitClient(string token)
         {
-            var client = new WebClient { Encoding = Encoding.UTF8 };
+            var client = new RevitWebClient { Encoding = Encoding.UTF8 };
             if (!string.IsNullOrWhiteSpace(token))
                 client.Headers[RevitHttpServer.TokenHeader] = token.Trim();
             return client;
@@ -149,6 +149,12 @@ namespace VibeModel.Services.Chat
 
                 using (var client = CreateRevitClient())
                 {
+                    // Plan 15: under "ask" a delete/edit waits up to 10 min for the user's
+                    // Keep / Discard in Revit; WebClient's own 100 s would give up first.
+                    if (client is RevitWebClient rc &&
+                        ChangeApprovalPolicy.MayWaitForUser(ChangeApprovalPolicy.EffectiveMode,
+                            ChangeApprovalPolicy.IsGuarded(commandName), modifying: true, preview: false))
+                        rc.Timeout = ChangeApprovalPolicy.ApprovalTimeout + TimeSpan.FromSeconds(5);
                     // Project journal: tie what this tool changes to the chat question.
                     var turn = ProjectJournal.CurrentTurn;
                     if (turn != null)
@@ -240,7 +246,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(Strings.Current));
+            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode));
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
@@ -314,11 +320,24 @@ namespace VibeModel.Services.Chat
         internal const string PhaseNoteRule =
             "Mention the active view's phase only when something this turn created or changed cannot be seen in that view, and then in one sentence. Do not restate that a step can be undone unless the user asks.";
 
+        // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
+        // exactly the sentence above; ask and readonly replace it, so the model knows the user
+        // decides (or that nothing is kept) and does not retry a discarded change.
+        internal const string UndoRule =
+            "Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.";
+        internal const string ApprovalAskRule =
+            UndoRule + " Change approval is on: the user keeps or discards a deletion or edit in Revit before you see the result (`-- approval: kept by the user` or `ERROR: Discarded by the user`). After a discard: do not retry, do not argue; ask what they want instead.";
+        internal const string ApprovalWaitRule =
+            "delete, set, phase, join, unjoin, an exec that changes the model and batches holding them wait for the user's Keep/Discard in Revit: when your shell tool has a timeout, set it to 600000 ms for those calls. If a call still times out (APPROVAL_PENDING), call approvals to learn the outcome; never re-run the change.";
+        internal const string ApprovalReadOnlyRule =
+            "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
+
         /// <summary>
         /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
-        /// reply language when the user's own language is unclear.
+        /// reply language when the user's own language is unclear; <paramref name="approval"/> is
+        /// the change-approval policy in force (plan 15; auto = the text as before).
         /// </summary>
-        internal static string BuildBehaviourRules(string language)
+        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto)
         {
             var fallback = Strings.LanguageName(language);
             var sb = new StringBuilder();
@@ -327,7 +346,19 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Reply in the language the user writes in. If unclear, use " + fallback + ".");
             sb.AppendLine("- Keep Revit UI terms (ribbon/command names) in English as Revit shows them, everything else in the user's language.");
             sb.AppendLine("Undo");
-            sb.AppendLine("- Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.");
+            switch (approval)
+            {
+                case ChangeApprovalMode.Ask:
+                    sb.AppendLine("- " + ApprovalAskRule);
+                    sb.AppendLine("- " + ApprovalWaitRule);
+                    break;
+                case ChangeApprovalMode.ReadOnly:
+                    sb.AppendLine("- " + ApprovalReadOnlyRule);
+                    break;
+                default:
+                    sb.AppendLine("- " + UndoRule);
+                    break;
+            }
             sb.AppendLine("Ask first");
             sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, view templates, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
@@ -451,6 +482,24 @@ namespace VibeModel.Services.Chat
             _disposed = true;
             Cancel();
             _httpClient?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A WebClient whose request timeout can be raised (plan 15: a tool call that waits for the
+    /// user's decision in the approval window). Default: WebRequest's own 100 s.
+    /// </summary>
+    internal sealed class RevitWebClient : WebClient
+    {
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
+
+        protected override WebRequest GetWebRequest(Uri address)
+        {
+            var request = base.GetWebRequest(address);
+            if (request != null) request.Timeout = (int)Timeout.TotalMilliseconds;
+            // Never shorter than before (ReadWriteTimeout defaults to 300 s).
+            if (request is HttpWebRequest http) http.ReadWriteTimeout = Math.Max(http.ReadWriteTimeout, (int)Timeout.TotalMilliseconds);
+            return request;
         }
     }
 }

@@ -16,11 +16,18 @@
 .PARAMETER Debug
     Enable debug logging in Revit (sets VIBEMODEL_DEBUG=1)
 
+.PARAMETER Approval
+    Change approval for the Revit it starts (sets VIBEMODEL_APPROVAL): auto (never ask, the
+    default), ask (Keep/Discard window for deletions and edits), readonly (nothing is kept).
+    managed.json still wins over it; without it settings.json decides. Like -Debug, the variable
+    stays set in this PowerShell session (and then beats settings.json): Remove-Item Env:VIBEMODEL_APPROVAL.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -RevitVersion 2024
     .\build.ps1 -Debug
     .\build.ps1 -NoRestart
+    .\build.ps1 -Approval ask
 #>
 
 param(
@@ -32,7 +39,10 @@ param(
 
     [switch]$NoRestart,
 
-    [switch]$Debug
+    [switch]$Debug,
+
+    [ValidateSet("auto", "ask", "readonly")]
+    [string]$Approval
 )
 
 $ErrorActionPreference = "Stop"
@@ -121,6 +131,11 @@ if (-not $NoRestart) {
             $env:VIBEMODEL_DEBUG = "1"
             Write-Host "    Debug logging ENABLED" -ForegroundColor Magenta
             Write-Host "    Logs: $env:LOCALAPPDATA\VibeModel\logs\" -ForegroundColor Gray
+        }
+
+        if ($Approval) {
+            $env:VIBEMODEL_APPROVAL = $Approval
+            Write-Host "    Change approval: $Approval (VIBEMODEL_APPROVAL)" -ForegroundColor Magenta
         }
 
         Start-Process $RevitExe

@@ -131,6 +131,8 @@ curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"  # a wall, in mm
 
 Close to eighty commands cover reading, diagnosing, modelling, sheets, annotation, office standards, project documents, memory and export. The full reference, with every flag, is in [CLAUDE.md](CLAUDE.md).
 
+**Who decides what is kept.** By default every change the AI makes is one Ctrl+Z. In Settings → *Wijzigingen door de AI* you can have Revit ask first: a deletion or edit is shown (isolated in the view, counted by category) and kept only when you press *Behouden*. *Alleen lezen* refuses every change, and any command can be tried with `?preview=1` to see what it would do without doing it. For `exec`, `apilookup` shows the Revit API of the Revit you run, and a runaway loop stops after 25 s instead of freezing Revit.
+
 ## Your own standards
 
 VibeModel does not know how your office models. You tell it with a **standards pack**: a folder of plain markdown and JSON that the person who owns your Revit standard maintains, no code involved.
