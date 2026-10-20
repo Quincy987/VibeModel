@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.12 — Known API Gaps, Labels You Can Finish (2026-10-20)
+
 ### Added — `apilookup` names what Revit's API cannot do
 - Plan 18, from a colleague's rebar-tag session: the chat added the shared parameters and the tag
   types but could not make the labels, and only found the workaround when asked. Now `apilookup`

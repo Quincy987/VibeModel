@@ -19,7 +19,7 @@ body:
     attributes:
       label: VibeModel version
       description: Shown at the top of the Diagnose report and in the release zip name.
-      placeholder: "v1.2.11"
+      placeholder: "v1.2.12"
     validations:
       required: true
   - type: textarea
