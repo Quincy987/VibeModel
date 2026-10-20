@@ -123,12 +123,10 @@ namespace VibeModel.Services.Claude.Commands
             Family fam = null;
             var error = TransactionHelper.Execute(doc, "VibeModel: profile " + name, () =>
             {
-                fam = GeneratedFamilyStore.Load(doc, built.Path, familyName);
-                // The reload keeps the project's type values, VM_Profile and VM_Source included, so the
-                // new points and stamp must be written onto the project types — or every later extrude
-                // reads the old points (live: "PROFILE UPDATED" 600 x 300, extrude still 500 x 250).
+                fam = GeneratedFamilyStore.Load(doc, built.Path, familyName, FamilyNaming.Stamp(spec, built.StructureHash));
+                // The reload keeps the project's VM_Profile too: without this every later extrude reads
+                // the old points (live: "PROFILE UPDATED" 600 x 300, extrude still 500 x 250).
                 ProfileStore.WritePoints(doc, fam, text);
-                GeneratedFamilyStore.WriteStamp(doc, fam, FamilyNaming.Stamp(spec, built.StructureHash));
             });
             if (error != null) return CommandResult.FromTransactionError(error, "LOAD_FAILED");
 
@@ -325,12 +323,6 @@ namespace VibeModel.Services.Claude.Commands
 
         /// <summary>The points onto every project type of the profile family (read back by <see cref="PointsText"/>).</summary>
         public static void WritePoints(Document doc, Family fam, string text)
-        {
-            foreach (var id in fam.GetFamilySymbolIds())
-            {
-                var p = doc.GetElement(id)?.LookupParameter(FamilyBuilder.ParamProfile);
-                if (p != null && !p.IsReadOnly) p.Set(text);
-            }
-        }
+            => GeneratedFamilyStore.WriteTypeText(doc, fam, t => t.LookupParameter(FamilyBuilder.ParamProfile), text);
     }
 }

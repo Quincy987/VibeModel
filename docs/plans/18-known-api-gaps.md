@@ -102,6 +102,10 @@
 - `src/VibeModel/Services/Claude/Commands/ApiLookupCommand.cs` — `Description`; the hint delegates.
 - `src/VibeModel/Services/Helpers/KeepValuesLoadOptions.cs` — new, public (was nested, internal, in
   `GeneratedFamilyStore`, which now uses this one).
+- `src/VibeModel/Services/Claude/FamilyGen/GeneratedFamilyStore.cs` — `Load(doc, path, name, stamp)`
+  writes the new VM_Source stamp itself (both reload sites did or should have done it by hand) and
+  `WriteTypeText` is the one "set a text on every project type" loop; `ProfileRunner` passes its
+  stamp; `ProfileCommands` passes its stamp and writes VM_Profile through `ProfileStore.WritePoints`.
 - `src/VibeModel.Tests/KnownApiGapsTests.cs` — matching per kind, `LabelUtils` / `Widget.Label` /
   `PlanTopology.Phase` non-matches, unique keys, line budget, the recipe text, JSON, the four result
   kinds through a fixture engine, the compile hint.
@@ -164,3 +168,18 @@
   the family.
 - Not measured: the `EditFamily` route under change approval `ask` (exec inside a run group).
 - Headless: 1518/1518 (the profile fix is Revit-side: `ProfileStore` needs a document; verified live above).
+
+### Review round 2 (2026-10-20 evening) — 9/9 live + profile/extrude/lwall reload paths
+
+- DRY: the stamp rewrite after a reload moved into `GeneratedFamilyStore.Load` (both reload sites
+  needed it; one had forgotten it — the profile bug above); one `WriteTypeText` loop for VM_Source
+  and VM_Profile.
+- The gap block keeps the answer's own line ends (it used to turn the whole answer into `\n` only
+  when a gap matched); a one-line answer uses the platform's, like `AppendLine`. Live, the only bare
+  `\n` is the one the server puts before its `-- model #` stamp, with or without a gap.
+- The label note's manual step now says the user opens the family first (Edit Family) when it was
+  prepared from the project.
+- Live after the changes: profile → extrude regenerated with the new points, same points
+  "Unchanged", next extrude reused; a new `lwall`; the R1–R8 checks of round 1 (recipe keeps its
+  work, matching, compile hint). Headless 1521/1521 (`LinkArgsTests.ProbeFile_…` failed once and
+  passed on both reruns — flaky, not in this change).

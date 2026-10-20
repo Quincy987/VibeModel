@@ -172,11 +172,7 @@ namespace VibeModel.Services.Claude.FamilyGen
                 {
                     if (generate)
                     {
-                        fam = GeneratedFamilyStore.Load(_doc, built.Path, plan.FamilyName);
-                        // The reload keeps the project's type values — VM_Source included — so the
-                        // new stamp must be written onto the project types, or the next run compares
-                        // against the previous generation (live: "reused, unchanged" on the old shape).
-                        GeneratedFamilyStore.WriteStamp(_doc, fam, FamilyNaming.Stamp(specHash, built.StructureHash));
+                        fam = GeneratedFamilyStore.Load(_doc, built.Path, plan.FamilyName, FamilyNaming.Stamp(specHash, built.StructureHash));
                     }
                     symbol = TypeFor(fam, plan, out typeStatus);
                     if (material != null) SetMaterial(symbol, material, plan);

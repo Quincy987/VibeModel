@@ -60,7 +60,7 @@ namespace VibeModel.Services.Claude
                     "ElementTransformUtils.CopyElements(srcView, ids, fdView, Transform.Identity, new CopyPasteOptions()) from another family of the SAME category (other categories: \"Can't paste Labels across Families of different Categories.\")",
                     "TextNote.Create(fd, viewId, point, \"(LABEL Betonkwaliteit)\", fd.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType)) next to the copy, as a placeholder",
                 },
-                Manual = "the user selects the copied label -> Edit Label -> picks the parameter (one dialog per label), then Load into Project. Do the parameters, types and copies first and say exactly which label gets which parameter."
+                Manual = "the user (after Edit Family, when it was prepared from the project) selects each copied label -> Edit Label -> picks the parameter (one dialog per label), then Load into Project. Do the parameters, types and copies first and say exactly which label gets which parameter."
             },
             new Gap
             {
@@ -173,14 +173,15 @@ namespace VibeModel.Services.Claude
         public static ApiLookup.Result Attach(ApiLookup.Result result, string query)
         {
             if (result == null) return null;
-            var gap = Subject(result, query, out var kind) is string subject ? Match(subject, kind) : null;
+            var gap = Match(Subject(result, query, out var kind), kind);
             if (gap == null) return result;
-            var block = Describe(gap);
-            var text = (result.Text ?? "").Replace("\r\n", "\n");
-            int nl = text.IndexOf('\n');
-            if (result.Found || nl < 0) text = text + "\n" + block;
-            else text = text.Substring(0, nl) + "\n" + block + text.Substring(nl);
-            result.Text = text;
+            var text = result.Text ?? "";
+            // The answer's own line ends; a one-line answer has none, so the platform's (= AppendLine's).
+            var newline = text.Contains("\r\n") ? "\r\n" : text.Contains("\n") ? "\n" : Environment.NewLine;
+            var lines = text.Length == 0 ? new List<string>() : text.Replace("\r\n", "\n").Split('\n').ToList();
+            if (result.Found || lines.Count < 2) lines.AddRange(Lines(gap));
+            else lines.InsertRange(1, Lines(gap));
+            result.Text = string.Join(newline, lines);
             if (result.Data != null) result.Data["knownGap"] = Data(gap);
             return result;
         }

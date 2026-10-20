@@ -19,8 +19,9 @@
 ### Fixed
 - `profile <name> --points …` on an existing profile said "PROFILE UPDATED" but every later `extrude`
   / `sweep` kept using the old points: the reload keeps the project's type values, so the stored
-  points and the change stamp stayed old. They are now written onto the project types after the
-  reload (as `extrude` already did for its own stamp); a repeat with the same points says "Unchanged".
+  points and the change stamp stayed old. Both are now written onto the project types after the
+  reload (the loader writes the stamp for every generated family, as `extrude` already did by hand);
+  `profile <name>` shows the new points and a repeat with the same points says "Unchanged".
 
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 

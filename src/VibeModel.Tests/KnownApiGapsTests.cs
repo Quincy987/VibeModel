@@ -21,6 +21,23 @@ namespace VibeModel.Tests
     {
         private static readonly ApiLookup Engine = new ApiLookup(new[] { typeof(TextElement).Assembly }, "VibeModel.Tests.GapFixture");
 
+        private static string[] LinesOf(string text) => text.Replace("\r\n", "\n").Split('\n');
+
+        [Theory]
+        [InlineData("TextElement")]                 // found type: block at the end
+        [InlineData("FamilyItemFactory.NewLabel")]  // missing member: block after the first line
+        [InlineData("NewLabel")]                    // not found
+        public void Block_KeepsTheAnswersLineEnds(string query)
+        {
+            var plain = Engine.Lookup("LabelUtils", null, false).Text;   // no gap: the lookup's own text
+            var text = Engine.Lookup(query, null, false).Text;
+            Assert.Contains("Known gap: ", text);
+            if (plain.Contains("\r\n"))
+                Assert.DoesNotContain("\n", text.Replace("\r\n", ""));   // no bare \n mixed in
+            else
+                Assert.DoesNotContain("\r", text);
+        }
+
         [Theory]
         [InlineData("Label", "labels")]
         [InlineData("labels", "labels")]
@@ -127,7 +144,7 @@ namespace VibeModel.Tests
         {
             var r = Engine.Lookup("NewLabel", null, false);
             Assert.False(r.Found);
-            var lines = r.Text.Split('\n');
+            var lines = LinesOf(r.Text);
             Assert.StartsWith("No type or member 'NewLabel'", lines[0]);
             Assert.StartsWith("Known gap: labels", lines[1]);
             Assert.True(r.Data.ContainsKey("knownGap"));
@@ -140,7 +157,7 @@ namespace VibeModel.Tests
             var r = Engine.Lookup("Label", null, false);
             Assert.False(r.Found);
             Assert.Equal(true, r.Data["ambiguous"]);
-            var lines = r.Text.Split('\n').ToList();
+            var lines = LinesOf(r.Text).ToList();
             Assert.StartsWith("'Label' matches several types", lines[0]);
             Assert.StartsWith("Known gap: labels", lines[1]);
             int gapEnd = lines.FindIndex(l => l.StartsWith("Manual step: "));
@@ -152,7 +169,7 @@ namespace VibeModel.Tests
         {
             var r = Engine.Lookup("FamilyItemFactory.NewLabel", null, false);
             Assert.False(r.Found);
-            var lines = r.Text.Split('\n');
+            var lines = LinesOf(r.Text);
             Assert.Equal("VibeModel.Tests.GapFixture.FamilyItemFactory has no public member 'NewLabel'.", lines[0]);
             Assert.StartsWith("Known gap: labels", lines[1]);
             Assert.StartsWith("using ", lines.Last());   // the using line still ends it
@@ -166,7 +183,7 @@ namespace VibeModel.Tests
             Assert.True(r.Found);
             Assert.StartsWith("VibeModel.Tests.GapFixture.TextElement", r.Text);
             Assert.Contains("Text : string { get; set; }", r.Text);
-            Assert.StartsWith("Manual step: ", r.Text.Split('\n').Last());
+            Assert.StartsWith("Manual step: ", LinesOf(r.Text).Last());
             Assert.True(r.Data.ContainsKey("knownGap"));
         }
 
@@ -193,7 +210,7 @@ namespace VibeModel.Tests
             var r = Engine.Lookup("ViewType.Legend", null, false);
             Assert.True(r.Found);
             Assert.StartsWith("VibeModel.Tests.GapFixture.ViewType.Legend", r.Text);
-            Assert.StartsWith("Manual step: when no open document has a legend", r.Text.Split('\n').Last());
+            Assert.StartsWith("Manual step: when no open document has a legend", LinesOf(r.Text).Last());
         }
 
         [Fact]
