@@ -112,6 +112,12 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public Result Lookup(string name, string filter, bool all)
         {
+            // Plan 18: what this API cannot do (labels, legends, …) rides along with the answer.
+            return KnownApiGaps.Attach(LookupApi(name, filter, all), name);
+        }
+
+        private Result LookupApi(string name, string filter, bool all)
+        {
             name = (name ?? "").Trim().Trim('.');
             // "List<T>" style input: look up the generic definition.
             int lt = name.IndexOf('<');
@@ -639,6 +645,31 @@ namespace VibeModel.Services.Claude
                 }
             }
             return list;
+        }
+
+        /// <summary>Lines of each lookup the exec compile hint quotes (plus a known gap's block).</summary>
+        public const int HintLines = 20;
+
+        /// <summary>
+        /// The hint exec appends to its compile errors (plan 16): for each missing member or type
+        /// (at most two), "Hint: apilookup Wall.Foo" and the first lines of that lookup — the
+        /// closest member/type names or the real signatures, and (plan 18) the whole known-gap block
+        /// when the name is one the API cannot do — so the next attempt is right. Null when none.
+        /// </summary>
+        public string CompileErrorHint(IEnumerable<CompileError> errors)
+        {
+            var lookups = LookupsForCompileErrors(errors);
+            if (lookups.Count == 0) return null;
+            var sb = new StringBuilder();
+            foreach (var name in lookups.Take(2))
+            {
+                var r = Lookup(name, null, false);
+                int take = HintLines + (r.Data != null && r.Data.ContainsKey("knownGap") ? KnownApiGaps.MaxLines : 0);
+                sb.AppendLine("Hint: apilookup " + name);
+                foreach (var line in r.Text.Replace("\r\n", "\n").Split('\n').Take(take))
+                    sb.AppendLine("  " + line);
+            }
+            return sb.ToString().TrimEnd();
         }
 
         // The type a "does not contain a definition" error is about: the first dotted name in the

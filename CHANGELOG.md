@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added — `apilookup` names what Revit's API cannot do
+- Plan 18, from a colleague's rebar-tag session: the chat added the shared parameters and the tag
+  types but could not make the labels, and only found the workaround when asked. Now `apilookup`
+  (and the hint under a failed `exec` compile) answers questions about labels in tag, generic
+  annotation and title-block families, legend views, and creating phases or design options with a
+  `Known gap:` block: what the API cannot do, what does work (measured in Revit 2023: add the family
+  parameter, copy the nearest label, put `(LABEL <parameter>)` next to it) and the step the user does
+  by hand (Edit Label). It also warns that setting a label's `Label` parameter reports success and
+  changes nothing. No extra prompt text per turn.
+
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 
 ### Added — approve before keeping, preview, read-only runs (Settings → "Wijzigingen door de AI")

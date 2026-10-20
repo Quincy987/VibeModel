@@ -16,7 +16,7 @@ namespace VibeModel.Services.Claude.Commands
     public class ApiLookupCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "apilookup";
-        public string Description => "Revit API signatures from THIS Revit (use before exec when unsure): a type's namespace, how to get one, properties, methods, enum values, [Obsolete]; or one member's overloads";
+        public string Description => "Revit API signatures from THIS Revit (use before exec when unsure): a type's namespace, how to get one, properties, methods, enum values, [Obsolete]; or one member's overloads; also what this API cannot do (labels in annotation families, legends, design options, phases) and the workaround";
         public string Usage => "apilookup <Type>[.<Member>] [--filter <text>] [--all]";
 
         private static readonly Lazy<ApiLookup> Shared = new Lazy<ApiLookup>(() =>
@@ -48,26 +48,12 @@ namespace VibeModel.Services.Claude.Commands
             return CommandResult.Ok(result.Text, result.Data);
         }
 
-        /// <summary>
-        /// The hint exec appends to its compile errors (plan 16): for each missing member or type
-        /// (at most two), "Hint: apilookup Wall.Foo" and the first lines of that lookup — the
-        /// closest member/type names or the real signatures — so the next attempt is right.
-        /// </summary>
+        /// <summary>The hint exec appends to its compile errors — see <see cref="ApiLookup.CompileErrorHint"/>.</summary>
         internal static string CompileErrorHint(IEnumerable<ApiLookup.CompileError> errors)
         {
             try
             {
-                var lookups = ApiLookup.LookupsForCompileErrors(errors);
-                if (lookups.Count == 0) return null;
-                var sb = new StringBuilder();
-                foreach (var name in lookups.Take(2))
-                {
-                    var r = Engine.Lookup(name, null, false);
-                    sb.AppendLine("Hint: apilookup " + name);
-                    foreach (var line in r.Text.Replace("\r\n", "\n").Split('\n').Take(20))
-                        sb.AppendLine("  " + line);
-                }
-                return sb.ToString().TrimEnd();
+                return Engine.CompileErrorHint(errors);
             }
             catch (Exception ex)
             {
