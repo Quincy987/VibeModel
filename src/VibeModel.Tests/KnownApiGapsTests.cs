@@ -174,6 +174,7 @@ namespace VibeModel.Tests
             Assert.StartsWith("Known gap: labels", lines[1]);
             Assert.StartsWith("using ", lines.Last());   // the using line still ends it
             Assert.Equal("labels", ((Dictionary<string, object>)r.Data["knownGap"])["name"]);
+            Assert.Equal("labels", r.KnownGap.Name);
         }
 
         [Fact]
@@ -194,6 +195,7 @@ namespace VibeModel.Tests
             Assert.True(r.Found);
             Assert.DoesNotContain("Known gap", r.Text);
             Assert.False(r.Data.ContainsKey("knownGap"));
+            Assert.Null(r.KnownGap);
             var member = Engine.Lookup("FamilyItemFactory.NewModelText", null, false);
             Assert.True(member.Found);
             Assert.DoesNotContain("Known gap", member.Text);

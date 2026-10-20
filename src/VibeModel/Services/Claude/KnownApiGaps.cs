@@ -182,6 +182,7 @@ namespace VibeModel.Services.Claude
             if (result.Found || lines.Count < 2) lines.AddRange(Lines(gap));
             else lines.InsertRange(1, Lines(gap));
             result.Text = string.Join(newline, lines);
+            result.KnownGap = gap;
             if (result.Data != null) result.Data["knownGap"] = Data(gap);
             return result;
         }

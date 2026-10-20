@@ -39,8 +39,10 @@ namespace VibeModel.Services.Claude
         private static bool IsExec(string command) => string.Equals(command, "exec", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
-        /// True while the Execute method is processing commands on the main thread.
-        /// Used by DialogBoxShowing handler to only dismiss dialogs during command execution.
+        /// True while the Execute method (or the file-based fallback) is processing commands on the
+        /// main thread — the user cannot touch the model meanwhile. VibeModelApp uses it to dismiss
+        /// dialogs and handle Revit failures only during commands, and to count every transaction
+        /// committed meanwhile as VibeModel's (ModelChangeTracker), whatever Revit named it.
         /// </summary>
         public static volatile bool IsProcessingCommand;
 

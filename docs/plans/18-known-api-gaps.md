@@ -201,3 +201,11 @@
 - Live again: profile → extrude regenerate / Unchanged / reuse, a new `lwall`, R2–R8. Headless
   1522/1522 (with `ForeignNamedCommit_DuringOurCommand_IsOurs`); `ProjectMemoryTests.Clear_…` failed
   once while Revit and a build were starting and passed 3 of 3 alone — load-sensitive, not this change.
+
+### Review round 4
+
+- No behaviour change found. `ApiLookup.Result.KnownGap` (set by `Attach`) replaces the last
+  dictionary sniff (`Data.ContainsKey("knownGap")` in the compile hint), and the hint now quotes
+  exactly the block's lines instead of a 12-line allowance. The `IsProcessingCommand` comment names
+  its three users (dialogs, failures, the change tracker). Headless 1522/1522; pure code, covered by
+  the fixture-engine hint tests — not re-run live.

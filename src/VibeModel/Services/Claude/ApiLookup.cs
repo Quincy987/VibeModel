@@ -107,6 +107,8 @@ namespace VibeModel.Services.Claude
             public string ResolvedType { get; set; }
             /// <summary>The member asked for on <see cref="ResolvedType"/> — found or not; null for a type lookup.</summary>
             public string Member { get; set; }
+            /// <summary>Plan 18: what Revit's API cannot do that this lookup is about (its block is in <see cref="Text"/>).</summary>
+            public KnownApiGaps.Gap KnownGap { get; set; }
         }
 
         /// <summary>
@@ -672,7 +674,7 @@ namespace VibeModel.Services.Claude
             foreach (var name in lookups.Take(2))
             {
                 var r = Lookup(name, null, false);
-                int take = HintLines + (r.Data != null && r.Data.ContainsKey("knownGap") ? KnownApiGaps.MaxLines : 0);
+                int take = HintLines + (r.KnownGap != null ? KnownApiGaps.Lines(r.KnownGap).Count : 0);
                 sb.AppendLine("Hint: apilookup " + name);
                 foreach (var line in r.Text.Replace("\r\n", "\n").Split('\n').Take(take))
                     sb.AppendLine("  " + line);
