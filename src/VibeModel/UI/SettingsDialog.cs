@@ -626,7 +626,8 @@ namespace VibeModel.UI
         private void ShowUpdateState(Services.Update.UpdateStatus status)
         {
             var engine = Services.Update.UpdateService.Engine;
-            _updateStatusText.Text = UiText.UpdateLine(status, engine.Progress, Strings.Current);
+            _updateStatusText.Text = UiText.UpdateLine(status, engine.Progress, Strings.Current) +
+                                     (status.LastError != null ? "\n" + Strings.Get(Strings.UpdateCheckFailed, status.LastError) : "");
             _updatePendingText.Text = status.Pending != null ? Strings.Get(Strings.SettingsUpdatePending, status.Pending) : "";
             _updatePendingText.Visibility = status.Pending != null ? Visibility.Visible : Visibility.Collapsed;
             var target = engine.RollbackTarget;

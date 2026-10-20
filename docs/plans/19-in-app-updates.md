@@ -1,14 +1,16 @@
 # Plan 19 — In-app updates: a stable loader and an Update button
 
-> Goal: a modeller sees "VibeModel 1.2.14 beschikbaar" in the chat pane, clicks **Bijwerken**, and
+> Goal: a modeller sees "VibeModel 1.2.15 beschikbaar" in the chat pane, clicks **Bijwerken**, and
 > after the next Revit start runs the new version — no download page, no installer, no new "Always
 > Load" prompt, no administrator rights. IT can switch it off or point it at its own share. The
 > previous version is kept for a rollback.
 
 > **STATUS (built 2026-10-20, branch claude-bot/t-371).** Loader project, update service, banner,
 > Settings section, Diagnose section, `update` command, installer + packaging + release workflow,
-> docs. Headless tests: `LoaderPathsTests`, `UpdatePureTests`, `UpdateEngineTests` (1565 green). Live
-> verification in Revit 2023: see the end.
+> docs. Headless tests: `LoaderPathsTests`, `UpdatePureTests`, `UpdateEngineTests` (1585 green after
+> merging v1.2.13). Live verification in Revit 2023: see the end. v1.2.13 shipped without this, so the
+> first release with the loader is 1.2.14 — installed with `install.cmd` once; the version numbers in
+> "Measured" are test builds made from this branch.
 
 ## Before
 
@@ -67,8 +69,17 @@ never replace the running file, and never takes effect before Revit restarts. So
     checksum … nothing was installed"), unpack into `<version>.tmp`, check `VibeModel.dll` is at its top,
     rename to `<version>`, write current.txt, prune (keep the running, the current and one older
     version; a folder another Revit still uses cannot be renamed and is left alone), delete the zip. An
-    already complete folder skips the download. A failed install keeps the update *Available* with its
-    reason, also after a later check, until an install succeeds.
+    already complete folder skips the download; a failed one leaves no zip, `.partial` or `.tmp` behind.
+  - Three kinds of failure, worded in one place (`Failure`): a failed **install** keeps the update
+    *Available* with its `Reason` (the banner says *Bijwerken mislukt*), also after a later check, until
+    an install succeeds; a failed **check** is `Failed` only when no manifest is known — with a cached
+    one that still decides, and the failure is `LastError` (review round 1: an offline check after 24 h
+    otherwise showed "Bijwerken mislukt" though nobody pressed Bijwerken); any other failed **action**
+    (rollback, cancel) is `LastError` too. Settings, `update` and Diagnose show `LastError` on its own line.
+  - `Pending` (current.txt ≠ the running folder) only counts a complete folder — for anything else the
+    loader falls back to the newest version, so "next start: X" would be untrue.
+  - One English wording of the state, `UpdateDecision.Describe` (`update`, Diagnose, the log,
+    UpdateLastResult); the pane's localized one is `UiText.UpdateLine`.
   - `Rollback()`: current.txt → the newest installed version older than the one Revit starts next.
 - `UpdateService`: the session's engine (layout for `RevitYear`, set in OnStartup from Revit), the
   startup check 8 s after OnStartup on a worker thread, `CheckAsync` / `InstallAsync` /
@@ -132,7 +143,12 @@ never replace the running file, and never takes effect before Revit restarts. So
   checksum (… expected … 000000000000...) - nothing was installed`; no 1.2.15 folder, no partial file,
   current.txt unchanged.
 - **DisableUpdates** in `%APPDATA%\VibeModel\managed.json` (read within a minute): `update` and
-  `update --install` → *Updates are switched off by IT*.
+  `update --install` → *Updates are switched off by IT* (since review round 1 the engine words it like
+  every other state: `State: updates are switched off by IT (managed.json DisableUpdates)`).
+- **Installer downgrade guard** (review round 1, a sandbox with its own APPDATA/LOCALAPPDATA): 1.2.14
+  installed → the 1.2.12 zip: *VibeModel 1.2.14 (newer, installed earlier) stays active; 1.2.12 is
+  installed next to it*, current.txt stays 1.2.14 → the same zip with `-AllowDowngrade`: current.txt
+  = 1.2.12. Before, a login script re-running an older zip would have undone every in-app update.
 - **Diagnose** `== Updates` with a model open: loader 1.0.0 by rule Current, running from
   `…\1.2.14\VibeModel.dll`, current.txt 1.2.14, versions 1.2.14 (running), 1.2.13, 1.2.12, source,
   last check, state.

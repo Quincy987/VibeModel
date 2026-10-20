@@ -37,7 +37,7 @@ No administrator rights, no terminal, no Node.js.
 2. **Close Revit and double-click `install.cmd`.** It installs the add-in for your Windows account, unblocks the files and checks the result. Nothing to fill in.
 3. **Open Revit**, click **VibeModel → Chat**. The first time, the chat shows **Connect to Claude**: paste the API key you got from your administrator (tested on the spot, stored encrypted), or install and log in to Claude Code with one click.
 
-**Updating:** when a newer version is published, the chat shows *VibeModel 1.2.14 beschikbaar* — click **Bijwerken** (Update) and it is active the next time you start Revit. No installer, no download page, and Revit does not ask *Always Load* again. Settings → *Versie en updates* can check now or go back to the previous version.
+**Updating:** when a newer version is published, the chat shows *VibeModel 1.2.15 beschikbaar* — click **Bijwerken** (Update) and it is active the next time you start Revit. No installer, no download page, and Revit does not ask *Always Load* again. Settings → *Versie en updates* can check now or go back to the previous version.
 
 Something not working? **Diagnose** in the chat header produces a report to send to whoever supports you. Rolling it out to a whole office (including your own update share, or updates switched off) is in [docs/deployment.md](docs/deployment.md).
 

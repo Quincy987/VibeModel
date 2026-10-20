@@ -69,8 +69,12 @@ namespace VibeModel.Services.Update
                 return source;
             }
 
-            // A folder (UNC or local) or the manifest file in it. Relative paths mean nothing here.
-            if (!Path.IsPathRooted(c) || (c.StartsWith("\\", StringComparison.Ordinal) && !c.StartsWith("\\\\", StringComparison.Ordinal)))
+            // A folder (UNC or local) or the manifest file in it: \\server\share\... or X:\... Relative
+            // paths, "\folder" (the current drive) and "X:folder" (that drive's current folder) mean
+            // nothing here.
+            bool unc = c.StartsWith(@"\\", StringComparison.Ordinal);
+            bool driveAbsolute = c.Length >= 3 && char.IsLetter(c[0]) && c[1] == ':' && (c[2] == '\\' || c[2] == '/');
+            if (!unc && !driveAbsolute)
             {
                 source.Error = "'" + c + "' is neither an https URL nor a full folder path (\\\\server\\share\\… or C:\\…)";
                 return source;

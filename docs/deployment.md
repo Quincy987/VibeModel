@@ -40,11 +40,12 @@ The release zip `VibeModel-v<version>-Revit<year>.zip` contains `install.cmd` / 
 install.cmd            :: interactive: asks only to close Revit, keeps its window open
 install.cmd -Quiet     :: no questions, no pause - for Intune / login scripts
 install.cmd -InstallClaudeCode   :: also install Claude Code (optional, see below)
+install.cmd -AllowDowngrade      :: start this version even when a newer one is installed
 ```
 
 `-Quiet` exit codes: `0` installed or already up to date, `1` failed (see `install.log`),
 `2` Revit is running and holds a file that has to change — the loader or the `.addin` (they change
-only when the loader itself changes), or an add-in an install from before 1.2.13 left in the add-ins
+only when the loader itself changes), or an add-in an install from before 1.2.14 left in the add-ins
 folder — retry later, `3` the Revit this build is for is
 not installed for this user. A zip is built for one Revit year (`VibeModel-v<version>-Revit2023.zip`
 → `revit-year.txt` = 2023): the installer installs only there and names other Revit versions it
@@ -54,24 +55,29 @@ The installer is idempotent: unchanged files are reported as "already up to date
 of the add-in alone installs **while Revit runs** (it goes into its own version folder) and is active
 after Revit restarts — the installer says so. It removes a `VibeModel.dll`, `Markdig.dll`,
 `VibeModel.pdb` or `VibeModel.PdfText\` that an older install left in the add-ins folder: the loader
-would start that one instead of the installed version (its rule for a developer build).
+would start that one instead of the installed version (its rule for a developer build). It never
+downgrades silently: when a newer version is already installed (by the in-app update or an earlier
+zip), an older zip is installed next to it and the newer one stays active — `-AllowDowngrade` starts
+the older one on purpose.
 
 **Intune / login script (per user):** run the zip's `install.cmd -Quiet` in the user's context
 (not SYSTEM — `%APPDATA%` must be the user's). Re-run it with a newer zip to update — or let users
-update in the app (next section).
+update in the app (next section). A login script that keeps running the same zip does no harm: it
+reports "already up to date" and never undoes a newer in-app update.
 Uninstall = delete the files listed in the table.
 
 ## Updates
 
-Since 1.2.13 the chat pane updates VibeModel itself. Once a day (8 s after Revit starts, in the
+Since 1.2.14 the chat pane updates VibeModel itself (an install from before 1.2.14 has no loader yet:
+run that release's `install.cmd` once; every later version can come through the app). Once a day (8 s after Revit starts, in the
 background) it reads the update manifest; when a newer version is published, a slim banner under the
-chat header says **VibeModel 1.2.14 beschikbaar (2,6 MB)** with *Bijwerken* (Update), *Wat is nieuw*
+chat header says **VibeModel 1.2.15 beschikbaar (2,6 MB)** with *Bijwerken* (Update), *Wat is nieuw*
 (the release page) and *Niet nu*. *Bijwerken* downloads the release zip, checks its size and SHA-256
 against the manifest, unpacks it into `versions\Revit<year>\<version>\` and points `current.txt` at it.
 **It is active after the next Revit start** — Revit is never restarted for the user, the running
 version is never touched and nothing changes in the model. The loader stays the same file, so Revit
-does **not** ask *Always Load* again (measured: an unsigned 1.2.13 → 1.2.14 update started without a
-prompt). The running version, the new one and one older version are kept; Settings → *Versie en
+does **not** ask *Always Load* again (measured with unsigned test builds: an update to a new add-in
+version started without a prompt). The running version, the new one and one older version are kept; Settings → *Versie en
 updates* offers *Nu controleren* and *Terug naar &lt;version&gt;* (a rollback, at the next start). In
 the chat or a terminal: `update`, `update --install`, `update --rollback`.
 
@@ -218,7 +224,7 @@ Windows store too (`bundled,system` by default); otherwise point `NODE_EXTRA_CA_
 
 ## Signing
 
-Revit checks the Authenticode signature of the assembly the `.addin` names — since 1.2.13 the
+Revit checks the Authenticode signature of the assembly the `.addin` names — since 1.2.14 the
 **loader** (`VibeModel.Loader.dll`), which in-app updates never replace. Measured in Revit 2023:
 
 | The DLL is… | Revit shows |

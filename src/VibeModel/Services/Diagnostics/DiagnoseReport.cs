@@ -147,7 +147,9 @@ namespace VibeModel.Services.Diagnostics
                               "automatic check " + (SettingsManager.GetUpdateCheck() ? "on" : "off")));
                 var last = SettingsManager.GetUpdateLastChecked();
                 sb.AppendLine("Last check: " + (last.HasValue ? last.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + " - " + SettingsManager.GetUpdateLastResult() : "never"));
-                sb.AppendLine("State now: " + Update.UpdateEngine.OneLine(status) + (status.Note != null ? " - " + status.Note : ""));
+                sb.AppendLine("State now: " + Update.UpdateDecision.Describe(status));
+                if (status.LastError != null) sb.AppendLine("Last check/action failed: " + status.LastError);
+                if (status.Note != null) sb.AppendLine("Note: " + status.Note);
             }
             catch (Exception ex)
             {

@@ -126,6 +126,8 @@ namespace VibeModel.Tests
                 UpdateSource.Resolve("https://mirror.example/vm/custom.json", "2023").Manifest.AbsoluteUri);
             Assert.NotNull(UpdateSource.Resolve("http://mirror.example/vm", "2023").Error);
             Assert.NotNull(UpdateSource.Resolve("relative\\folder", "2023").Error);
+            Assert.NotNull(UpdateSource.Resolve("\\folder\\on\\this\\drive", "2023").Error);
+            Assert.NotNull(UpdateSource.Resolve("C:folder", "2023").Error);
 
             var unc = UpdateSource.Resolve("\\\\server\\share\\VibeModel", "2023");
             Assert.True(unc.IsFile);
@@ -197,7 +199,7 @@ namespace VibeModel.Tests
                 Assert.False(string.IsNullOrWhiteSpace(en), state + " en");
                 Assert.NotEqual(nl, en);
                 Assert.DoesNotContain(Strings.Keys, k => k == nl || k == en);   // never a raw key
-                Assert.False(string.IsNullOrWhiteSpace(UpdateCommand.StateText(s)), state + " command");
+                Assert.False(string.IsNullOrWhiteSpace(UpdateDecision.Describe(s)), state + " command");
             }
             Assert.Equal("VibeModel 1.2.13 beschikbaar (3,3 MB)",
                 UiText.UpdateLine(new UpdateStatus { State = UpdateState.Available, Latest = m }, null, "nl"));
@@ -316,7 +318,7 @@ namespace VibeModel.Tests
             var s = Engine().Check(manual: true);
             Assert.Equal(UpdateState.Available, s.State);
             Assert.Equal("1.2.13", s.Latest.VersionText);
-            Assert.Equal("1.2.13 available", _settings.LastResult);
+            Assert.StartsWith("VibeModel 1.2.13 is available", _settings.LastResult);
             Assert.NotNull(_settings.LastChecked);
         }
 
@@ -372,7 +374,7 @@ namespace VibeModel.Tests
             var s = engine.Check(manual: true);
             Assert.Equal(UpdateState.Available, s.State);
             Assert.Contains("checksum", s.Reason);
-            Assert.Contains("the last attempt failed", UpdateCommand.StateText(s));
+            Assert.Contains("the last install failed", UpdateDecision.Describe(s));
         }
 
         [Fact]
@@ -380,7 +382,7 @@ namespace VibeModel.Tests
         {
             InstallFolder("1.2.11");
             var s = Engine().Rollback();
-            Assert.StartsWith("rolled back", UpdateCommand.StateText(s));
+            Assert.StartsWith("rolled back", UpdateDecision.Describe(s));
             Assert.Equal("Revit start de volgende keer VibeModel 1.2.11.", UiText.UpdateLine(s, null, "nl"));
         }
 
@@ -469,6 +471,52 @@ namespace VibeModel.Tests
             var s = Engine().Check(manual: false);
             Assert.Equal(UpdateState.Available, s.State);
             Assert.Equal("1.2.13", s.Latest.VersionText);
+        }
+
+        [Fact]
+        public void FailedCheck_WithACachedManifest_IsNotAFailedInstall()
+        {
+            Publish("1.2.13");
+            Assert.Equal(UpdateState.Available, Engine().Check(manual: true).State);
+            Directory.Delete(_mirror, true);   // offline now
+            var s = Engine().Check(manual: true);
+            Assert.Equal(UpdateState.Available, s.State);     // the earlier check still decides
+            Assert.Null(s.Reason);                            // so the banner offers the update, no "Bijwerken mislukt"
+            Assert.Contains("does not exist", s.LastError);
+            Assert.Equal("VibeModel 1.2.13 beschikbaar (" + UiText.Megabytes(s.Latest.Size, "nl") + ")", UiText.UpdateLine(s, null, "nl"));
+            Assert.StartsWith("failed:", _settings.LastResult);
+        }
+
+        [Fact]
+        public void Pending_NeedsACompleteFolder()
+        {
+            Directory.CreateDirectory(Path.Combine(_versions, "1.2.13"));   // no VibeModel.dll
+            File.WriteAllText(Path.Combine(_versions, "current.txt"), "1.2.13");
+            Assert.Null(Engine().Pending);
+            InstallFolder("1.2.13");
+            Assert.Equal("1.2.13", Engine().Pending);
+        }
+
+        [Fact]
+        public void FailedUnpack_LeavesNoZipBehind()
+        {
+            // A zip without VibeModel.dll at its top: verified, unpacked, refused.
+            var zipName = "VibeModel-v1.2.13-Revit2023.zip";
+            var zip = Path.Combine(_mirror, zipName);
+            using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+                Add(archive, "sub/VibeModel.dll", "nested");
+            string sha;
+            using (var h = SHA256.Create())
+            using (var f = File.OpenRead(zip))
+                sha = BitConverter.ToString(h.ComputeHash(f)).Replace("-", "").ToLowerInvariant();
+            File.WriteAllText(Path.Combine(_mirror, "latest-Revit2023.json"),
+                "{\"version\":\"1.2.13\",\"revitYear\":\"2023\",\"zip\":\"" + zipName + "\",\"sha256\":\"" + sha +
+                "\",\"size\":" + new FileInfo(zip).Length + "}");
+            var s = Engine().Install();
+            Assert.Contains("no VibeModel.dll at its top level", s.Reason);
+            Assert.Empty(Directory.GetFiles(_downloads, "*.zip*"));
+            Assert.False(Directory.Exists(Path.Combine(_versions, "1.2.13")));
+            Assert.False(Directory.Exists(Path.Combine(_versions, "1.2.13.tmp")));
         }
 
         [Fact]

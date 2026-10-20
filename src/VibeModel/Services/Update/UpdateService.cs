@@ -77,7 +77,8 @@ namespace VibeModel.Services.Update
                 {
                     await Task.Delay(StartupDelay).ConfigureAwait(false);
                     var status = Engine.Check(manual: false);
-                    Logger.Info("Update check at startup: " + UpdateEngine.OneLine(status) + " (source " + Engine.Source.Describe() + ")");
+                    Logger.Info("Update check at startup: " + UpdateDecision.Describe(status) +
+                                (status.LastError != null ? " (" + status.LastError + ")" : "") + " - source " + Engine.Source.Describe());
                 }
                 catch (Exception ex)
                 {

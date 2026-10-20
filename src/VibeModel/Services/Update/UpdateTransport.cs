@@ -38,7 +38,8 @@ namespace VibeModel.Services.Update
 
         public string GetText(Uri uri, TimeSpan timeout, CancellationToken ct)
         {
-            if (uri.IsFile) return ReadFile(uri.LocalPath, timeout);
+            // A share gets the add-in's usual 3 s deadline (PathProbe.Default), never more than asked.
+            if (uri.IsFile) return ReadFile(uri.LocalPath, timeout < Standards.PathProbe.Default ? timeout : Standards.PathProbe.Default);
 
             using (var client = AnthropicHttp.CreateClient(timeout))
             using (var request = new HttpRequestMessage(HttpMethod.Get, uri))

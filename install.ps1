@@ -39,16 +39,22 @@
     (irm https://claude.ai/install.ps1 | iex) and check `claude --version`. Optional: the chat
     works with an API key alone, and the chat pane can install Claude Code too.
 
+.PARAMETER AllowDowngrade
+    Start this version even when a newer one is installed (by the in-app update or an earlier
+    install). Without it an older zip is installed next to the newer version, which stays active.
+
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -Quiet
     .\install.ps1 -InstallClaudeCode
+    .\install.ps1 -AllowDowngrade
 #>
 
 param(
     [switch]$NoPause,
     [switch]$Quiet,
-    [switch]$InstallClaudeCode
+    [switch]$InstallClaudeCode,
+    [switch]$AllowDowngrade
 )
 
 $ErrorActionPreference = 'Stop'
@@ -308,8 +314,23 @@ foreach ($version in $revitVersions) {
     }
 
     # The version the loader starts next time (ASCII, one line - what the in-app update writes too).
-    Set-Content -Path (Join-Path $versionsRoot "current.txt") -Value $versionName -Encoding ASCII
-    Say "  current.txt -> $versionName"
+    # Never a silent downgrade: a login script that re-runs an older zip must not undo an update
+    # the user installed in the app. -AllowDowngrade (or the app's own rollback) goes back on purpose.
+    $currentFile = Join-Path $versionsRoot "current.txt"
+    $current = if (Test-Path $currentFile) { (Get-Content $currentFile -TotalCount 1 | Out-String).Trim() } else { "" }
+    $currentVersion = $null
+    $newer = $current -and [version]::TryParse($current, [ref]$currentVersion) -and
+             (Test-Path (Join-Path (Join-Path $versionsRoot $current) "VibeModel.dll")) -and
+             ($currentVersion -gt [version]$versionName)
+    if ($newer -and -not $AllowDowngrade) {
+        $script:startsNext = $current
+        Say "  VibeModel $current (newer, installed earlier) stays active; $versionName is installed next to it." "Yellow"
+        Say "  Run install.cmd -AllowDowngrade to start $versionName instead, or use Settings -> rollback in the chat pane." "Yellow"
+    } else {
+        $script:startsNext = $versionName
+        Set-Content -Path $currentFile -Value $versionName -Encoding ASCII
+        Say "  current.txt -> $versionName"
+    }
 }
 
 # --- Verify: every installed file must be there and unblocked ---
@@ -374,7 +395,7 @@ if ($InstallClaudeCode) {
 
 Write-Host ""
 if ($revitWasRunning) {
-    Say "Done! Revit is still running: VibeModel $versionName is active after you restart Revit." "Cyan"
+    Say "Done! Revit is still running: VibeModel $($script:startsNext) is active after you restart Revit." "Cyan"
 } else {
     Say "Done! Start Revit -> tab VibeModel -> Chat. The first time, the chat asks how to connect to Claude." "Cyan"
 }

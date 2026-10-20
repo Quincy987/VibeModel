@@ -104,8 +104,10 @@ namespace VibeModel.Services.Update
             get
             {
                 if (InPlace) return null;
+                // Only a complete folder: for anything else the loader falls back to the newest version.
                 var current = _layout.ReadCurrent();
-                return current != null && !string.Equals(current, RunningFolder, StringComparison.OrdinalIgnoreCase) ? current : null;
+                return current != null && _layout.IsComplete(current) &&
+                       !string.Equals(current, RunningFolder, StringComparison.OrdinalIgnoreCase) ? current : null;
             }
         }
 
@@ -153,7 +155,7 @@ namespace VibeModel.Services.Update
             }
 
             var source = Source;
-            if (source.Manifest == null) return Fail("update source " + source.Describe(), record: true);
+            if (source.Manifest == null) return CheckFailed("update source " + source.Describe());
 
             UpdateManifest manifest;
             Uri used;
@@ -173,17 +175,17 @@ namespace VibeModel.Services.Update
                         _transport.GetText(new Uri(UpdateSource.ReleasesApi), CheckTimeout, ct),
                         UpdateManifest.FileName(_running.RevitYear));
                     if (picked == null)
-                        return Fail("no published release has " + UpdateManifest.FileName(_running.RevitYear) +
-                                    " yet (releases before in-app updates do not)", record: true);
+                        return CheckFailed("no published release has " + UpdateManifest.FileName(_running.RevitYear) +
+                                           " yet (releases before in-app updates do not)");
                     used = picked;
                     json = _transport.GetText(used, CheckTimeout, ct);
                 }
                 if (!UpdateManifest.TryParse(json, _running.RevitYear, out manifest, out var error))
-                    return Fail(error, record: true);
+                    return CheckFailed(error);
             }
             catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
             {
-                return Fail("could not read " + DescribeUri(source.Manifest) + ": " + Plain(ex), record: true);
+                return CheckFailed("could not read " + DescribeUri(source.Manifest) + ": " + Plain(ex));
             }
 
             lock (_lock)
@@ -194,7 +196,7 @@ namespace VibeModel.Services.Update
             SaveCachedManifest();
             var status = Decide(null);
             status.CheckedAt = DateTime.UtcNow;
-            _settings.RecordCheck(status.CheckedAt.Value, OneLine(status));
+            _settings.RecordCheck(status.CheckedAt.Value, UpdateDecision.Describe(status));
             return Publish(status);
         }
 
@@ -209,6 +211,7 @@ namespace VibeModel.Services.Update
         {
             if (Interlocked.CompareExchange(ref _installing, 1, 0) != 0) return Status;
             string partial = null;
+            string zip = null;
             string tmp = null;
             try
             {
@@ -227,14 +230,14 @@ namespace VibeModel.Services.Update
                 }
                 var folder = m.VersionText;
                 if (!LoaderPaths.IsPlainFolderName(folder) || !LoaderPaths.TryParseFolderVersion(folder, out _))
-                    return Fail("the manifest's version '" + folder + "' cannot be a folder name", record: false);
+                    return ActionFailed("the manifest's version '" + folder + "' cannot be a folder name");
 
                 if (!_layout.IsComplete(folder))
                 {
                     var zipUri = UpdateSource.ZipUri(manifestUri ?? Source.Manifest, m);
                     Directory.CreateDirectory(_layout.DownloadDir);
                     partial = Path.Combine(_layout.DownloadDir, m.Zip + ".partial");
-                    var zip = Path.Combine(_layout.DownloadDir, m.Zip);
+                    zip = Path.Combine(_layout.DownloadDir, m.Zip);
                     TryDelete(partial);
 
                     SetProgress(new InstallProgress { Phase = "download", Bytes = 0, Total = m.Size }, force: true);
@@ -280,7 +283,6 @@ namespace VibeModel.Services.Update
                     if (Directory.Exists(final)) Directory.Delete(final, true);   // incomplete leftover (no VibeModel.dll)
                     Directory.Move(tmp, final);
                     tmp = null;
-                    TryDelete(zip);
                 }
 
                 var note = LoaderNote(_layout.FolderPath(folder), m);
@@ -299,7 +301,7 @@ namespace VibeModel.Services.Update
             }
             catch (OperationCanceledException)
             {
-                return Fail("the install was cancelled", record: false);
+                return ActionFailed("the install was cancelled");
             }
             catch (Exception ex)
             {
@@ -307,7 +309,9 @@ namespace VibeModel.Services.Update
             }
             finally
             {
-                if (partial != null) TryDelete(partial);
+                // Nothing half-done stays behind; the next attempt downloads again.
+                TryDelete(partial);
+                TryDelete(zip);
                 if (tmp != null) TryDeleteDir(tmp);
                 lock (_lock) _progress = null;
                 Interlocked.Exchange(ref _installing, 0);
@@ -344,14 +348,14 @@ namespace VibeModel.Services.Update
             if (Volatile.Read(ref _installing) != 0) return Status;
             if (InPlace) return Publish(Decide(null));
             var target = RollbackTarget;
-            if (target == null) return Fail("no earlier version is installed in " + _layout.VersionsRoot, record: false);
+            if (target == null) return ActionFailed("no earlier version is installed in " + _layout.VersionsRoot);
             try
             {
                 _layout.WriteCurrent(target);
             }
             catch (Exception ex)
             {
-                return Fail("could not write " + _layout.CurrentFile + ": " + Plain(ex), record: false);
+                return ActionFailed("could not write " + _layout.CurrentFile + ": " + Plain(ex));
             }
             Infrastructure.Logger.Info("Update: rolled back - Revit starts VibeModel " + target + " next time");
             var status = Decide(null);
@@ -379,6 +383,14 @@ namespace VibeModel.Services.Update
             return status;
         }
 
+        // Three kinds of failure, one place that words them:
+        // - a check: without a known manifest the state is Failed; with one (cached) it still decides,
+        //   and the failure is the status' LastError — never shown as a failed install;
+        // - an install: the update stays Available with the failure as its Reason (the banner says the
+        //   install failed), also after a later check of the same version;
+        // - another action (rollback, cancel): LastError, the state as it is.
+        private UpdateStatus CheckFailed(string reason) => Failure(reason, check: true);
+
         private UpdateStatus InstallFailed(string version, string reason)
         {
             lock (_lock)
@@ -386,19 +398,21 @@ namespace VibeModel.Services.Update
                 _installErrorVersion = version;
                 _installError = reason;
             }
-            return Fail(reason, record: false);
+            return Failure(reason, check: false);
         }
 
-        private UpdateStatus Fail(string reason, bool record)
+        private UpdateStatus ActionFailed(string reason) => Failure(reason, check: false);
+
+        private UpdateStatus Failure(string reason, bool check)
         {
             Infrastructure.Logger.Warn("Update: " + reason);
-            var status = Decide(reason);
-            // A known manifest still decides (an install that failed leaves the update Available,
-            // with the reason shown); without one the state is Failed.
-            if (status.State == UpdateState.Available || status.State == UpdateState.UpToDate || status.State == UpdateState.NotChecked)
-                status = status.With(status.State == UpdateState.NotChecked ? UpdateState.Failed : status.State, reason);
-            status.CheckedAt = record ? DateTime.UtcNow : Status.CheckedAt;
-            if (record) _settings.RecordCheck(status.CheckedAt.Value, "failed: " + reason);
+            var status = Decide(check ? reason : null);
+            if (status.State == UpdateState.NotChecked)
+                status = status.With(UpdateState.Failed, reason);
+            else if (status.Reason != reason)
+                status.LastError = reason;
+            status.CheckedAt = check ? DateTime.UtcNow : Status.CheckedAt;
+            if (check) _settings.RecordCheck(status.CheckedAt.Value, "failed: " + reason);
             return Publish(status);
         }
 
@@ -433,21 +447,6 @@ namespace VibeModel.Services.Update
             catch (Exception ex)
             {
                 Infrastructure.Logger.Warn("Update: a status listener failed: " + ex.Message);
-            }
-        }
-
-        /// <summary>One line for settings.json / Diagnose: "1.2.13 available", "up to date (1.2.13)", …</summary>
-        public static string OneLine(UpdateStatus s)
-        {
-            var latest = s.Latest?.VersionText;
-            switch (s.State)
-            {
-                case UpdateState.Available: return latest + " available";
-                case UpdateState.UpToDate: return "up to date (latest " + latest + ")";
-                case UpdateState.ReadyAtRestart: return s.Pending + " installed, active after Revit restarts";
-                case UpdateState.LoaderTooOld: return latest + " available, needs install.cmd (loader too old)";
-                case UpdateState.Failed: return "failed: " + s.Reason;
-                default: return s.State.ToString();
             }
         }
 

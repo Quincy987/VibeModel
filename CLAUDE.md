@@ -845,6 +845,9 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   curl -s -H "X-VibeModel-Token: $TOKEN" "http://127.0.0.1:18884/update?args=--install"   # background install
   curl -s -H "X-VibeModel-Token: $TOKEN" "http://127.0.0.1:18884/update?args=--rollback"  # previous version next start
   ```
+  A failed check with a cached manifest keeps that state and sets `UpdateStatus.LastError` (never shown
+  as a failed install); one English wording `UpdateDecision.Describe`, the pane's `UiText.UpdateLine`.
+  `install.ps1` never downgrades silently (`-AllowDowngrade`).
   States: notChecked, disabled, upToDate, available (+ the last failed install's reason), installing,
   readyAtRestart (also a pending rollback), inPlaceBuild (a developer build — never updates),
   loaderTooOld (manifest `minLoader` → run install.cmd), failed. `package-release.ps1` writes the zip,

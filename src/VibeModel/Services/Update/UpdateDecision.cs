@@ -33,8 +33,18 @@ namespace VibeModel.Services.Update
         public UpdateManifest Latest { get; set; }
         /// <summary>The version Revit starts next time when it is not the running one (current.txt).</summary>
         public string Pending { get; set; }
-        /// <summary>Plain-language reason (Failed, InPlaceBuild, LoaderTooOld) — English, for logs and `update`.</summary>
+        /// <summary>
+        /// Why the state is what it is — English, for logs and `update`: Failed, InPlaceBuild,
+        /// LoaderTooOld, Disabled, and Available after a failed install (the banner then says the
+        /// install failed).
+        /// </summary>
         public string Reason { get; set; }
+        /// <summary>
+        /// A check or action that failed WITHOUT changing the state — a check that could not reach the
+        /// source while an earlier check's manifest still decides, a refused rollback. Never shown as a
+        /// failed install.
+        /// </summary>
+        public string LastError { get; set; }
         /// <summary>A note that does not change the state ("the loader changed too …").</summary>
         public string Note { get; set; }
         public DateTime? CheckedAt { get; set; }
@@ -49,6 +59,7 @@ namespace VibeModel.Services.Update
                 Latest = Latest,
                 Pending = Pending,
                 Reason = reason ?? Reason,
+                LastError = LastError,
                 Note = Note,
                 CheckedAt = CheckedAt,
                 Running = Running
@@ -99,6 +110,34 @@ namespace VibeModel.Services.Update
                     "). Download " + latest.Zip + " and run install.cmd from it once.");
 
             return status.With(UpdateState.Available);
+        }
+
+        /// <summary>
+        /// The state in plain English with its reason — the one English wording, used by `update`,
+        /// Diagnose, the log and settings.json's UpdateLastResult (the pane's own, localized wording
+        /// is <c>UiText.UpdateLine</c>).
+        /// </summary>
+        public static string Describe(UpdateStatus s)
+        {
+            if (s == null) return "not checked yet";
+            var latest = s.Latest?.VersionText;
+            switch (s.State)
+            {
+                case UpdateState.Disabled: return "updates are switched off by IT (managed.json DisableUpdates)";
+                case UpdateState.UpToDate: return "up to date (latest " + latest + ")";
+                case UpdateState.Available:
+                    return "VibeModel " + latest + " is available - `update --install` (or the chat pane's Update button)" +
+                           (s.Reason != null ? "; the last install failed: " + s.Reason : "");
+                case UpdateState.Installing: return "installing VibeModel " + latest;
+                case UpdateState.ReadyAtRestart:
+                    return IsRollback(s.Pending, s.Running)
+                        ? "rolled back - Revit starts VibeModel " + s.Pending + " next time"
+                        : "VibeModel " + s.Pending + " is installed and becomes active after Revit restarts";
+                case UpdateState.InPlaceBuild: return "developer build / no loader - " + s.Reason;
+                case UpdateState.LoaderTooOld: return "needs install.cmd - " + s.Reason;
+                case UpdateState.Failed: return "check failed - " + s.Reason;
+                default: return "not checked yet";
+            }
         }
     }
 }
