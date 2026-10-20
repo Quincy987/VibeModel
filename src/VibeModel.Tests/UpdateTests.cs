@@ -474,6 +474,17 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void AutomaticCheck_Within24Hours_WithoutACache_StillChecks()
+        {
+            // Another Revit year (or a changed source) checked an hour ago; this one knows nothing yet.
+            _settings.LastChecked = DateTime.UtcNow.AddHours(-1);
+            Publish("1.2.13");
+            var s = Engine().Check(manual: false);
+            Assert.Equal(UpdateState.Available, s.State);
+            Assert.True(_settings.LastChecked > DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        [Fact]
         public void FailedCheck_WithACachedManifest_IsNotAFailedInstall()
         {
             Publish("1.2.13");

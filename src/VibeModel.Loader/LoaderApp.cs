@@ -106,16 +106,20 @@ namespace VibeModel.Loader
 
         /// <summary>
         /// Markdig and other dependencies normally resolve from the add-in's own folder (the LoadFrom
-        /// context probes it); this is the fallback for anything that does not.
+        /// context probes it); this is the fallback for anything that does not. The handler sees every
+        /// failed resolve in Revit's AppDomain, so it only answers with the exact assembly asked for
+        /// (same name, and the same version when one is asked) — never another add-in's different version.
         /// </summary>
         private static Assembly ResolveFromPayloadFolder(object sender, ResolveEventArgs args)
         {
             try
             {
                 if (string.IsNullOrEmpty(_payloadFolder)) return null;
-                var name = new AssemblyName(args.Name).Name;
-                var candidate = Path.Combine(_payloadFolder, name + ".dll");
-                return File.Exists(candidate) ? Assembly.LoadFrom(candidate) : null;
+                var wanted = new AssemblyName(args.Name);
+                var candidate = Path.Combine(_payloadFolder, wanted.Name + ".dll");
+                if (!File.Exists(candidate)) return null;
+                if (wanted.Version != null && AssemblyName.GetAssemblyName(candidate).Version != wanted.Version) return null;
+                return Assembly.LoadFrom(candidate);
             }
             catch
             {

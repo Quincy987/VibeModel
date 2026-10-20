@@ -149,8 +149,14 @@ namespace VibeModel.Services.Update
 
             if (!manual)
             {
+                if (!_settings.AutoCheck) return Refresh();
+                // The 24 h pause only holds while this Revit year and source have a cached manifest:
+                // LastChecked is one setting for every Revit year, and a changed UpdateSource discards
+                // the cache — either would otherwise go a day without any answer.
+                bool known;
+                lock (_lock) known = _manifest != null;
                 var last = _settings.LastChecked;
-                if (!_settings.AutoCheck || (last.HasValue && DateTime.UtcNow - last.Value < AutoCheckInterval))
+                if (known && last.HasValue && DateTime.UtcNow - last.Value < AutoCheckInterval)
                     return Refresh();
             }
 

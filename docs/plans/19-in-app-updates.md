@@ -60,10 +60,18 @@ never replace the running file, and never takes effect before Revit restarts. So
 - `UpdateEngine` — the I/O, with `IUpdateTransport` (https through `AnthropicHttp.CreateHandler()`:
   Windows proxy with the user's credentials, Windows certificate store; file:// with a 3 s deadline on
   the manifest) and `IUpdateSettings`, so tests run against a temp folder and a local "mirror".
-  - `Check(manual)`: automatic checks are skipped when Settings says so or the last one was < 24 h ago
-    — then the manifest cached in `%LOCALAPPDATA%\VibeModel\updates\manifest-Revit<year>.json` (with
-    the source it came from) still decides, so the banner shows after every restart. GitHub's latest
-    release without a manifest (404) → the releases API → the first published `v…` release that has one.
+  - `Check(manual)`: automatic checks are skipped when Settings says so, or when the last one was
+    < 24 h ago AND a manifest is cached for this Revit year and source
+    (`%LOCALAPPDATA%\VibeModel\updates\manifest-Revit<year>.json`, with the source it came from) — that
+    cache then decides, so the banner shows after every restart. (Review round 2: `UpdateLastChecked` is
+    one setting for every Revit year, so a 2024 Revit started an hour after a 2023 one would otherwise
+    have gone a day without an answer; so would a changed `UpdateSource`.) GitHub's latest release
+    without a manifest (404) → the releases API → the first published `v…` release that has one.
+  - Measured against the real GitHub (review round 2, through `UpdateTransport` loaded in PowerShell):
+    `releases/latest/download/latest-Revit2023.json` → 404 (v1.2.10, no manifest) →
+    `UpdateNotFoundException`; the releases API answered (49 kB), `PickFromReleases` → none (no release
+    has a manifest yet); the v1.2.10 zip downloaded through GitHub's redirect (2,609,123 bytes) — also
+    with the `Accept: application/json` header `GetText` sends.
   - `Install()`: download to `updates\<zip>.partial` (10 min deadline; a stalled connection is closed
     by the cancellation), size + SHA-256 must match ("the download did not match the published
     checksum … nothing was installed"), unpack into `<version>.tmp`, check `VibeModel.dll` is at its top,
