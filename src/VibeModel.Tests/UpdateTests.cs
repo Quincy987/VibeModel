@@ -147,6 +147,13 @@ namespace VibeModel.Tests
             Assert.Equal("\\\\server\\share\\VibeModel\\VibeModel-v1.2.13-Revit2023.zip", UpdateSource.ZipUri(share, m).LocalPath);
             var mirror = UpdateSource.Resolve("https://mirror.example/vm", "2023").Manifest;
             Assert.Equal("https://mirror.example/vm/VibeModel-v1.2.13-Revit2023.zip", UpdateSource.ZipUri(mirror, m).AbsoluteUri);
+
+            // A container-wide access token in the query stays on both addresses.
+            var signed = UpdateSource.Resolve("https://store.example/vm?sv=2024&sig=abc%3D", "2023").Manifest;
+            Assert.Equal("https://store.example/vm/latest-Revit2023.json?sv=2024&sig=abc%3D", signed.AbsoluteUri);
+            Assert.Equal("https://store.example/vm/VibeModel-v1.2.13-Revit2023.zip?sv=2024&sig=abc%3D", UpdateSource.ZipUri(signed, m).AbsoluteUri);
+            var signedJson = UpdateSource.Resolve("https://store.example/vm/latest-Revit2023.json?sig=x", "2023").Manifest;
+            Assert.Equal("https://store.example/vm/VibeModel-v1.2.13-Revit2023.zip?sig=x", UpdateSource.ZipUri(signedJson, m).AbsoluteUri);
         }
 
         [Fact]

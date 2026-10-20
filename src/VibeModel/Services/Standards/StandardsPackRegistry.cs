@@ -67,7 +67,10 @@ namespace VibeModel.Services.Standards
             {
                 try
                 {
-                    var dir = Path.GetDirectoryName(typeof(StandardsPackRegistry).Assembly.Location);
+                    // The add-in folder the user knows: Revit's add-ins folder, where the loader lives
+                    // (plan 19). VibeModel.dll itself runs from a version folder that every update replaces.
+                    var anchor = Update.LoaderInfo.Path ?? typeof(StandardsPackRegistry).Assembly.Location;
+                    var dir = Path.GetDirectoryName(anchor);
                     return string.IsNullOrEmpty(dir) ? null : Path.Combine(dir, "standards");
                 }
                 catch { return null; }

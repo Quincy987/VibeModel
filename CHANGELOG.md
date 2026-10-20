@@ -18,7 +18,10 @@
 - Settings → *Versie en updates*: installed version and loader, where it runs from, the update source,
   *Automatisch controleren op updates* (once a day, at start), *Nu controleren*, and *Terug naar
   <version>* (rollback at the next start; the previous version is kept). Diagnose has an `== Updates`
-  section; `update`, `update --install`, `update --rollback` do the same from the chat or a terminal.
+  section and shows the loader's signature (what Revit asks about); `update`, `update --install`,
+  `update --rollback` do the same from the chat or a terminal.
+- A standards pack in `<add-in folder>\standards\` is still found: that is Revit's add-ins folder,
+  where the loader sits, not the version folder an update replaces.
 - For IT: `managed.json` `DisableUpdates` (switch it off) and `UpdateSource` (your own share or https
   mirror of the release assets). Each release now carries `latest-Revit<year>.json` and a `.sha256`
   next to the zip, and the loader is signed along with the add-in. See *Updates* in docs/deployment.md.

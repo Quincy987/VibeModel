@@ -169,6 +169,16 @@ never replace the running file, and never takes effect before Revit restarts. So
 - **Ribbon Chat button** with the add-in in a version folder: pane hidden through `exec`, the ribbon's
   *Chat* invoked → the pane is back (the button's assembly path is the payload's own location).
 
+## Review round 4
+
+- Code that looks next to VibeModel.dll: the PDF helper is shipped in the version folder (found as
+  before); `StandardsPackRegistry.AddinStandardsRoot` — "packs shipped with the add-in" — now anchors
+  on the loader's folder (Revit's add-ins folder), which is where users and IT put one and which no
+  update replaces; without a loader it is VibeModel.dll's folder as before.
+- Diagnose adds `Loader signature (what Revit asks about)` next to the add-in's own signature.
+- An https mirror's query (a folder-wide access token) stays on the manifest and the zip address;
+  before, a folder URL with a query got the file name appended after the query.
+
 ## Not done / later
 
 - No signed build yet: with an office certificate the one remaining prompt (a new loader) disappears too.

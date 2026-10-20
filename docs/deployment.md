@@ -105,7 +105,9 @@ latest-Revit2023.json                     the manifest:
 (`\\server\apps\VibeModel`) or an https location — and set `UpdateSource` in `managed.json` to it (or
 to the manifest file itself). Laptops then update from there only, when you put a new version there; a
 share that does not answer within 3 s is reported as a failed check, never waited on. Keep the zip's
-release name and do not edit it: the manifest's checksum is what is checked.
+release name and do not edit it: the manifest's checksum is what is checked. An https mirror that
+needs an access token in the URL (e.g. `https://store/vm?sv=…&sig=…`, valid for the whole folder)
+works: the query is kept on both the manifest and the zip address.
 
 | managed.json | Effect |
 |---|---|

@@ -680,7 +680,8 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
 - **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
 - **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
-  e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`.
+  e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`
+  (the loader's folder, Revit's add-ins folder — stable across in-app updates; `StandardsPackRegistry.AddinStandardsRoot`).
   A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
   background (startup, `--refresh`, Settings → Save) and only the mirror is read.
   Settings → *Office source documents folder* (`StandardsFolder`) is what `standards --index` reads.
@@ -839,7 +840,10 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   `UpdateLastResult`. UI: `UI/UpdateBanner.cs` (row 1 of the pane; AutomationIds `UpdateText`,
   `UpdateInstall`, `UpdateNotes`, `UpdateLater` — the Border itself has no automation peer), Settings →
   *Versie en updates* (`SettingsUpdateCheck`, `SettingsUpdateCheckNow`, `SettingsUpdateRollback`,
-  `SettingsUpdateStatus`), Diagnose `== Updates`. Commands:
+  `SettingsUpdateStatus`), Diagnose `== Updates` (+ a `Loader signature` line next to `Signature`).
+  Code that looks next to VibeModel.dll (`DocumentIndex.PdfToolPath`) finds what the zip ships in the
+  version folder; the user's `<add-in folder>\standards\` is the loader's folder (`AddinStandardsRoot`).
+  Commands:
   ```bash
   curl -s -H "X-VibeModel-Token: $TOKEN" http://127.0.0.1:18884/update              # check now + state
   curl -s -H "X-VibeModel-Token: $TOKEN" "http://127.0.0.1:18884/update?args=--install"   # background install

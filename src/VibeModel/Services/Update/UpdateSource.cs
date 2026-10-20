@@ -63,9 +63,11 @@ namespace VibeModel.Services.Update
                     source.Error = "'" + c + "' is not a valid URL";
                     return source;
                 }
+                // A folder URL gets the file name appended; its query (an access token) stays on the end.
                 source.Manifest = uri.AbsolutePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
                     ? uri
-                    : new Uri(new Uri(uri.AbsoluteUri.TrimEnd('/') + "/"), file);
+                    : new UriBuilder(new Uri(new Uri(uri.GetLeftPart(UriPartial.Path).TrimEnd('/') + "/"), file))
+                        { Query = uri.Query.TrimStart('?') }.Uri;
                 return source;
             }
 
@@ -95,19 +97,19 @@ namespace VibeModel.Services.Update
         /// Where the zip a manifest names lives: next to the manifest. For GitHub's moving
         /// "latest/download" address the zip is taken from the manifest's own release tag
         /// (<c>/releases/download/v&lt;version&gt;/</c>), so a release published between the two downloads
-        /// cannot hand over a different zip than the one the checksum belongs to.
+        /// cannot hand over a different zip than the one the checksum belongs to. An https mirror's
+        /// query (a container-wide access token, e.g. an Azure SAS) is kept on the zip's address.
         /// </summary>
         public static Uri ZipUri(Uri manifest, UpdateManifest m)
         {
             if (manifest == null || m == null) return null;
-            if (!manifest.IsFile)
-            {
-                var text = manifest.AbsoluteUri;
-                var at = text.IndexOf(LatestSegment, StringComparison.OrdinalIgnoreCase);
-                if (at >= 0)
-                    return new Uri(text.Substring(0, at) + "/releases/download/v" + m.VersionText + "/" + Uri.EscapeDataString(m.Zip));
-            }
-            return new Uri(manifest, Uri.EscapeDataString(m.Zip));
+            if (manifest.IsFile) return new Uri(manifest, Uri.EscapeDataString(m.Zip));
+
+            var text = manifest.GetLeftPart(UriPartial.Path);
+            var at = text.IndexOf(LatestSegment, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0)
+                return new Uri(text.Substring(0, at) + "/releases/download/v" + m.VersionText + "/" + Uri.EscapeDataString(m.Zip));
+            return new UriBuilder(new Uri(manifest, Uri.EscapeDataString(m.Zip))) { Query = manifest.Query.TrimStart('?') }.Uri;
         }
 
         /// <summary>True for a URL on GitHub's own release download path (the API fallback applies).</summary>

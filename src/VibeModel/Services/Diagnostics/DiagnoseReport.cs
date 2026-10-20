@@ -50,6 +50,9 @@ namespace VibeModel.Services.Diagnostics
                 return path == null ? null : path + " (" + version + ")";
             });
             var signature = Task.Run(() => SignatureOf(typeof(DiagnoseReport).Assembly.Location));
+            // Revit's security prompt is about the assembly the .addin names: the loader (plan 19).
+            var loaderPath = Update.LoaderInfo.Path;
+            var loaderSignature = loaderPath == null ? null : Task.Run(() => SignatureOf(loaderPath));
             var deadline = DateTime.UtcNow + Deadline;
 
             var sb = new StringBuilder();
@@ -61,6 +64,8 @@ namespace VibeModel.Services.Diagnostics
             sb.AppendLine("Version: " + asm.GetName().Version);
             sb.AppendLine("Add-in: " + asm.Location);
             sb.AppendLine("Signature: " + Await(signature, deadline, "(check timed out)"));
+            if (loaderSignature != null)
+                sb.AppendLine("Loader signature (what Revit asks about): " + Await(loaderSignature, deadline, "(check timed out)"));
             sb.AppendLine("Revit: " + (RevitVersion ?? "?") + " · .NET " + Environment.Version + " · Windows " + Environment.OSVersion.Version);
             sb.AppendLine("HTTP server: " + (FileFallback ? "not running - file-based fallback (C:\\RevitClaudeLink)" : "port " + HttpPort));
             if (!FileFallback)

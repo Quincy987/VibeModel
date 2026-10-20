@@ -37,7 +37,9 @@ First occurrence of a pack `id` wins:
    the background to `%LOCALAPPDATA%\VibeModel\standards\_mirror\`, and VibeModel reads that
    mirror — so a missing VPN costs nothing, the last synced pack simply stays in force.
 2. `%LOCALAPPDATA%\VibeModel\standards\<pack>\pack.json` — a local working copy.
-3. `<add-in folder>\standards\<pack>\pack.json` — packs shipped with the add-in.
+3. `<add-in folder>\standards\<pack>\pack.json` — packs shipped with the add-in. The add-in folder
+   is Revit's add-ins folder, where `VibeModel.Loader.dll` sits (`%APPDATA%\Autodesk\Revit\Addins\<year>\`);
+   it stays the same across in-app updates, unlike the version folder VibeModel.dll runs from.
 
 `standards` lists every folder it looked at and why a pack was skipped or not active.
 After editing a pack, run `standards --refresh` (or reopen Settings and Save).
