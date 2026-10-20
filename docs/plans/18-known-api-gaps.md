@@ -222,3 +222,14 @@
 - Docs brought in line with rounds 2–4 (goal line, hook wording, manual step, Files list).
 - `Gap` entries are read-only outside the assembly (`internal set`, `IReadOnlyList<string>`): every
   lookup result now holds a reference into the shared static table. No behaviour change.
+
+### Final verify (Revit 2023.1.2, 2026-10-20, branch head 89dd1da) — 18/18 live, 1522/1522 headless
+
+- apilookup: Label (ambiguous + label block: both routes, trap, Edit Family step), FamilyItemFactory.NewLabel
+  (block after the first line), TextElement JSON data.knownGap, Phase, ViewType.Legend; no block for
+  PlanTopology.Phase, LabelUtils, Wall, TextNote.
+- exec doc.FamilyCreate.NewLabel(...) -> the compile hint quotes the whole label block.
+- The recipe from the project on IB_Tag_Rebar_aantal-x-dia-hoh: labels 1 -> 2, placeholder, parameter;
+  stamp without a USER edit.
+- profile redefined -> profile shows 600 x 300, extrude regenerates (1.80 m3), same points Unchanged,
+  next extrude reuses; lwall and wall fine. Add-in log: no errors.
