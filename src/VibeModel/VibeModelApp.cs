@@ -419,7 +419,7 @@ namespace VibeModel
                 switch (e.Operation)
                 {
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted:
-                        ModelChangeTracker.RecordCommit(key, e.GetTransactionNames());
+                        ModelChangeTracker.RecordCommit(key, e.GetTransactionNames(), RevitCommandHandler.IsProcessingCommand);
                         break;
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionUndone:
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone:

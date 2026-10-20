@@ -279,11 +279,16 @@ namespace VibeModel.Services.Claude.FamilyGen
 
         /// <summary>Writes the VM_Source stamp on every type of the loaded family (inside the project transaction).</summary>
         public static void WriteStamp(Document doc, Family fam, string stamp)
+            => WriteTypeText(doc, fam, t => t.get_Parameter(SourceGuid), stamp);
+
+        /// <summary>Writes a text parameter on every project type of <paramref name="fam"/> (inside the project transaction).</summary>
+        public static void WriteTypeText(Document doc, Family fam, Func<Element, Parameter> parameter, string value)
         {
             foreach (var id in fam.GetFamilySymbolIds())
             {
-                var p = doc.GetElement(id)?.get_Parameter(SourceGuid);
-                if (p != null && !p.IsReadOnly) p.Set(stamp);
+                var type = doc.GetElement(id);
+                var p = type != null ? parameter(type) : null;
+                if (p != null && !p.IsReadOnly) p.Set(value);
             }
         }
 
@@ -304,29 +309,20 @@ namespace VibeModel.Services.Claude.FamilyGen
             finally { try { fd?.Close(false); } catch { } }
         }
 
-        /// <summary>Reload keeps the project's type values (Material!) and adds new family parameters to existing instances.</summary>
-        internal sealed class KeepValuesLoadOptions : IFamilyLoadOptions
+        /// <summary>
+        /// Load (or reload) from the staged file inside the open project transaction, and write the
+        /// new generation's <paramref name="stamp"/> onto the project types: a reload keeps the
+        /// project's type values (<see cref="Helpers.KeepValuesLoadOptions"/>), VM_Source included,
+        /// so without it the next run compares against the previous generation (live: "reused,
+        /// unchanged" on the old shape). Any other value the family generates into a type parameter
+        /// (a profile's VM_Profile) must be written the same way by the caller.
+        /// </summary>
+        public static Family Load(Document doc, string path, string familyName, string stamp)
         {
-            public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
-            {
-                overwriteParameterValues = false;
-                return true;
-            }
-
-            public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
-            {
-                source = FamilySource.Family;
-                overwriteParameterValues = false;
-                return true;
-            }
-        }
-
-        /// <summary>Load (or reload) from the staged file inside the open project transaction.</summary>
-        public static Family Load(Document doc, string path, string familyName)
-        {
-            doc.LoadFamily(path, new KeepValuesLoadOptions(), out Family fam);
+            doc.LoadFamily(path, new Helpers.KeepValuesLoadOptions(), out Family fam);
             fam = fam ?? FindFamily(doc, familyName);
             if (fam == null) throw new InvalidOperationException("Revit did not load " + path + ".");
+            WriteStamp(doc, fam, stamp);
             return fam;
         }
     }

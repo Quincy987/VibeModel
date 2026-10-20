@@ -1,0 +1,249 @@
+using System.Collections.Generic;
+using System.Linq;
+using VibeModel.Services.Claude;
+using VibeModel.Tests.GapFixture;
+using Xunit;
+
+namespace VibeModel.Tests.GapFixture
+{
+    // Stand-ins for the Revit types the gaps are about (the Revit assemblies do not load headless).
+    public class TextElement { public string Text { get; set; } }
+    public static class LabelUtils { public static string GetLabelFor(int id) => ""; }
+    public class LabelType { }
+    public class FamilyItemFactory { public object NewModelText(string text) => null; public object NewDetailCurve() => null; }
+    public enum ViewType { FloorPlan, Legend }
+}
+
+namespace VibeModel.Tests
+{
+    /// <summary>Plan 18: the known-gaps table and how it rides along with apilookup and exec's compile hint.</summary>
+    public class KnownApiGapsTests
+    {
+        private static readonly ApiLookup Engine = new ApiLookup(new[] { typeof(TextElement).Assembly }, "VibeModel.Tests.GapFixture");
+
+        private static string[] LinesOf(string text) => text.Replace("\r\n", "\n").Split('\n');
+
+        [Theory]
+        [InlineData("TextElement")]                 // found type: block at the end
+        [InlineData("FamilyItemFactory.NewLabel")]  // missing member: block after the first line
+        [InlineData("NewLabel")]                    // not found
+        public void Block_KeepsTheAnswersLineEnds(string query)
+        {
+            var plain = Engine.Lookup("LabelUtils", null, false).Text;   // no gap: the lookup's own text
+            var text = Engine.Lookup(query, null, false).Text;
+            Assert.Contains("Known gap: ", text);
+            if (plain.Contains("\r\n"))
+                Assert.DoesNotContain("\n", text.Replace("\r\n", ""));   // no bare \n mixed in
+            else
+                Assert.DoesNotContain("\r", text);
+        }
+
+        [Theory]
+        [InlineData("Label", "labels")]
+        [InlineData("labels", "labels")]
+        [InlineData("NewLabel", "labels")]
+        [InlineData("FamilyItemFactory.NewLabel", "labels")]
+        [InlineData("Autodesk.Revit.Creation.FamilyItemFactory.NewLabel", "labels")]
+        [InlineData("BuiltInParameter.TAG_TAG", "labels")]
+        [InlineData("textelement", "labels")]
+        [InlineData("Autodesk.Revit.DB.TextElement", "labels")]
+        [InlineData("LabelType", "labels")]
+        [InlineData("Legend", "legends")]
+        [InlineData("ViewType.Legend", "legends")]
+        [InlineData("LegendComponent", "legends")]
+        [InlineData("Phase", "phases-design-options")]
+        [InlineData("Phase.Create", "phases-design-options")]
+        [InlineData("DesignOption.Create", "phases-design-options")]
+        [InlineData("List<DesignOption>", null)]
+        public void Match_KeysCaseAndDottedSuffixes(string query, string expected)
+        {
+            var gap = KnownApiGaps.Match(query);
+            Assert.Equal(expected, gap?.Name);
+        }
+
+        [Theory]
+        [InlineData("LabelUtils")]
+        [InlineData("Wall")]
+        [InlineData("Wall.Create")]
+        [InlineData("TextNote")]
+        [InlineData("Phase.Name")]
+        [InlineData("TextElement.Text")]
+        [InlineData("")]
+        [InlineData(null)]
+        public void Match_RealApiIsNotAGap(string query)
+        {
+            Assert.Null(KnownApiGaps.Match(query));
+        }
+
+        [Theory]
+        [InlineData("Autodesk.Revit.DB.PlanTopology.Phase", KnownApiGaps.QueryKind.Member, null)]   // a property called Phase
+        [InlineData("Widget.Label", KnownApiGaps.QueryKind.Member, null)]
+        [InlineData("Autodesk.Revit.DB.ViewType.Legend", KnownApiGaps.QueryKind.Member, "legends")]
+        [InlineData("Autodesk.Revit.DB.BuiltInParameter.TAG_TAG", KnownApiGaps.QueryKind.Member, "labels")]
+        [InlineData("Autodesk.Revit.DB.Phase.Create", KnownApiGaps.QueryKind.Member, "phases-design-options")]
+        [InlineData("Autodesk.Revit.DB.Phase", KnownApiGaps.QueryKind.Type, "phases-design-options")]
+        [InlineData("Autodesk.Revit.DB.TAG_TAG", KnownApiGaps.QueryKind.Type, null)]   // member keys never name a type
+        public void Match_FollowsWhatTheLookupResolved(string subject, KnownApiGaps.QueryKind kind, string expected)
+        {
+            Assert.Equal(expected, KnownApiGaps.Match(subject, kind)?.Name);
+        }
+
+        [Fact]
+        public void Keys_AreUniqueAcrossGaps()
+        {
+            var types = KnownApiGaps.All.SelectMany(g => g.TypeKeys).ToList();
+            var members = KnownApiGaps.All.SelectMany(g => g.MemberKeys).ToList();
+            Assert.Equal(types.Count, types.Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal(members.Count, members.Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+        }
+
+        [Fact]
+        public void EveryGap_FitsItsLineBudget_AndNamesTheManualStep()
+        {
+            foreach (var gap in KnownApiGaps.All)
+            {
+                var lines = KnownApiGaps.Lines(gap);
+                Assert.True(lines.Count <= KnownApiGaps.MaxLines, gap.Name + ": " + lines.Count + " lines");
+                Assert.StartsWith("Known gap: ", lines[0]);
+                Assert.StartsWith("Cannot: ", lines[1]);
+                Assert.StartsWith("Manual step: ", lines.Last());
+            }
+        }
+
+        [Fact]
+        public void LabelGap_CarriesTheMeasuredRecipe()
+        {
+            var text = KnownApiGaps.Describe(KnownApiGaps.Match("Label"));
+            Assert.Contains("no FamilyItemFactory.NewLabel", text);
+            Assert.Contains("TAG_SAMPLE_TEXT", text);
+            Assert.Contains("returns true, but setting it to a family parameter's id or name changes nothing", text);
+            Assert.Contains("doc.IsFamilyDocument", text);
+            Assert.Contains("trans.RollBack(); var fd = doc.EditFamily(family);", text);
+            Assert.Contains("fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions()); fd.Close(false)", text);
+            Assert.Contains("Family loading failed.", text);
+            Assert.Contains("fd.FamilyManager.AddParameter(\"Betonkwaliteit\", GroupTypeId.Text, SpecTypeId.String.Text, false)", text);
+            Assert.Contains("ElementTransformUtils.CopyElement(fd, labelId, offset)", text);
+            Assert.Contains("Can't paste Labels across Families of different Categories.", text);
+            Assert.Contains("TextNote.Create(fd, viewId, point, \"(LABEL Betonkwaliteit)\", fd.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType))", text);
+            Assert.Contains("Edit Label", text);
+            Assert.Contains("Load into Project", text);
+        }
+
+        [Fact]
+        public void Data_IsTheAdditiveJsonObject()
+        {
+            var d = KnownApiGaps.Data(KnownApiGaps.Match("Legend"));
+            Assert.Equal("legends", d["name"]);
+            Assert.IsType<string>(d["cannot"]);
+            Assert.NotEmpty((List<object>)d["works"]);
+            Assert.IsType<string>(d["manual"]);
+        }
+
+        [Fact]
+        public void NotFound_GetsTheBlock_BeforeTheClosestNames()
+        {
+            var r = Engine.Lookup("NewLabel", null, false);
+            Assert.False(r.Found);
+            var lines = LinesOf(r.Text);
+            Assert.StartsWith("No type or member 'NewLabel'", lines[0]);
+            Assert.StartsWith("Known gap: labels", lines[1]);
+            Assert.True(r.Data.ContainsKey("knownGap"));
+            Assert.Equal(false, r.Data["found"]);
+        }
+
+        [Fact]
+        public void Ambiguous_GetsTheBlock_BeforeTheCandidates()
+        {
+            var r = Engine.Lookup("Label", null, false);
+            Assert.False(r.Found);
+            Assert.Equal(true, r.Data["ambiguous"]);
+            var lines = LinesOf(r.Text).ToList();
+            Assert.StartsWith("'Label' matches several types", lines[0]);
+            Assert.StartsWith("Known gap: labels", lines[1]);
+            int gapEnd = lines.FindIndex(l => l.StartsWith("Manual step: "));
+            Assert.True(lines.IndexOf("  VibeModel.Tests.GapFixture.LabelUtils") > gapEnd);
+        }
+
+        [Fact]
+        public void NoSuchMember_GetsTheBlock()
+        {
+            var r = Engine.Lookup("FamilyItemFactory.NewLabel", null, false);
+            Assert.False(r.Found);
+            var lines = LinesOf(r.Text);
+            Assert.Equal("VibeModel.Tests.GapFixture.FamilyItemFactory has no public member 'NewLabel'.", lines[0]);
+            Assert.StartsWith("Known gap: labels", lines[1]);
+            Assert.StartsWith("using ", lines.Last());   // the using line still ends it
+            Assert.Equal("labels", ((Dictionary<string, object>)r.Data["knownGap"])["name"]);
+            Assert.Equal("labels", r.KnownGap.Name);
+        }
+
+        [Fact]
+        public void FoundKeyType_GetsTheBlockAtTheEnd()
+        {
+            var r = Engine.Lookup("TextElement", null, false);
+            Assert.True(r.Found);
+            Assert.StartsWith("VibeModel.Tests.GapFixture.TextElement", r.Text);
+            Assert.Contains("Text : string { get; set; }", r.Text);
+            Assert.StartsWith("Manual step: ", LinesOf(r.Text).Last());
+            Assert.True(r.Data.ContainsKey("knownGap"));
+        }
+
+        [Fact]
+        public void FoundNonKey_IsUnchanged()
+        {
+            var r = Engine.Lookup("LabelUtils", null, false);
+            Assert.True(r.Found);
+            Assert.DoesNotContain("Known gap", r.Text);
+            Assert.False(r.Data.ContainsKey("knownGap"));
+            Assert.Null(r.KnownGap);
+            var member = Engine.Lookup("FamilyItemFactory.NewModelText", null, false);
+            Assert.True(member.Found);
+            Assert.DoesNotContain("Known gap", member.Text);
+            // A member that is merely CALLED like a gap type is real API.
+            var label = Engine.Lookup("Widget.Label", null, false);
+            Assert.True(label.Found);
+            Assert.DoesNotContain("Known gap", label.Text);
+            Assert.False(label.Data.ContainsKey("knownGap"));
+        }
+
+        [Fact]
+        public void FoundKeyMember_GetsTheBlockAtTheEnd()
+        {
+            var r = Engine.Lookup("ViewType.Legend", null, false);
+            Assert.True(r.Found);
+            Assert.StartsWith("VibeModel.Tests.GapFixture.ViewType.Legend", r.Text);
+            Assert.StartsWith("Manual step: when no open document has a legend", LinesOf(r.Text).Last());
+        }
+
+        [Fact]
+        public void CompileHint_ForNewLabel_CarriesTheWholeBlock()
+        {
+            // Measured live (Dutch compiler): doc.FamilyCreate.NewLabel(v, XYZ.Zero, "x")
+            var e = new ApiLookup.CompileError
+            {
+                Number = "CS1061", Column = 9, Line = "var x = doc.FamilyCreate.NewLabel(v, XYZ.Zero, \"x\");",
+                Message = "Autodesk.Revit.Creation.FamilyItemFactory bevat geen definitie voor NewLabel en er is geen extensiemethode NewLabel gevonden"
+            };
+            var hint = Engine.CompileErrorHint(new[] { e });
+            Assert.StartsWith("Hint: apilookup FamilyItemFactory.NewLabel", hint);
+            Assert.Contains("  Known gap: labels", hint);
+            Assert.Contains("  Manual step: ", hint);
+            Assert.Contains("  using ", hint);
+        }
+
+        [Fact]
+        public void CompileHint_WithoutAGap_IsCappedAsBefore()
+        {
+            var e = new ApiLookup.CompileError
+            {
+                Number = "CS1061", Column = 9, Line = "var x = f.NewLabl();",
+                Message = "'VibeModel.Tests.GapFixture.FamilyItemFactory' does not contain a definition for 'NewLabl'"
+            };
+            // "NewLabl" is no key: the hint is the plain lookup, nothing added.
+            var hint = Engine.CompileErrorHint(new[] { e });
+            Assert.StartsWith("Hint: apilookup FamilyItemFactory.NewLabl", hint);
+            Assert.DoesNotContain("Known gap", hint);
+            Assert.True(hint.Split('\n').Length <= 1 + ApiLookup.HintLines);
+        }
+    }
+}

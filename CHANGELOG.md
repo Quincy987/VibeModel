@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## v1.2.12 — Known API Gaps, Labels You Can Finish (2026-10-20)
+
+### Added — `apilookup` names what Revit's API cannot do
+- Plan 18, from a colleague's rebar-tag session: the chat added the shared parameters and the tag
+  types but could not make the labels, and only found the workaround when asked. Now `apilookup`
+  (and the hint under a failed `exec` compile) answers questions about labels in tag, generic
+  annotation and title-block families, legend views, and creating phases or design options with a
+  `Known gap:` block: what the API cannot do, what does work (measured in Revit 2023: add the family
+  parameter, copy the nearest label, put `(LABEL <parameter>)` next to it, load the family back) and
+  the step the user does by hand (Edit Label). It also warns that setting a label's `Label` parameter
+  reports success and changes nothing. No new prompt rule — only `apilookup`'s one-line description
+  names the gaps.
+- An `exec` snippet can now load a family it edited back into the project:
+  `fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions())` (the options generated
+  families already used, now public; Revit refuses the reload without options).
+
+### Fixed
+- `profile <name> --points …` on an existing profile said "PROFILE UPDATED" but every later `extrude`
+  / `sweep` kept using the old points: the reload keeps the project's type values, so the stored
+  points and the change stamp stayed old. Both are now written onto the project types after the
+  reload (the loader writes the stamp for every generated family, as `extrude` already did by hand);
+  `profile <name>` shows the new points and a repeat with the same points says "Unchanged".
+- The model-state stamp no longer reports "1 USER edit" for a change an `exec` snippet made through
+  a Revit call that opens its own transaction (loading a family back): whatever is committed while a
+  VibeModel command runs counts as VibeModel's.
+
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 
 ### Added — approve before keeping, preview, read-only runs (Settings → "Wijzigingen door de AI")

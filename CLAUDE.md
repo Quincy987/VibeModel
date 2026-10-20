@@ -76,7 +76,9 @@ JSON mode adds an additive `meta` sibling to the envelope:
 `{"ok":true,"data":{...},"meta":{"edits":48,"userEditsSinceLastCommand":2,"activeView":"Level 1","selectedCount":1}}`.
 `edits` counts every committed transaction in the document; `userEditsSinceLastCommand` counts
 only edits NOT made through VibeModel (manual edits, undo/redo) since your previous command, and
-resets once reported. **If the stamp reports user edits since your last command, the model changed
+resets once reported. A transaction committed while a VibeModel command runs is always ours, also
+under Revit's own name (`RevitCommandHandler.IsProcessingCommand`; measured: an exec snippet's
+`fd.LoadFamily(doc, …)` cannot run inside a VibeModel transaction and was stamped "1 USER edit"). **If the stamp reports user edits since your last command, the model changed
 outside your control — re-read context (`/context`, `/selected`, `/screenshot`) before relying on
 earlier query results.** Exceptions: `/health` and `/screenshot` are unstamped; a batch gets one
 stamp for the whole response; text-mode error responses are unstamped (JSON errors still carry
@@ -464,6 +466,22 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   the closest names; several substring hits are listed. Measured: first call 0.28 s (index), then
   0.01–0.03 s. A failed exec compile (CS1061/CS0117/CS0246 — matched by number and the identifier at
   the error, so a Dutch compiler message works) appends `Hint: apilookup Wall.Widht` + that lookup.
+- **Known API gaps** (plan 18, `Services/Claude/KnownApiGaps.cs`, pure): when a lookup is about
+  something Revit's API cannot do — labels in tag / generic-annotation / title-block families
+  (`Label`, `NewLabel`, `FamilyItemFactory.NewLabel`, `TAG_TAG`, `TextElement`, `LabelType`), legend
+  views (`Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend`), creating phases and design
+  options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`) — the answer carries a
+  `Known gap:` block (cannot / what works, measured / the user's manual step; ≤ 12 lines; JSON
+  additive `data.knownGap`): right after the first line when nothing was found, at the end of a found
+  type or member. Matched on what the lookup resolved, on whole names (never a substring): a found
+  type by its simple name against the type keys, a found or missing member as `Type.Member` / the
+  member alone against the member keys — so `LabelUtils`, `Phase.Name`, `PlanTopology.Phase` stay
+  plain. The exec compile hint quotes the whole block (`doc.FamilyCreate.NewLabel` → CS1061 → the
+  label recipe). Measured: a label's `Label` parameter accepts `Set(…)` and returns true but changes
+  nothing; an edited family goes back with `fd.LoadFamily(doc, new
+  VibeModel.Services.Helpers.KeepValuesLoadOptions())` (public for exec — without options Revit
+  answers "Family loading failed."); with the family open in the Family Editor, exec edits `doc` itself.
+  No prompt rule; `apilookup`'s description (in the tool list) names the four gaps.
 - **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
   `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
   rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at

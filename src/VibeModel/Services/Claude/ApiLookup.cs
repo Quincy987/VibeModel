@@ -103,6 +103,12 @@ namespace VibeModel.Services.Claude
             public bool Found { get; set; }
             public string Text { get; set; }
             public Dictionary<string, object> Data { get; set; }
+            /// <summary>The type the lookup resolved (full name); null when none (not found, several).</summary>
+            public string ResolvedType { get; set; }
+            /// <summary>The member asked for on <see cref="ResolvedType"/> — found or not; null for a type lookup.</summary>
+            public string Member { get; set; }
+            /// <summary>Plan 18: what Revit's API cannot do that this lookup is about (its block is in <see cref="Text"/>).</summary>
+            public KnownApiGaps.Gap KnownGap { get; set; }
         }
 
         /// <summary>
@@ -111,6 +117,12 @@ namespace VibeModel.Services.Claude
         /// its simple name; a member after the last dot narrows the output to that member.
         /// </summary>
         public Result Lookup(string name, string filter, bool all)
+        {
+            // Plan 18: what this API cannot do (labels, legends, …) rides along with the answer.
+            return KnownApiGaps.Attach(LookupApi(name, filter, all), name);
+        }
+
+        private Result LookupApi(string name, string filter, bool all)
         {
             name = (name ?? "").Trim().Trim('.');
             // "List<T>" style input: look up the generic definition.
@@ -297,7 +309,7 @@ namespace VibeModel.Services.Claude
                 }
                 if (shown.Count > MaxMembers) sb.AppendLine("  (+" + (shown.Count - MaxMembers) + " more — --filter <x>)");
                 data["enumValues"] = values;
-                return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data };
+                return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data, ResolvedType = fullName };
             }
 
             // How to get one.
@@ -370,7 +382,7 @@ namespace VibeModel.Services.Claude
             if (hidden > 0) sb.AppendLine("(+" + hidden + " more — --filter <x>)");
             data["more"] = hidden;
             data["obsolete"] = obsolete;
-            return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data };
+            return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data, ResolvedType = fullName };
         }
 
         private Result DescribeMember(Type type, string member)
@@ -400,6 +412,8 @@ namespace VibeModel.Services.Claude
                 return new Result
                 {
                     Found = false,
+                    ResolvedType = fullName,
+                    Member = member,
                     Text = sb2.ToString().TrimEnd(),
                     Data = new Dictionary<string, object>
                     {
@@ -434,6 +448,8 @@ namespace VibeModel.Services.Claude
             return new Result
             {
                 Found = true,
+                ResolvedType = fullName,
+                Member = members[0].Name,
                 Text = sb.ToString().TrimEnd(),
                 Data = new Dictionary<string, object>
                 {
@@ -639,6 +655,31 @@ namespace VibeModel.Services.Claude
                 }
             }
             return list;
+        }
+
+        /// <summary>Lines of each lookup the exec compile hint quotes (plus a known gap's block).</summary>
+        public const int HintLines = 20;
+
+        /// <summary>
+        /// The hint exec appends to its compile errors (plan 16): for each missing member or type
+        /// (at most two), "Hint: apilookup Wall.Foo" and the first lines of that lookup — the
+        /// closest member/type names or the real signatures, and (plan 18) the whole known-gap block
+        /// when the name is one the API cannot do — so the next attempt is right. Null when none.
+        /// </summary>
+        public string CompileErrorHint(IEnumerable<CompileError> errors)
+        {
+            var lookups = LookupsForCompileErrors(errors);
+            if (lookups.Count == 0) return null;
+            var sb = new StringBuilder();
+            foreach (var name in lookups.Take(2))
+            {
+                var r = Lookup(name, null, false);
+                int take = HintLines + (r.KnownGap != null ? KnownApiGaps.Lines(r.KnownGap).Count : 0);
+                sb.AppendLine("Hint: apilookup " + name);
+                foreach (var line in r.Text.Replace("\r\n", "\n").Split('\n').Take(take))
+                    sb.AppendLine("  " + line);
+            }
+            return sb.ToString().TrimEnd();
         }
 
         // The type a "does not contain a definition" error is about: the first dotted name in the
