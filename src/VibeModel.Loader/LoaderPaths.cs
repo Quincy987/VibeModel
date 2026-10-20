@@ -57,8 +57,13 @@ namespace VibeModel.Loader
         public static string DataRoot => System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VibeModel");
 
-        /// <summary>%LOCALAPPDATA%\VibeModel\versions — one folder per installed version.</summary>
-        public static string DefaultVersionsRoot => System.IO.Path.Combine(DataRoot, "versions");
+        /// <summary>
+        /// %LOCALAPPDATA%\VibeModel\versions\Revit&lt;year&gt; — one folder per installed version. Per
+        /// Revit year: a build only loads in the Revit it was compiled against, and the 2023 and 2024
+        /// builds of one version are different files.
+        /// </summary>
+        public static string VersionsRoot(string revitYear) =>
+            System.IO.Path.Combine(DataRoot, "versions", "Revit" + (revitYear ?? "").Trim());
 
         /// <summary>
         /// The add-in to start: (a) VibeModel.dll next to the loader, (b) the folder current.txt

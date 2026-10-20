@@ -31,7 +31,7 @@ namespace VibeModel.Loader
             PayloadChoice choice;
             try
             {
-                choice = LoaderPaths.Choose(loaderFolder, LoaderPaths.DefaultVersionsRoot);
+                choice = LoaderPaths.Choose(loaderFolder, LoaderPaths.VersionsRoot(application.ControlledApplication.VersionNumber));
             }
             catch (Exception ex)
             {

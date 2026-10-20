@@ -50,7 +50,7 @@ namespace VibeModel.Services.Update
                     if (_engine == null)
                     {
                         var asm = typeof(UpdateService).Assembly;
-                        _engine = new UpdateEngine(UpdateLayout.Default, new UpdateTransport(), new LiveUpdateSettings(),
+                        _engine = new UpdateEngine(UpdateLayout.For(RevitYear), new UpdateTransport(), new LiveUpdateSettings(),
                             new RunningInfo
                             {
                                 Version = asm.GetName().Version,

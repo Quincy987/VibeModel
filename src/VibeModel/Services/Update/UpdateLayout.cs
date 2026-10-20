@@ -7,8 +7,8 @@ using VibeModel.Loader;
 namespace VibeModel.Services.Update
 {
     /// <summary>
-    /// The folders an update lives in (plan 19): <c>%LOCALAPPDATA%\VibeModel\versions\&lt;version&gt;\</c>
-    /// (one per installed version), <c>versions\current.txt</c> (the version the loader starts next)
+    /// The folders an update lives in (plan 19): <c>%LOCALAPPDATA%\VibeModel\versions\Revit&lt;year&gt;\&lt;version&gt;\</c>
+    /// (one per installed version), <c>current.txt</c> next to them (the version the loader starts next)
     /// and <c>%LOCALAPPDATA%\VibeModel\updates\</c> (downloads, the cached manifest). Roots are
     /// parameters so tests use a temp folder.
     /// </summary>
@@ -23,8 +23,9 @@ namespace VibeModel.Services.Update
             DownloadDir = downloadDir;
         }
 
-        public static UpdateLayout Default => new UpdateLayout(
-            LoaderPaths.DefaultVersionsRoot, Path.Combine(LoaderPaths.DataRoot, "updates"));
+        /// <summary>The real folders for a Revit year (downloads are shared: their names carry the year).</summary>
+        public static UpdateLayout For(string revitYear) => new UpdateLayout(
+            LoaderPaths.VersionsRoot(revitYear), Path.Combine(LoaderPaths.DataRoot, "updates"));
 
         public string CurrentFile => Path.Combine(VersionsRoot, LoaderPaths.CurrentFile);
 
