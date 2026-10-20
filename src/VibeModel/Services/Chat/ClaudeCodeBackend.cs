@@ -61,6 +61,10 @@ namespace VibeModel.Services.Chat
         // backend switch back) still knows which model the last turn ran on.
         private static string _lastSeenModel;
 
+        // The context of this turn's latest API call, from the usage on each assistant event
+        // (the result event only has the turn's sums). Read by ConversationLength.
+        private long _turnContextTokens;
+
         /// <summary>The model of the last turn, else the CLI's configured model, else null (its default).</summary>
         public override string ModelName => _lastSeenModel ?? ConfiguredCliModel();
 
@@ -267,8 +271,12 @@ namespace VibeModel.Services.Chat
             return add;
         }
 
-        /// <summary>The usage of a CLI result event: total_cost_usd and the token counts; null when absent.</summary>
-        internal static TurnUsage UsageFromResult(Dictionary<string, object> result, string model)
+        /// <summary>
+        /// The usage of a CLI result event: total_cost_usd and the token counts; null when absent.
+        /// <paramref name="lastCallContext"/> = the context of the turn's last API call (the result's
+        /// counts are sums over all calls, so they cannot say how long the conversation is).
+        /// </summary>
+        internal static TurnUsage UsageFromResult(Dictionary<string, object> result, string model, long lastCallContext = 0)
         {
             var usage = new TurnUsage { Model = model };
             if (result.TryGetValue("usage", out var u) && u is Dictionary<string, object> counts)
@@ -276,6 +284,7 @@ namespace VibeModel.Services.Chat
                 usage.AddMessageStart(model, counts);
                 usage.EndMessage();
             }
+            usage.ContextTokens = lastCallContext;
             if (result.TryGetValue("total_cost_usd", out var c) && c != null)
             {
                 try { usage.ReportedCostUsd = Convert.ToDouble(c, System.Globalization.CultureInfo.InvariantCulture); }
@@ -498,6 +507,7 @@ namespace VibeModel.Services.Chat
             // _sessionId on a clean turn because the prior turn was killed mid-tool).
             _killedByIdleTimeout = false;
             _lastBlockWasToolUse = false;
+            _turnContextTokens = 0;
 
             // Pre-flight: if our own server is down, surface a clear message instead of
             // spawning the CLI and letting the model flail on connection-refused curls.
@@ -761,7 +771,7 @@ namespace VibeModel.Services.Chat
                         _sessionId = sid;
                         Logger.Info("Session ID: " + _sessionId);
                     }
-                    var usage = UsageFromResult(obj, _lastSeenModel);
+                    var usage = UsageFromResult(obj, _lastSeenModel, _turnContextTokens);
                     if (usage != null) ReportActivity(ChatActivityEvent.ForUsage(usage));
                     return;
                 }
@@ -840,6 +850,11 @@ namespace VibeModel.Services.Chat
                     var message = messageObj as Dictionary<string, object>;
                     if (message == null)
                         return;
+                    if (message.TryGetValue("usage", out var callUsage) && callUsage is Dictionary<string, object> callCounts)
+                    {
+                        var context = TurnUsage.ContextOf(callCounts);
+                        if (context > 0) _turnContextTokens = context;
+                    }
                     object contentObj;
                     if (!message.TryGetValue("content", out contentObj))
                         return;

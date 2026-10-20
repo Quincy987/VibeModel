@@ -87,6 +87,8 @@ namespace VibeModel.UI
         private System.Windows.Threading.DispatcherTimer _clockTimer;
         // User messages shown so far — a thin separator goes in front of every one after the first.
         private int _userTurnCount;
+        // The "start a new chat" bar shows at most once per chat (ConversationLength.ShouldNudge).
+        private bool _nudgedThisChat;
 
         private IChatBackend _backend;
         private CancellationTokenSource _cts;
@@ -126,6 +128,9 @@ namespace VibeModel.UI
         private static readonly SolidColorBrush BgButtonHover = new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xAC));
         private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
         private static readonly SolidColorBrush FgError = new SolidColorBrush(Color.FromRgb(0xF4, 0x43, 0x36));
+        // The usage line's dot: a long / very long conversation (ConversationLength).
+        private static readonly SolidColorBrush DotLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x9A, 0x2E));
+        private static readonly SolidColorBrush DotVeryLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x55, 0x45));
         private static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
         public ChatPane()
@@ -439,6 +444,7 @@ namespace VibeModel.UI
             ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
+            _nudgedThisChat = false;
             ClearStreamingState();
             _pendingAttachments.Clear();
             RebuildAttachmentChips();
@@ -526,6 +532,21 @@ namespace VibeModel.UI
                 foreach (var example in Starters.Pick(BuildStarterContext(), language))
                     chips.Children.Add(CreateExampleChip(example, Strings.For(language, Strings.WelcomeChipTip)));
                 panel.Children.Add(chips);
+
+                // A local model has no usage limit (and reports no tokens), so no tip there.
+                if (!(_backend is LocalLlmBackend))
+                {
+                    var tip = new TextBlock
+                    {
+                        Text = Strings.For(language, Strings.WelcomeTipNewChat),
+                        Foreground = FgSecondary,
+                        FontSize = 11,
+                        Margin = new Thickness(0, 2, 0, 0),
+                        TextWrapping = TextWrapping.Wrap
+                    };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tip, "WelcomeTip");
+                    panel.Children.Add(tip);
+                }
             }
             else
             {
@@ -1182,26 +1203,86 @@ namespace VibeModel.UI
             turn.AnswerPanel.Children.Remove(turn.AnswerText);
             AddRenderedContent(turn.AnswerPanel, answer);
             turn.AnswerBorder.Visibility = Visibility.Visible;
-            AddUsageLine(turn);
+            var usageLine = AddUsageLine(turn);
+            if (ConversationLength.ShouldNudge(turn.Model.Usage, _nudgedThisChat))
+                AddNewChatNudge(usageLine ?? (UIElement)turn.AnswerBorder);
         }
 
-        // "12.3k tokens · ≈ €0,04" under the answer — UI only, never stored with the chat.
-        private void AddUsageLine(TurnUi turn)
+        // "3.9M tokens · lang gesprek" under the answer (a coloured dot once the conversation is
+        // long; the euro estimate in the tooltip) — UI only, never stored with the chat.
+        private TextBlock AddUsageLine(TurnUi turn)
         {
-            var text = ModelPricing.Describe(turn.Model.Usage, Strings.Current);
-            if (string.IsNullOrEmpty(text)) return;
+            var language = Strings.Current;
+            var usage = turn.Model.Usage;
+            var text = ConversationLength.Describe(usage, language);
+            if (string.IsNullOrEmpty(text)) return null;
             var line = new TextBlock
             {
-                Text = text,
                 Foreground = FgSecondary,
                 FontSize = 10,
                 Margin = new Thickness(12, 0, 0, 4),
-                ToolTip = Strings.Get(Strings.UsageTip)
+                ToolTip = ConversationLength.Tooltip(usage, language)
             };
+            var level = ConversationLength.Classify(usage);
+            if (level != ConversationLength.Level.Short)
+                line.Inlines.Add(new System.Windows.Documents.Run("● ")
+                {
+                    Foreground = level == ConversationLength.Level.VeryLong ? DotVeryLong : DotLong
+                });
+            line.Inlines.Add(new System.Windows.Documents.Run(text));
             System.Windows.Automation.AutomationProperties.SetAutomationId(line, "TurnUsage");
-            var index = turn.AnswerBorder != null ? _messagePanel.Children.IndexOf(turn.AnswerBorder) : -1;
-            if (index >= 0) _messagePanel.Children.Insert(index + 1, line);
-            else _messagePanel.Children.Add(line);
+            InsertAfter(turn.AnswerBorder, line);
+            return line;
+        }
+
+        private void InsertAfter(UIElement anchor, UIElement element)
+        {
+            var index = anchor != null ? _messagePanel.Children.IndexOf(anchor) : -1;
+            if (index >= 0) _messagePanel.Children.Insert(index + 1, element);
+            else _messagePanel.Children.Add(element);
+        }
+
+        // Once per chat, under the answer that left the conversation very long: why each question
+        // now costs more, and a button that starts a new chat. UI only, never stored.
+        private void AddNewChatNudge(UIElement anchor)
+        {
+            _nudgedThisChat = true;
+            var language = Strings.Current;
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = Strings.For(language, Strings.NudgeNewChatText),
+                Foreground = FgPrimary,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+            var newChat = CreateChip(Strings.For(language, Strings.NudgeNewChatButton), null);
+            newChat.Background = BgButton;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(newChat, "NudgeNewChatButton");
+            newChat.Click += (s, e) => OnNewChatClick(s, e);
+            buttons.Children.Add(newChat);
+
+            var bar = new Border
+            {
+                Background = BgPanel,
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 4),
+                Margin = new Thickness(0, 2, 0, 6),
+                Child = panel
+            };
+            var later = CreateChip(Strings.For(language, Strings.NudgeNewChatDismiss), null);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(later, "NudgeNewChatDismiss");
+            later.Click += (s, e) => _messagePanel.Children.Remove(bar);
+            buttons.Children.Add(later);
+            panel.Children.Add(buttons);
+
+            System.Windows.Automation.AutomationProperties.SetAutomationId(bar, "NudgeNewChat");
+            InsertAfter(anchor, bar);
         }
 
         private void EnsureAnswerBubble(TurnUi turn)
@@ -1311,6 +1392,7 @@ namespace VibeModel.UI
             ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
+            _nudgedThisChat = false;
             ClearStreamingState();
             _infoBanner = null;
             // Pending chips clear; stored copies stay on disk as the project archive.
@@ -1358,6 +1440,7 @@ namespace VibeModel.UI
             ClearQuickReplies();
             _messagePanel.Children.Clear();
             _userTurnCount = 0;
+            _nudgedThisChat = false;
             ClearStreamingState();
             _infoBanner = null;
             ChatHistory.Clear();
