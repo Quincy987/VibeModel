@@ -3,7 +3,8 @@
 > Goal: when the AI runs into something the Revit API genuinely cannot do — a label in a tag,
 > generic-annotation or title-block family, a legend view, a design option, a phase — VibeModel
 > names the gap and the workaround that was measured, in the answer the AI is already reading
-> (`apilookup`, and the hint under a failed `exec` compile). No per-turn prompt text.
+> (`apilookup`, and the hint under a failed `exec` compile). No prompt rule (one clause in
+> `apilookup`'s tool description is the only prompt-visible change).
 
 > **STATUS (built 2026-10-20, branch claude-bot/t-362).** `KnownApiGaps` + the `apilookup` /
 > compile-hint hooks; headless tests in `KnownApiGapsTests` (fixture stand-ins for the Revit types).
@@ -45,8 +46,9 @@
     must not be open); the family document takes its own `Transaction`; then
     `fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions())` and `fd.Close(false)`
     (the first draft only closed it — work lost; see the review round below).
-- **The step that stays manual**: select the copied label → *Edit Label* → pick the parameter
-  (one dialog per label), then Load into Project. Everything before and after it is API work.
+- **The step that stays manual**: (Edit Family first, when it was prepared from the project) select
+  the copied label → *Edit Label* → pick the parameter (one dialog per label), then Load into
+  Project. Everything before and after it is API work.
 - **Also no API** (checked by reflection on RevitAPI.dll 2023): `DesignOption` and `Phase` have no
   creation member; legend views have no class and no creation call (plan 13 documents the
   "duplicate an existing legend" route). Both worth the same treatment — the model keeps trying
@@ -77,8 +79,9 @@
   closest names); a found type or member at the end. Text ≤ 12 lines; JSON additive
   `data.knownGap: { name, title, cannot, works: [], manual }`.
 - **Hook — exec compile hint**: moved from `ApiLookupCommand` into `ApiLookup.CompileErrorHint`
-  (pure, so it is unit-tested on a fixture engine); it quotes `HintLines` (20) lines of each lookup,
-  plus `MaxLines` when the lookup carries a gap, so the whole block is always shown.
+  (pure, so it is unit-tested on a fixture engine); it quotes `HintLines` (20) lines of each lookup
+  plus the length of the gap block when the lookup carries one (`Result.KnownGap`), so the whole
+  block is always shown.
 - **The silent-success trap** (`Set` on the `StorageType.None` Label parameter returns true) is not
   interceptable in general; the gap note says it.
 - **Keeping the work** (review round, measured): `fd.LoadFamily(doc)` without options is refused for a
@@ -98,7 +101,8 @@
 - `src/VibeModel/Services/Claude/KnownApiGaps.cs` — new, pure: the table, `Match(query, kind)`,
   `Lines` / `Describe` / `Data`, `Attach(result, query)`.
 - `src/VibeModel/Services/Claude/ApiLookup.cs` — `Lookup` attaches the gap; `CompileErrorHint`
-  (moved here) + `HintLines`.
+  (moved here) + `HintLines`; `Result.ResolvedType` / `Member` (what the lookup resolved) and
+  `KnownGap`.
 - `src/VibeModel/Services/Claude/Commands/ApiLookupCommand.cs` — `Description`; the hint delegates.
 - `src/VibeModel/Services/Helpers/KeepValuesLoadOptions.cs` — new, public (was nested, internal, in
   `GeneratedFamilyStore`, which now uses this one).
@@ -109,7 +113,10 @@
 - `src/VibeModel.Tests/KnownApiGapsTests.cs` — matching per kind, `LabelUtils` / `Widget.Label` /
   `PlanTopology.Phase` non-matches, unique keys, line budget, the recipe text, JSON, the four result
   kinds through a fixture engine, the compile hint.
-- `CLAUDE.md` (apilookup section), `CHANGELOG.md`, this plan.
+- `src/VibeModel/Services/Claude/ModelChangeTracker.cs` + `VibeModelApp.cs` — `RecordCommit(…,
+  duringVibeModelCommand)` fed with `RevitCommandHandler.IsProcessingCommand` (review round 3);
+  `ModelChangeTrackerTests.ForeignNamedCommit_DuringOurCommand_IsOurs`.
+- `CLAUDE.md` (stamp and apilookup sections), `CHANGELOG.md`, this plan.
 
 ## Verification (live, Revit 2023)
 
@@ -209,3 +216,9 @@
   exactly the block's lines instead of a 12-line allowance. The `IsProcessingCommand` comment names
   its three users (dialogs, failures, the change tracker). Headless 1522/1522; pure code, covered by
   the fixture-engine hint tests — not re-run live.
+
+### Review round 5
+
+- Docs brought in line with rounds 2–4 (goal line, hook wording, manual step, Files list).
+- `Gap` entries are read-only outside the assembly (`internal set`, `IReadOnlyList<string>`): every
+  lookup result now holds a reference into the shared static table. No behaviour change.

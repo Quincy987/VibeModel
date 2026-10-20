@@ -25,18 +25,21 @@ namespace VibeModel.Services.Claude
             Member,
         }
 
-        /// <summary>One gap: the queries it answers and what to tell the AI.</summary>
+        /// <summary>
+        /// One gap: the queries it answers and what to tell the AI. Read-only outside this assembly:
+        /// the entries of <see cref="All"/> are shared by every lookup result (<c>Result.KnownGap</c>).
+        /// </summary>
         public sealed class Gap
         {
-            public string Name { get; set; }
+            public string Name { get; internal set; }
             /// <summary>Type names (simple, case-insensitive): <c>Label</c>, <c>TextElement</c>.</summary>
-            public string[] TypeKeys { get; set; }
+            public IReadOnlyList<string> TypeKeys { get; internal set; }
             /// <summary>Members: a bare name (<c>NewLabel</c>) or <c>Type.Member</c> (<c>ViewType.Legend</c>).</summary>
-            public string[] MemberKeys { get; set; }
-            public string Title { get; set; }
-            public string Cannot { get; set; }
-            public string[] Works { get; set; }
-            public string Manual { get; set; }
+            public IReadOnlyList<string> MemberKeys { get; internal set; }
+            public string Title { get; internal set; }
+            public string Cannot { get; internal set; }
+            public IReadOnlyList<string> Works { get; internal set; }
+            public string Manual { get; internal set; }
         }
 
         /// <summary>The table (measured in Revit 2023.1.2, 2026-10-20 — docs/plans/18-known-api-gaps.md).</summary>
@@ -97,7 +100,7 @@ namespace VibeModel.Services.Claude
         private static readonly Dictionary<string, Gap> ByType = Index(g => g.TypeKeys);
         private static readonly Dictionary<string, Gap> ByMember = Index(g => g.MemberKeys);
 
-        private static Dictionary<string, Gap> Index(Func<Gap, string[]> keys)
+        private static Dictionary<string, Gap> Index(Func<Gap, IReadOnlyList<string>> keys)
         {
             var map = new Dictionary<string, Gap>(StringComparer.OrdinalIgnoreCase);
             foreach (var g in All)
@@ -138,7 +141,7 @@ namespace VibeModel.Services.Claude
                 "Known gap: " + gap.Title + " (measured in Revit 2023)",
                 "Cannot: " + gap.Cannot,
             };
-            if (gap.Works.Length > 0)
+            if (gap.Works.Count > 0)
             {
                 lines.Add("What works:");
                 lines.AddRange(gap.Works.Select(w => "  " + w));
