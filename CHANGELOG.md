@@ -23,7 +23,8 @@
 - A standards pack in `<add-in folder>\standards\` is still found: that is Revit's add-ins folder,
   where the loader sits, not the version folder an update replaces.
 - For IT: `managed.json` `DisableUpdates` (switch it off) and `UpdateSource` (your own share or https
-  mirror of the release assets). Each release now carries `latest-Revit<year>.json` and a `.sha256`
+  mirror of the release assets; an access token in the mirror URL's query is kept for the zip too).
+  Each release now carries `latest-Revit<year>.json` and a `.sha256`
   next to the zip, and the loader is signed along with the add-in. See *Updates* in docs/deployment.md.
 
 ### Changed
