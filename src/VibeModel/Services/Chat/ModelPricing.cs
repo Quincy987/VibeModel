@@ -20,6 +20,13 @@ namespace VibeModel.Services.Chat
         /// <summary>Set when the source states the cost itself (the CLI's total_cost_usd).</summary>
         public double? ReportedCostUsd { get; set; }
 
+        /// <summary>
+        /// How much conversation the turn's LAST API call carried (its input + cache write + cache
+        /// read): what every step of the next question starts from. 0 = unknown.
+        /// See <see cref="ConversationLength"/>.
+        /// </summary>
+        public long ContextTokens { get; set; }
+
         public long TotalTokens => InputTokens + OutputTokens + CacheWriteTokens + CacheReadTokens;
         public bool IsEmpty => TotalTokens == 0 && ReportedCostUsd == null;
 
@@ -32,6 +39,7 @@ namespace VibeModel.Services.Chat
             if (!string.IsNullOrWhiteSpace(model)) Model = model;
             _callOutput = 0;
             if (usage == null) return;
+            ContextTokens = ContextOf(usage);
             InputTokens += Long(usage, "input_tokens");
             CacheWriteTokens += Long(usage, "cache_creation_input_tokens");
             CacheReadTokens += Long(usage, "cache_read_input_tokens");
@@ -59,8 +67,13 @@ namespace VibeModel.Services.Chat
             OutputTokens = OutputTokens + _callOutput,
             CacheWriteTokens = CacheWriteTokens,
             CacheReadTokens = CacheReadTokens,
-            ReportedCostUsd = ReportedCostUsd
+            ReportedCostUsd = ReportedCostUsd,
+            ContextTokens = ContextTokens
         };
+
+        /// <summary>One API call's context: input + cache write + cache read tokens of its usage.</summary>
+        public static long ContextOf(IDictionary<string, object> usage) =>
+            Long(usage, "input_tokens") + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
 
         private static long Long(IDictionary<string, object> d, string key)
         {
@@ -135,21 +148,14 @@ namespace VibeModel.Services.Chat
                     usage.CacheWriteTokens * p.CacheWrite + usage.CacheReadTokens * p.CacheRead) / 1000000.0;
         }
 
-        /// <summary>"12.3k tokens · ≈ €0,04" (nl) / "12.3k tokens · ≈ €0.04" (en); tokens only when the price is unknown.</summary>
-        public static string Describe(TurnUsage usage, string language)
+        /// <summary>The cost estimate in euros, "0,04" (nl) / "0.04" (en), three decimals under a cent; null when unknown.</summary>
+        public static string EstimateEuro(TurnUsage usage, string language)
         {
-            if (usage == null || usage.IsEmpty) return null;
-            var parts = new List<string>();
-            if (usage.TotalTokens > 0) parts.Add(Tokens(usage.TotalTokens) + " tokens");
             var usd = CostUsd(usage);
-            if (usd.HasValue)
-            {
-                var culture = Strings.IsEnglish(language) ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo("nl-NL");
-                var eur = usd.Value * UsdToEur;
-                var format = eur > 0 && eur < 0.01 ? "0.000" : "0.00";
-                parts.Add("≈ €" + eur.ToString(format, culture));
-            }
-            return parts.Count == 0 ? null : string.Join(" · ", parts);
+            if (!usd.HasValue) return null;
+            var culture = Strings.IsEnglish(language) ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo("nl-NL");
+            var eur = usd.Value * UsdToEur;
+            return eur.ToString(eur > 0 && eur < 0.01 ? "0.000" : "0.00", culture);
         }
 
         /// <summary>"950", "12.3k", "1.2M" (never "1000k": the boundaries follow the rounding).</summary>

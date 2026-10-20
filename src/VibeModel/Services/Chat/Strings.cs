@@ -90,6 +90,15 @@ namespace VibeModel.Services.Chat
         public const string ApiUnreachable = "ApiUnreachable";                 // {0} = url, {1} = reason
         public const string ClaudeDisabledByIt = "ClaudeDisabledByIt";
         public const string UsageTip = "UsageTip";
+        public const string UsageTipContext = "UsageTipContext";               // {0} = tokens, e.g. "210k"
+        public const string UsageTipCost = "UsageTipCost";                     // {0} = euro amount
+        public const string UsageLong = "UsageLong";
+        public const string UsageVeryLong = "UsageVeryLong";
+        // The one-time "start a new chat" bar under a very long conversation (ConversationLength).
+        public const string NudgeNewChatText = "NudgeNewChatText";
+        public const string NudgeNewChatButton = "NudgeNewChatButton";
+        public const string NudgeNewChatDismiss = "NudgeNewChatDismiss";
+        public const string WelcomeTipNewChat = "WelcomeTipNewChat";
         public const string StatusNotConnected = "StatusNotConnected";
         // Connect wizard (the not-configured welcome card).
         public const string WizardTitle = "WizardTitle";
@@ -251,7 +260,15 @@ namespace VibeModel.Services.Chat
                 { ApiUnreachable, "Cannot reach {0}: {1}. Check the network or proxy, or press Diagnose and send the report to your administrator." },
                 { ClaudeDisabledByIt, "Claude Code is switched off on this computer by IT." },
                 { StatusNotConnected, "Not connected" },
-                { UsageTip, "Tokens this answer used, and an estimate of its cost at Anthropic's list price (the Console has the real bill)." },
+                { UsageTip, "Tokens this answer used. At every step Claude re-reads the whole conversation, so the longer the chat, the more each question costs: start a new chat for each task." },
+                { UsageTipContext, "Conversation length now: {0} tokens per step." },
+                { UsageTipCost, "At Anthropic's API list price: about €{0}. With a Claude subscription you do not pay this per question; it counts towards your usage limit." },
+                { UsageLong, "long conversation" },
+                { UsageVeryLong, "very long conversation" },
+                { NudgeNewChatText, "This conversation has grown long: Claude re-reads all of it at every step, so each question now costs a lot more. Start a new chat for your next task." },
+                { NudgeNewChatButton, "New chat" },
+                { NudgeNewChatDismiss, "Later" },
+                { WelcomeTipNewChat, "Tip: start a new chat for each task - it is faster and saves your limit." },
                 { WizardTitle, "Connect to Claude" },
                 { WizardIntro, "The chat needs a connection to Claude. Pick one way - you only do this once." },
                 { WizardApiHeading, "1. API key (recommended at the office)" },
@@ -408,7 +425,15 @@ namespace VibeModel.Services.Chat
                 { ApiUnreachable, "{0} is niet bereikbaar: {1}. Controleer het netwerk of de proxy, of klik op Diagnose en stuur het rapport naar je beheerder." },
                 { ClaudeDisabledByIt, "Claude Code is op deze computer uitgeschakeld door IT." },
                 { StatusNotConnected, "Niet verbonden" },
-                { UsageTip, "Tokens die dit antwoord gebruikte, en een schatting van de kosten tegen de prijslijst van Anthropic (de echte rekening staat in de Console)." },
+                { UsageTip, "Tokens die dit antwoord gebruikte. Claude leest bij elke stap het hele gesprek opnieuw, dus hoe langer de chat, hoe meer elke vraag kost: begin per taak een nieuwe chat." },
+                { UsageTipContext, "Lengte van het gesprek nu: {0} tokens per stap." },
+                { UsageTipCost, "Tegen de API-prijslijst van Anthropic: ongeveer €{0}. Met een Claude-abonnement betaal je dit niet per vraag; het telt mee voor je gebruikslimiet." },
+                { UsageLong, "lang gesprek" },
+                { UsageVeryLong, "zeer lang gesprek" },
+                { NudgeNewChatText, "Dit gesprek is lang geworden: Claude leest het bij elke stap helemaal opnieuw, dus elke vraag kost nu veel meer. Begin voor je volgende taak een nieuwe chat." },
+                { NudgeNewChatButton, "Nieuwe chat" },
+                { NudgeNewChatDismiss, "Niet nu" },
+                { WelcomeTipNewChat, "Tip: begin per taak een nieuwe chat - dat is sneller en spaart je limiet." },
                 { WizardTitle, "Verbind met Claude" },
                 { WizardIntro, "De chat heeft een verbinding met Claude nodig. Kies één manier - dit doe je maar één keer." },
                 { WizardApiHeading, "1. API-sleutel (aanbevolen op kantoor)" },

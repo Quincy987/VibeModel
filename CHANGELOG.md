@@ -25,6 +25,22 @@
 - `install.cmd` installs the loader into the add-ins folder and the add-in into its version folder,
   and removes the add-in an older install left in the add-ins folder. A new version alone installs
   while Revit runs (active after a restart); Revit only has to be closed when the loader changes.
+## v1.2.13 — Start a New Chat in Time (2026-10-20)
+
+### Changed — the chat tells you when to start a new chat
+- A colleague hit their Claude subscription's session limit after an answer that showed
+  "16.6M tokens · ≈ €33" and asked what the tokens meant. Claude re-reads the whole conversation at
+  every step, so a long chat makes every following question expensive — and people new to AI keep
+  one chat going all day.
+- The line under an answer no longer shows euros: it reads `3.9M tokens`, with `· lang gesprek` and an
+  orange dot once the conversation is about twice a fresh chat's size, `· zeer lang gesprek` and a red
+  dot from three times. The tooltip explains what the tokens are, the conversation length, and the
+  API-price estimate (which a subscription does not bill per question).
+- Once per chat, after a very long one, a bar under the answer explains why and offers **Nieuwe chat**
+  (or **Niet nu**). The welcome card of an empty chat ends with the tip to start a new chat per task
+  (not with a local model, which has no limit).
+- Length is judged on how much the turn's last call carried, not on the turn's total — a single first
+  question with many tool steps is not a long conversation.
 
 ## v1.2.12 — Known API Gaps, Labels You Can Finish (2026-10-20)
 
