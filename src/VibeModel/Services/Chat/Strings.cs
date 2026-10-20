@@ -180,6 +180,7 @@ namespace VibeModel.Services.Chat
         public const string UpdateUpToDate = "UpdateUpToDate";                 // {0} = latest version
         public const string UpdateNotChecked = "UpdateNotChecked";
         public const string UpdateCheckFailed = "UpdateCheckFailed";           // {0} = reason
+        public const string UpdateLastError = "UpdateLastError";               // {0} = reason (a check or action that left the state as it was)
         public const string UpdateDisabled = "UpdateDisabled";
         public const string UpdateDevBuild = "UpdateDevBuild";
         public const string UpdateChecking = "UpdateChecking";
@@ -344,6 +345,7 @@ namespace VibeModel.Services.Chat
                 { UpdateUpToDate, "Up to date ({0} is the latest version)." },
                 { UpdateNotChecked, "Not checked yet." },
                 { UpdateCheckFailed, "Check failed: {0}" },
+                { UpdateLastError, "Last attempt failed: {0}" },
                 { UpdateDisabled, "Updates are switched off by IT." },
                 { UpdateDevBuild, "A developer build in the Revit add-ins folder - updates do not apply." },
                 { UpdateChecking, "Checking…" },
@@ -509,6 +511,7 @@ namespace VibeModel.Services.Chat
                 { UpdateUpToDate, "Up-to-date ({0} is de nieuwste versie)." },
                 { UpdateNotChecked, "Nog niet gecontroleerd." },
                 { UpdateCheckFailed, "Controle mislukt: {0}" },
+                { UpdateLastError, "Laatste poging mislukt: {0}" },
                 { UpdateDisabled, "Updates zijn uitgezet door IT." },
                 { UpdateDevBuild, "Een ontwikkelversie in de Revit-add-insmap - updates zijn niet van toepassing." },
                 { UpdateChecking, "Bezig met controleren…" },

@@ -548,7 +548,6 @@ namespace VibeModel.UI
         private StackPanel CreateUpdatesPanel()
         {
             var engine = Services.Update.UpdateService.Engine;
-            var language = Strings.Current;
             var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
             panel.Children.Add(new TextBlock
             {
@@ -627,7 +626,7 @@ namespace VibeModel.UI
         {
             var engine = Services.Update.UpdateService.Engine;
             _updateStatusText.Text = UiText.UpdateLine(status, engine.Progress, Strings.Current) +
-                                     (status.LastError != null ? "\n" + Strings.Get(Strings.UpdateCheckFailed, status.LastError) : "");
+                                     (status.LastError != null ? "\n" + Strings.Get(Strings.UpdateLastError, status.LastError) : "");
             _updatePendingText.Text = status.Pending != null ? Strings.Get(Strings.SettingsUpdatePending, status.Pending) : "";
             _updatePendingText.Visibility = status.Pending != null ? Visibility.Visible : Visibility.Collapsed;
             var target = engine.RollbackTarget;
