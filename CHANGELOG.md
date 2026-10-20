@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.13 — Start a New Chat in Time (2026-10-20)
+
 ### Changed — the chat tells you when to start a new chat
 - A colleague hit their Claude subscription's session limit after an answer that showed
   "16.6M tokens · ≈ €33" and asked what the tokens meant. Claude re-reads the whole conversation at
