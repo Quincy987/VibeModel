@@ -9,8 +9,8 @@
     This file and VibeModel.Loader.dll go to
       %APPDATA%\Autodesk\Revit\Addins\{version}\      ({version} = 2022, 2023 or 2024)
     The add-in itself (VibeModel.dll, Markdig.dll, VibeModel.PdfText\) goes to
-      %LOCALAPPDATA%\VibeModel\versions\<VibeModel version>\
-    and versions\current.txt names the version to start. The loader starts that version, or a
+      %LOCALAPPDATA%\VibeModel\versions\Revit{version}\<VibeModel version>\
+    and current.txt next to those folders names the version to start. The loader starts it, or a
     VibeModel.dll right next to it (a developer build). Updating = a new version folder; the
     loader - the file Revit asks about ("Always Load") - stays the same.
 -->

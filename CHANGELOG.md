@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Added — Update from inside Revit
+- Plan 19. When a newer version is published, the chat pane shows a slim banner: *VibeModel 1.2.14
+  beschikbaar (2,6 MB)* with **Bijwerken** (Update), *Wat is nieuw* and *Niet nu*. Bijwerken downloads
+  the release zip in the background, checks its size and SHA-256 against the published manifest, puts
+  it in its own version folder and says *klaar - actief na het opnieuw starten van Revit*. Revit is
+  never restarted for you and nothing in the model changes. Measured in Revit 2023: 1.2.12 → 1.2.13 →
+  1.2.14, each active after the next start, without Revit asking *Always Load* again.
+- A small, stable **loader** is now what Revit starts (`VibeModel.Loader.dll`, same add-in id): it
+  starts the installed version from `%LOCALAPPDATA%\VibeModel\versions\Revit<year>\<version>\`, or a
+  developer build right next to it. Updates add a version folder and never replace the loader — the only
+  file Revit's security prompt is about.
+- Settings → *Versie en updates*: installed version and loader, where it runs from, the update source,
+  *Automatisch controleren op updates* (once a day, at start), *Nu controleren*, and *Terug naar
+  <version>* (rollback at the next start; the previous version is kept). Diagnose has an `== Updates`
+  section; `update`, `update --install`, `update --rollback` do the same from the chat or a terminal.
+- For IT: `managed.json` `DisableUpdates` (switch it off) and `UpdateSource` (your own share or https
+  mirror of the release assets). Each release now carries `latest-Revit<year>.json` and a `.sha256`
+  next to the zip. See *Updates* in docs/deployment.md.
+
+### Changed
+- `install.cmd` installs the loader into the add-ins folder and the add-in into its version folder,
+  and removes the add-in an older install left in the add-ins folder. A new version alone installs
+  while Revit runs (active after a restart); Revit only has to be closed when the loader changes.
+
 ## v1.2.12 — Known API Gaps, Labels You Can Finish (2026-10-20)
 
 ### Added — `apilookup` names what Revit's API cannot do

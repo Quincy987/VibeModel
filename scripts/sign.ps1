@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Authenticode-signs the files VibeModel ships: the add-in DLL, the PDF helper and the
+    Authenticode-signs the files VibeModel ships: the loader and add-in DLLs, the PDF helper and the
     install / packaging scripts.
 
 .DESCRIPTION
@@ -69,6 +69,7 @@ function Get-SigningCertificate {
 if (-not $Files) {
     if (-not $Root) { throw "Give -Files or -Root" }
     $Files = @(
+        (Join-Path $Root "VibeModel.Loader.dll"),
         (Join-Path $Root "VibeModel.dll"),
         (Join-Path $Root "VibeModel.PdfText\VibeModel.PdfText.exe"),
         (Join-Path $Root "install.ps1")

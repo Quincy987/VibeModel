@@ -37,7 +37,9 @@ No administrator rights, no terminal, no Node.js.
 2. **Close Revit and double-click `install.cmd`.** It installs the add-in for your Windows account, unblocks the files and checks the result. Nothing to fill in.
 3. **Open Revit**, click **VibeModel → Chat**. The first time, the chat shows **Connect to Claude**: paste the API key you got from your administrator (tested on the spot, stored encrypted), or install and log in to Claude Code with one click.
 
-Something not working? **Diagnose** in the chat header produces a report to send to whoever supports you. Rolling it out to a whole office is in [docs/deployment.md](docs/deployment.md).
+**Updating:** when a newer version is published, the chat shows *VibeModel 1.2.14 beschikbaar* — click **Bijwerken** (Update) and it is active the next time you start Revit. No installer, no download page, and Revit does not ask *Always Load* again. Settings → *Versie en updates* can check now or go back to the previous version.
+
+Something not working? **Diagnose** in the chat header produces a report to send to whoever supports you. Rolling it out to a whole office (including your own update share, or updates switched off) is in [docs/deployment.md](docs/deployment.md).
 
 
 ## What you can say
@@ -175,18 +177,22 @@ Claude Code adds file access to the project folder and the longest context.
 <details>
 <summary><b>Manual installation</b></summary>
 
-1. Download and unzip the release zip (`VibeModel-v<version>-Revit2023.zip`). Copy `VibeModel.dll`, `VibeModel.addin`, `Markdig.dll` and the `VibeModel.PdfText` folder into
+1. Download and unzip the release zip (`VibeModel-v<version>-Revit2023.zip`). Copy `VibeModel.Loader.dll` and `VibeModel.addin` into
    ```
    %APPDATA%\Autodesk\Revit\Addins\{year}\
    ```
-   with `{year}` your Revit version (`2023`, `2024`, …). Create the folder if it doesn't exist.
+   and `VibeModel.dll`, `Markdig.dll` and the `VibeModel.PdfText` folder into
+   ```
+   %LOCALAPPDATA%\VibeModel\versions\Revit{year}\{version}\
+   ```
+   with `{year}` your Revit version (`2023`, `2024`, …) and `{version}` e.g. `1.2.13`. Create the folders if they don't exist. (All five in the add-ins folder also works, but then the loader always starts that copy and in-app updates cannot apply.)
 2. **Unblock the DLLs.** Windows blocks files downloaded from the internet. Right-click each `.dll` → *Properties* → *Unblock*, or in PowerShell:
    ```powershell
-   Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll" -Recurse | Unblock-File
+   Get-ChildItem "$env:APPDATA\Autodesk\Revit\Addins\*\*.dll", "$env:LOCALAPPDATA\VibeModel\versions" -Recurse | Unblock-File
    ```
 3. Restart Revit. A **VibeModel** tab appears in the ribbon.
 
-An unsigned build makes Revit ask once per version whether to load it (*Always Load*). A build signed with a certificate your computer trusts loads without asking; see [docs/deployment.md](docs/deployment.md#signing).
+An unsigned build makes Revit ask once whether to load the loader (*Always Load*); in-app updates never change the loader, so it does not ask again after them. A build signed with a certificate your computer trusts loads without asking; see [docs/deployment.md](docs/deployment.md#signing).
 </details>
 
 <details>
@@ -218,7 +224,7 @@ Adding a command is one file: implement `IClaudeCommand` in `src/VibeModel/Servi
 <details>
 <summary><b>The VibeModel tab doesn't appear</b></summary>
 
-All files must be in the add-ins folder for *your* Revit year, and the DLLs must be unblocked (see manual installation). Then restart Revit. If Revit shows *External Tool Failure* / `0x80131515`, the DLLs are still blocked.
+The loader must be in the add-ins folder for *your* Revit year and the add-in in its version folder, and the DLLs must be unblocked (see manual installation). Then restart Revit. If Revit shows *External Tool Failure* / `0x80131515`, the DLLs are still blocked. When the loader finds no add-in it says so in a dialog listing where it looked; every start is one line in `%LOCALAPPDATA%\VibeModel\logs\loader.log`.
 
 The most common cause: the downloaded zip was GitHub's *Source code (zip)*, which contains no compiled add-in. Download the `VibeModel-v<version>-Revit2023.zip` under *Assets* instead; `install.cmd` names this when it happens, and keeps its window open so the message can be read.
 </details>
