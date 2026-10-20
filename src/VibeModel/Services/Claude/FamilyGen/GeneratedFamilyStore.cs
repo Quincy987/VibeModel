@@ -304,27 +304,10 @@ namespace VibeModel.Services.Claude.FamilyGen
             finally { try { fd?.Close(false); } catch { } }
         }
 
-        /// <summary>Reload keeps the project's type values (Material!) and adds new family parameters to existing instances.</summary>
-        internal sealed class KeepValuesLoadOptions : IFamilyLoadOptions
-        {
-            public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
-            {
-                overwriteParameterValues = false;
-                return true;
-            }
-
-            public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
-            {
-                source = FamilySource.Family;
-                overwriteParameterValues = false;
-                return true;
-            }
-        }
-
         /// <summary>Load (or reload) from the staged file inside the open project transaction.</summary>
         public static Family Load(Document doc, string path, string familyName)
         {
-            doc.LoadFamily(path, new KeepValuesLoadOptions(), out Family fam);
+            doc.LoadFamily(path, new Helpers.KeepValuesLoadOptions(), out Family fam);
             fam = fam ?? FindFamily(doc, familyName);
             if (fam == null) throw new InvalidOperationException("Revit did not load " + path + ".");
             return fam;

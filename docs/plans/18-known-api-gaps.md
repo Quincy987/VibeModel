@@ -42,7 +42,9 @@
   - `TextNote.Create(famDoc, viewId, point, "(LABEL Betonkwaliteit)", famDoc.GetDefaultElementTypeId(
     ElementTypeGroup.TextNoteType))` next to the copy — the placeholder the colleague invented.
   - `doc.EditFamily(family)` from exec needs `trans.RollBack();` first (the project's transaction
-    must not be open); the family document takes its own `Transaction`; `fd.Close(false)` after.
+    must not be open); the family document takes its own `Transaction`; then
+    `fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions())` and `fd.Close(false)`
+    (the first draft only closed it — work lost; see the review round below).
 - **The step that stays manual**: select the copied label → *Edit Label* → pick the parameter
   (one dialog per label), then Load into Project. Everything before and after it is API work.
 - **Also no API** (checked by reflection on RevitAPI.dll 2023): `DesignOption` and `Phase` have no
@@ -55,44 +57,55 @@
 - **Not a prompt rule.** It would cost every turn for a case that is rare, the colleague's own
   failure was not retries but surprise, and a blunt "labels are not possible" invites the model to
   stop before the parameters and types it *can* make. The knowledge goes where it is read on demand.
-- **One pure table, `Services/Claude/KnownApiGaps.cs`**: entries `{ Keys, Title, Cannot, Works,
-  Manual }`. Matching is case-insensitive on the simple name and on the member after the last dot,
-  so `Label`, `Labels`, `NewLabel`, `FamilyItemFactory.NewLabel`, `TAG_TAG`, `TextElement`,
-  `LabelType` → the label gap; `Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend` → the
-  legend gap; `DesignOption`, `DesignOption.Create`, `Phase.Create`, `NewPhase` → the
-  design-option/phase gap (`Phase` alone is *found* and useful; only its creation is a gap, so the
-  bare type name matches but the note is worded "exists; cannot be created").
-- **Hook 1 — `apilookup`** (`ApiLookup.Lookup` result): after *not found*, *ambiguous* and *has no
-  public member* a `Known gap:` block; after a *found* type that is a key (`TextElement`,
-  `DesignOption`, `Phase`) the same block under the member list. Text: title, one line "cannot",
-  the measured "what works" lines (code fragments as above), the manual step. ≤ 12 lines. JSON:
-  additive `knownGap: { name, cannot, works: [], manual }`.
-- **Hook 2 — exec compile hint** (`ApiLookupCommand.CompileErrorHint`) already prints the first
-  20 lines of the lookup, so `doc.FamilyCreate.NewLabel(…)` (CS1061) gets the gap for free. Make
-  sure the block is inside those 20 lines (put it before the closest-names list when the query is
-  a gap key).
-- **Hook 3 — the silent-success trap**: an exec snippet that calls `Set` on a parameter whose
-  `StorageType` is `None` gets no error from Revit. Not interceptable in general; the gap note
-  says it. (A runtime check would mean wrapping every `Parameter.Set` — out of scope.)
-- `apilookup`'s `Description` mentions it ("…and what this API cannot do: labels in annotation
-  families, legends, design options, phases"), so the model has a reason to ask.
+  The only prompt-visible change is one clause in `apilookup`'s description (the tool list), so the
+  model has a reason to ask.
+- **One pure table, `Services/Claude/KnownApiGaps.cs`**: entries `{ Name, TypeKeys, MemberKeys,
+  Title, Cannot, Works, Manual }`. Type keys: `Label`, `Labels`, `TextElement`, `LabelType`;
+  `Legend`, `Legends`, `ViewLegend`, `LegendComponent`; `Phase`, `DesignOption`. Member keys (bare or
+  `Type.Member`): `NewLabel`, `CreateLabel`, `FamilyItemFactory.NewLabel`, `TAG_TAG`;
+  `ViewType.Legend`, `ViewFamily.Legend`, `NewLegend`, `CreateLegend`; `Phase.Create`,
+  `DesignOption.Create`, `NewPhase`, `CreatePhase`, `NewDesignOption`, `CreateDesignOption`.
+  `Phase`/`DesignOption` are found, useful types; their note says "exist; cannot be created".
+- **Matching follows what the lookup resolved** (review round): a found type by its simple name
+  against the type keys only; a found or missing member as `Type.Member` / the member alone against
+  the member keys only; nothing resolved (not found, several types) → the query as typed against
+  both. Whole dot-separated names, case-insensitive, never a substring. So `LabelUtils`,
+  `Phase.Name`, `TextElement.Text` and a property that is merely *called* `Phase` or `Label`
+  (`PlanTopology.Phase`) get no block — the first version matched any last name and would have.
+- **Hook — `apilookup`** (`ApiLookup.Lookup` = `KnownApiGaps.Attach(LookupApi(…))`): not found,
+  ambiguous and "has no public member" get the block right after their first line (before the
+  closest names); a found type or member at the end. Text ≤ 12 lines; JSON additive
+  `data.knownGap: { name, title, cannot, works: [], manual }`.
+- **Hook — exec compile hint**: moved from `ApiLookupCommand` into `ApiLookup.CompileErrorHint`
+  (pure, so it is unit-tested on a fixture engine); it quotes `HintLines` (20) lines of each lookup,
+  plus `MaxLines` when the lookup carries a gap, so the whole block is always shown.
+- **The silent-success trap** (`Set` on the `StorageType.None` Label parameter returns true) is not
+  interceptable in general; the gap note says it.
+- **Keeping the work** (review round, measured): `fd.LoadFamily(doc)` without options is refused for a
+  family the project has ("Family loading failed."), and an exec snippet cannot declare an
+  `IFamilyLoadOptions` class. The keep-values options generated families already used are now public
+  (`VibeModel.Services.Helpers.KeepValuesLoadOptions`), and the recipe names both routes: the family
+  open in the Family Editor (the colleague's case — `doc` is the family, exec's own transaction keeps
+  it) or `EditFamily` from the project + `LoadFamily(doc, new KeepValuesLoadOptions())`.
 - **Not doing**: a `label` command (commands run on the project document; the family editor
   session is the user's; one report so far) and UI automation of the Edit Label dialog (fragile,
   the first thing a Revit update breaks). Revisit if the placeholder route is reported as too slow.
+  Not measured: the `EditFamily` route under change approval `ask` (exec then runs inside a run
+  group, which Revit may refuse `EditFamily` in).
 
 ## Files
 
-- `src/VibeModel/Services/Claude/KnownApiGaps.cs` — new, pure: the table, `Match(string query)`,
-  `Describe(entry)` text + data.
-- `src/VibeModel/Services/Claude/ApiLookup.cs` — `NotFound`, the "has no public member" result
-  and `DescribeType` append the block; `Result.Data["knownGap"]`.
-- `src/VibeModel/Services/Claude/Commands/ApiLookupCommand.cs` — `Description`; the compile hint
-  keeps the block within its 20 lines.
-- `src/VibeModel.Tests/KnownApiGapsTests.cs` — matching (keys, case, dotted, non-matches such as
-  `LabelUtils`? — decide: `LabelUtils` is a real, useful type; it must NOT match), text budget, JSON.
-- `src/VibeModel.Tests/ApiLookupTests.cs` — the three result kinds carry the block; a found type
-  that is not a key does not.
-- `CLAUDE.md` (apilookup bullet), `CHANGELOG.md`, this plan (verification section after the live run).
+- `src/VibeModel/Services/Claude/KnownApiGaps.cs` — new, pure: the table, `Match(query, kind)`,
+  `Lines` / `Describe` / `Data`, `Attach(result, query)`.
+- `src/VibeModel/Services/Claude/ApiLookup.cs` — `Lookup` attaches the gap; `CompileErrorHint`
+  (moved here) + `HintLines`.
+- `src/VibeModel/Services/Claude/Commands/ApiLookupCommand.cs` — `Description`; the hint delegates.
+- `src/VibeModel/Services/Helpers/KeepValuesLoadOptions.cs` — new, public (was nested, internal, in
+  `GeneratedFamilyStore`, which now uses this one).
+- `src/VibeModel.Tests/KnownApiGapsTests.cs` — matching per kind, `LabelUtils` / `Widget.Label` /
+  `PlanTopology.Phase` non-matches, unique keys, line budget, the recipe text, JSON, the four result
+  kinds through a fixture engine, the compile hint.
+- `CLAUDE.md` (apilookup section), `CHANGELOG.md`, this plan.
 
 ## Verification (live, Revit 2023)
 
@@ -123,3 +136,31 @@
   `Betonkwaliteit` added, label copied (copy's Sample Text = the original's), the placeholder note
   `(LABEL Betonkwaliteit)` created next to it.
 - Headless: 1509/1509 (`KnownApiGapsTests` 34 cases).
+
+### Review round (Revit 2023.1.2, 2026-10-20 afternoon, my own instance) — 8/8 gap checks, 4/4 after an older profile bug was fixed
+
+- **Found: the recipe threw its work away.** It ended with `fd.Close(false)` and never loaded the
+  family back. Measured: `fd.LoadFamily(doc)` without options → `InvalidOperationException: Family
+  loading failed.`; with VibeModel's keep-values options the family is reloaded and a re-opened copy
+  shows the work (labels 1 → 2, the placeholder note, the parameter). Exec cannot declare an
+  `IFamilyLoadOptions` class, so the options moved to the public
+  `VibeModel.Services.Helpers.KeepValuesLoadOptions`, and the recipe names both routes. With the
+  family open in the Family Editor (the colleague's case) exec's `doc` is the family and its own
+  transaction keeps the copy + placeholder (measured: labels 2, placeholder 1, parameter, still there
+  in the next call).
+- **Found: member names matched type keys.** `PlanTopology.Phase` (a property) and `Widget.Label`
+  would have carried a gap block; matching now follows what the lookup resolved. Live:
+  `PlanTopology.Phase` no block; `ViewType.Legend` (found enum member) → legend block at the end;
+  `Phase` → block; `LabelUtils` unchanged; `apilookup KeepValuesLoadOptions` → the class with "write
+  VibeModel.Services.Helpers.KeepValuesLoadOptions"; the NewLabel compile hint carries the new block.
+- The recipe's from-the-project route, as worded, run in exec: parameter + label copy + placeholder
+  committed in the family, `LoadFamily(doc, new KeepValuesLoadOptions())`, re-opened: `labels=2
+  placeholders=1 param=True`.
+- **Older bug found on the way (plan 12):** redefining a profile left the project's `VM_Profile` /
+  `VM_Source` at their old values (the reload keeps type values), so `extrude` built the old shape
+  after "PROFILE UPDATED" (live: 600 x 300 defined, extrude 500 x 250, "reused, not regenerated").
+  `profile` now writes both after the reload. Live after the fix: extrude → "updated: regenerated and
+  reloaded", 0.18 m², volume 1.80 m³; the same points again → "Unchanged"; the next extrude reuses
+  the family.
+- Not measured: the `EditFamily` route under change approval `ask` (exec inside a run group).
+- Headless: 1518/1518 (the profile fix is Revit-side: `ProfileStore` needs a document; verified live above).

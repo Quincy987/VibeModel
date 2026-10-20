@@ -11,6 +11,7 @@ namespace VibeModel.Tests.GapFixture
     public static class LabelUtils { public static string GetLabelFor(int id) => ""; }
     public class LabelType { }
     public class FamilyItemFactory { public object NewModelText(string text) => null; public object NewDetailCurve() => null; }
+    public enum ViewType { FloorPlan, Legend }
 }
 
 namespace VibeModel.Tests
@@ -57,6 +58,28 @@ namespace VibeModel.Tests
             Assert.Null(KnownApiGaps.Match(query));
         }
 
+        [Theory]
+        [InlineData("Autodesk.Revit.DB.PlanTopology.Phase", KnownApiGaps.QueryKind.Member, null)]   // a property called Phase
+        [InlineData("Widget.Label", KnownApiGaps.QueryKind.Member, null)]
+        [InlineData("Autodesk.Revit.DB.ViewType.Legend", KnownApiGaps.QueryKind.Member, "legends")]
+        [InlineData("Autodesk.Revit.DB.BuiltInParameter.TAG_TAG", KnownApiGaps.QueryKind.Member, "labels")]
+        [InlineData("Autodesk.Revit.DB.Phase.Create", KnownApiGaps.QueryKind.Member, "phases-design-options")]
+        [InlineData("Autodesk.Revit.DB.Phase", KnownApiGaps.QueryKind.Type, "phases-design-options")]
+        [InlineData("Autodesk.Revit.DB.TAG_TAG", KnownApiGaps.QueryKind.Type, null)]   // member keys never name a type
+        public void Match_FollowsWhatTheLookupResolved(string subject, KnownApiGaps.QueryKind kind, string expected)
+        {
+            Assert.Equal(expected, KnownApiGaps.Match(subject, kind)?.Name);
+        }
+
+        [Fact]
+        public void Keys_AreUniqueAcrossGaps()
+        {
+            var types = KnownApiGaps.All.SelectMany(g => g.TypeKeys).ToList();
+            var members = KnownApiGaps.All.SelectMany(g => g.MemberKeys).ToList();
+            Assert.Equal(types.Count, types.Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal(members.Count, members.Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+        }
+
         [Fact]
         public void EveryGap_FitsItsLineBudget_AndNamesTheManualStep()
         {
@@ -76,8 +99,11 @@ namespace VibeModel.Tests
             var text = KnownApiGaps.Describe(KnownApiGaps.Match("Label"));
             Assert.Contains("no FamilyItemFactory.NewLabel", text);
             Assert.Contains("TAG_SAMPLE_TEXT", text);
-            Assert.Contains("returns true, but nothing changes", text);
+            Assert.Contains("returns true, but setting it to a family parameter's id or name changes nothing", text);
+            Assert.Contains("doc.IsFamilyDocument", text);
             Assert.Contains("trans.RollBack(); var fd = doc.EditFamily(family);", text);
+            Assert.Contains("fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions()); fd.Close(false)", text);
+            Assert.Contains("Family loading failed.", text);
             Assert.Contains("fd.FamilyManager.AddParameter(\"Betonkwaliteit\", GroupTypeId.Text, SpecTypeId.String.Text, false)", text);
             Assert.Contains("ElementTransformUtils.CopyElement(fd, labelId, offset)", text);
             Assert.Contains("Can't paste Labels across Families of different Categories.", text);
@@ -154,6 +180,20 @@ namespace VibeModel.Tests
             var member = Engine.Lookup("FamilyItemFactory.NewModelText", null, false);
             Assert.True(member.Found);
             Assert.DoesNotContain("Known gap", member.Text);
+            // A member that is merely CALLED like a gap type is real API.
+            var label = Engine.Lookup("Widget.Label", null, false);
+            Assert.True(label.Found);
+            Assert.DoesNotContain("Known gap", label.Text);
+            Assert.False(label.Data.ContainsKey("knownGap"));
+        }
+
+        [Fact]
+        public void FoundKeyMember_GetsTheBlockAtTheEnd()
+        {
+            var r = Engine.Lookup("ViewType.Legend", null, false);
+            Assert.True(r.Found);
+            Assert.StartsWith("VibeModel.Tests.GapFixture.ViewType.Legend", r.Text);
+            Assert.StartsWith("Manual step: when no open document has a legend", r.Text.Split('\n').Last());
         }
 
         [Fact]

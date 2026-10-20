@@ -8,9 +8,19 @@
   (and the hint under a failed `exec` compile) answers questions about labels in tag, generic
   annotation and title-block families, legend views, and creating phases or design options with a
   `Known gap:` block: what the API cannot do, what does work (measured in Revit 2023: add the family
-  parameter, copy the nearest label, put `(LABEL <parameter>)` next to it) and the step the user does
-  by hand (Edit Label). It also warns that setting a label's `Label` parameter reports success and
-  changes nothing. No extra prompt text per turn.
+  parameter, copy the nearest label, put `(LABEL <parameter>)` next to it, load the family back) and
+  the step the user does by hand (Edit Label). It also warns that setting a label's `Label` parameter
+  reports success and changes nothing. No new prompt rule — only `apilookup`'s one-line description
+  names the gaps.
+- An `exec` snippet can now load a family it edited back into the project:
+  `fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions())` (the options generated
+  families already used, now public; Revit refuses the reload without options).
+
+### Fixed
+- `profile <name> --points …` on an existing profile said "PROFILE UPDATED" but every later `extrude`
+  / `sweep` kept using the old points: the reload keeps the project's type values, so the stored
+  points and the change stamp stayed old. They are now written onto the project types after the
+  reload (as `extrude` already did for its own stamp); a repeat with the same points says "Unchanged".
 
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 

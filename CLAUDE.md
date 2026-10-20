@@ -470,11 +470,16 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   views (`Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend`), creating phases and design
   options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`) — the answer carries a
   `Known gap:` block (cannot / what works, measured / the user's manual step; ≤ 12 lines; JSON
-  additive `data.knownGap`): after the first line when nothing was found, at the end of a found
-  type. Matched on the whole query and each suffix after a dot, never a substring (`LabelUtils`,
-  `Phase.Name` stay plain). The exec compile hint quotes the whole block (`doc.FamilyCreate.NewLabel`
-  → CS1061 → the label recipe). Measured: a label's `Label` parameter accepts `Set(…)` and returns
-  true without changing anything. No per-turn prompt text.
+  additive `data.knownGap`): right after the first line when nothing was found, at the end of a found
+  type or member. Matched on what the lookup resolved, on whole names (never a substring): a found
+  type by its simple name against the type keys, a found or missing member as `Type.Member` / the
+  member alone against the member keys — so `LabelUtils`, `Phase.Name`, `PlanTopology.Phase` stay
+  plain. The exec compile hint quotes the whole block (`doc.FamilyCreate.NewLabel` → CS1061 → the
+  label recipe). Measured: a label's `Label` parameter accepts `Set(…)` and returns true but changes
+  nothing; an edited family goes back with `fd.LoadFamily(doc, new
+  VibeModel.Services.Helpers.KeepValuesLoadOptions())` (public for exec — without options Revit
+  answers "Family loading failed."); with the family open in the Family Editor, exec edits `doc` itself.
+  No prompt rule; `apilookup`'s description (in the tool list) names the four gaps.
 - **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
   `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
   rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at
