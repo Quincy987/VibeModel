@@ -103,6 +103,10 @@ namespace VibeModel.Services.Claude
             public bool Found { get; set; }
             public string Text { get; set; }
             public Dictionary<string, object> Data { get; set; }
+            /// <summary>The type the lookup resolved (full name); null when none (not found, several).</summary>
+            public string ResolvedType { get; set; }
+            /// <summary>The member asked for on <see cref="ResolvedType"/> — found or not; null for a type lookup.</summary>
+            public string Member { get; set; }
         }
 
         /// <summary>
@@ -303,7 +307,7 @@ namespace VibeModel.Services.Claude
                 }
                 if (shown.Count > MaxMembers) sb.AppendLine("  (+" + (shown.Count - MaxMembers) + " more — --filter <x>)");
                 data["enumValues"] = values;
-                return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data };
+                return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data, ResolvedType = fullName };
             }
 
             // How to get one.
@@ -376,7 +380,7 @@ namespace VibeModel.Services.Claude
             if (hidden > 0) sb.AppendLine("(+" + hidden + " more — --filter <x>)");
             data["more"] = hidden;
             data["obsolete"] = obsolete;
-            return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data };
+            return new Result { Found = true, Text = sb.ToString().TrimEnd(), Data = data, ResolvedType = fullName };
         }
 
         private Result DescribeMember(Type type, string member)
@@ -406,6 +410,8 @@ namespace VibeModel.Services.Claude
                 return new Result
                 {
                     Found = false,
+                    ResolvedType = fullName,
+                    Member = member,
                     Text = sb2.ToString().TrimEnd(),
                     Data = new Dictionary<string, object>
                     {
@@ -440,6 +446,8 @@ namespace VibeModel.Services.Claude
             return new Result
             {
                 Found = true,
+                ResolvedType = fullName,
+                Member = members[0].Name,
                 Text = sb.ToString().TrimEnd(),
                 Data = new Dictionary<string, object>
                 {

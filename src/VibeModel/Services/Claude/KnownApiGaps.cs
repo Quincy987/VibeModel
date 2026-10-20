@@ -186,29 +186,16 @@ namespace VibeModel.Services.Claude
             return result;
         }
 
-        // What a lookup was about, from its own data: "type" (+ "member" when found, + "query" for a
-        // missing member) — see ApiLookup.DescribeType / DescribeMember.
+        // What a lookup was about: the resolved type (+ the member asked for), else the query as typed.
         private static string Subject(ApiLookup.Result result, string query, out QueryKind kind)
         {
-            var data = result.Data ?? new Dictionary<string, object>();
-            var type = data.TryGetValue("type", out var t) ? t as string : null;
-            if (type != null && data.TryGetValue("member", out var m))
+            if (result.ResolvedType == null)
             {
-                kind = QueryKind.Member;
-                return type + "." + m;
+                kind = QueryKind.Unknown;
+                return query;
             }
-            if (type != null && result.Found)
-            {
-                kind = QueryKind.Type;
-                return type;
-            }
-            if (type != null && data.TryGetValue("query", out var missing))
-            {
-                kind = QueryKind.Member;
-                return type + "." + missing;
-            }
-            kind = QueryKind.Unknown;
-            return query;
+            kind = result.Member != null ? QueryKind.Member : QueryKind.Type;
+            return result.Member != null ? result.ResolvedType + "." + result.Member : result.ResolvedType;
         }
     }
 }

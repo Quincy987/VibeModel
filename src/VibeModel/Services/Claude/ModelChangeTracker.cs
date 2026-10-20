@@ -45,10 +45,16 @@ namespace VibeModel.Services.Claude
             return !string.IsNullOrEmpty(pathName) ? pathName : "untitled:" + (title ?? "");
         }
 
-        /// <summary>A committed transaction: ours if ALL its names carry the prefix.</summary>
-        public static void RecordCommit(string docKey, IEnumerable<string> transactionNames)
+        /// <summary>
+        /// A committed transaction: ours if ALL its names carry the prefix, or if it was committed
+        /// while a VibeModel command ran — the main thread was ours, so the user cannot have made
+        /// it, and Revit names the transactions its own calls open (measured: an exec snippet's
+        /// <c>fd.LoadFamily(doc, …)</c> commits "Load Family"-style transactions that may not be
+        /// opened inside a VibeModel one and stamped "1 USER edit" without this).
+        /// </summary>
+        public static void RecordCommit(string docKey, IEnumerable<string> transactionNames, bool duringVibeModelCommand = false)
         {
-            bool ours = IsVibeModelTransaction(transactionNames);
+            bool ours = duringVibeModelCommand || IsVibeModelTransaction(transactionNames);
             lock (Sync)
             {
                 var state = GetOrAdd(docKey);

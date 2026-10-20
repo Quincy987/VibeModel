@@ -183,3 +183,21 @@
   "Unchanged", next extrude reused; a new `lwall`; the R1–R8 checks of round 1 (recipe keeps its
   work, matching, compile hint). Headless 1521/1521 (`LinkArgsTests.ProbeFile_…` failed once and
   passed on both reruns — flaky, not in this change).
+
+### Review round 3 (2026-10-20, late evening)
+
+- **Found: the recipe's load-back was stamped "1 USER edit since last command - model changed
+  outside VibeModel"** (seen in round 1's R1 output, not noticed then). `fd.LoadFamily(doc, …)`
+  commits under Revit's own transaction name, and the tracker only trusted the "VibeModel: " prefix.
+  Measured: inside a `Transaction(doc, "VibeModel: …")` Revit refuses it ("The document must not be
+  modifiable before calling LoadFamily"), inside a `TransactionGroup("VibeModel: …")` it is still
+  counted as a user edit — so the recipe cannot fix it. `ModelChangeTracker.RecordCommit` now takes
+  `duringVibeModelCommand` (`RevitCommandHandler.IsProcessingCommand`, the flag the dialog and
+  failure handlers already use): while a command runs, the main thread is ours. Live after the fix:
+  the same load-back → `-- model #1 | …` with no user edit; the recipe on an untouched family
+  (`IB_Tag_Rebar_dia-hoh`) → labels 1 → 2, placeholder 1, parameter, clean stamp.
+- `ApiLookup.Result` carries `ResolvedType` / `Member`; `KnownApiGaps` no longer reads the JSON
+  data keys ("type", "member", "query") to learn what the lookup resolved.
+- Live again: profile → extrude regenerate / Unchanged / reuse, a new `lwall`, R2–R8. Headless
+  1522/1522 (with `ForeignNamedCommit_DuringOurCommand_IsOurs`); `ProjectMemoryTests.Clear_…` failed
+  once while Revit and a build were starting and passed 3 of 3 alone — load-sensitive, not this change.

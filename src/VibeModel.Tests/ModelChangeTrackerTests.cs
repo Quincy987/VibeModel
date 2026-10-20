@@ -82,6 +82,17 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void ForeignNamedCommit_DuringOurCommand_IsOurs()
+        {
+            // An exec snippet's fd.LoadFamily(doc, …) commits under Revit's own name (plan 18, live).
+            ModelChangeTracker.RecordCommit("doc-during", Foreign, duringVibeModelCommand: true);
+
+            var stamp = ModelChangeTracker.TakeStamp("doc-during", "Level 1", 0);
+            Assert.Equal(1, stamp.TotalEdits);
+            Assert.Equal(0, stamp.UserEdits);
+        }
+
+        [Fact]
         public void UndoRedo_CountsAsUserEdit()
         {
             ModelChangeTracker.RecordUndoRedo("doc-undo");

@@ -22,6 +22,9 @@
   points and the change stamp stayed old. Both are now written onto the project types after the
   reload (the loader writes the stamp for every generated family, as `extrude` already did by hand);
   `profile <name>` shows the new points and a repeat with the same points says "Unchanged".
+- The model-state stamp no longer reports "1 USER edit" for a change an `exec` snippet made through
+  a Revit call that opens its own transaction (loading a family back): whatever is committed while a
+  VibeModel command runs counts as VibeModel's.
 
 ## v1.2.11 — Approve Before Keeping, Composite Profiles, Server Lockdown (2026-10-19)
 

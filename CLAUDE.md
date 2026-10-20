@@ -76,7 +76,9 @@ JSON mode adds an additive `meta` sibling to the envelope:
 `{"ok":true,"data":{...},"meta":{"edits":48,"userEditsSinceLastCommand":2,"activeView":"Level 1","selectedCount":1}}`.
 `edits` counts every committed transaction in the document; `userEditsSinceLastCommand` counts
 only edits NOT made through VibeModel (manual edits, undo/redo) since your previous command, and
-resets once reported. **If the stamp reports user edits since your last command, the model changed
+resets once reported. A transaction committed while a VibeModel command runs is always ours, also
+under Revit's own name (`RevitCommandHandler.IsProcessingCommand`; measured: an exec snippet's
+`fd.LoadFamily(doc, …)` cannot run inside a VibeModel transaction and was stamped "1 USER edit"). **If the stamp reports user edits since your last command, the model changed
 outside your control — re-read context (`/context`, `/selected`, `/screenshot`) before relying on
 earlier query results.** Exceptions: `/health` and `/screenshot` are unstamped; a batch gets one
 stamp for the whole response; text-mode error responses are unstamped (JSON errors still carry
