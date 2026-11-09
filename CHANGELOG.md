@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.15 — Zichtbaar wat er veranderde (2026-11-09)
+
 ### Added — see what the AI changed
 - After every command that changed the model, one line says what happened, per category:
   `-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0` (in JSON a `changes` object
