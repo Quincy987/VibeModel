@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace VibeModel.Services.Standards
@@ -21,7 +22,10 @@ namespace VibeModel.Services.Standards
         {
             try
             {
-                var t = Task.Run(probe);
+                // A dedicated thread, not the pool: when the pool is saturated (the background indexers,
+                // a test run) a queued probe can wait longer than its deadline before it even starts, and a
+                // local folder is then reported as "did not answer within 3 s" (seen on the CI runner).
+                var t = Task.Factory.StartNew(probe, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
                 return t.Wait(timeout) ? t.Result : onTimeout;
             }
             catch { return onTimeout; }
