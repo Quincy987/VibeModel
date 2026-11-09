@@ -49,9 +49,10 @@ namespace VibeModel.Services.Claude.Commands
             if (q.Length == 0)
                 return CommandResult.Error("BAD_ARGS", "Give search terms.", "e.g. library paal, library damwand AZ");
 
-            var hits = idx.Search(q, 20);
+            var hits = idx.Search(q, 20, out int totalHits);
             var sb = new StringBuilder();
-            sb.AppendLine("LIBRARY — " + hits.Count + " match(es) for '" + q + "' in " + idx.Entries.Count + " families" +
+            sb.AppendLine("LIBRARY — " + (totalHits > hits.Count ? Truncation.Line(hits.Count, totalHits, "use more specific terms") : hits.Count + " match(es)") +
+                          " for '" + q + "' in " + idx.Entries.Count + " families" +
                           " (index " + idx.BuiltUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
                           (building ? ", refreshing" : "") + (err != null ? "; last refresh failed: " + err : "") + ")");
             sb.AppendLine("=======");
@@ -67,7 +68,7 @@ namespace VibeModel.Services.Claude.Commands
 
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {
-                { "count", hits.Count }, { "indexed", idx.Entries.Count },
+                { "count", hits.Count }, { "total", totalHits }, { "truncated", totalHits > hits.Count }, { "indexed", idx.Entries.Count },
                 { "builtUtc", idx.BuiltUtc.ToString("o", CultureInfo.InvariantCulture) },
                 { "results", hits.Select(h => (object)new Dictionary<string, object>
                     { { "name", h.Name }, { "path", h.Path }, { "folder", h.Folder }, { "prefix", h.Prefix } }).ToList() }

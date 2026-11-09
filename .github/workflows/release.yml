@@ -28,6 +28,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # A release with failing tests must not be published.
+      - name: Test (Revit 2023)
+        shell: pwsh
+        run: dotnet test VibeModel.sln -p:RevitVersion=2023 -c Release
+
       - name: Package Revit 2023 zip (unsigned)
         shell: pwsh
         run: ./scripts/package-release.ps1 -RevitVersion 2023

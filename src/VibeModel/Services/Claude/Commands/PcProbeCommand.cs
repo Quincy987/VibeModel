@@ -77,7 +77,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 if (shown++ >= MaxHistogramLines)
                 {
-                    sb.AppendLine("  ... " + (est.Bins.Count - MaxHistogramLines) + " more bins");
+                    sb.AppendLine("  ... " + Truncation.Line(MaxHistogramLines, est.Bins.Count));
                     break;
                 }
                 sb.AppendLine("  " + Fmt(bin.ZStartMm).PadLeft(10) + " .. " +

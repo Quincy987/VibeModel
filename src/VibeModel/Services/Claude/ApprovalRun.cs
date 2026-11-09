@@ -75,7 +75,8 @@ namespace VibeModel.Services.Claude
             {
                 Element e;
                 try { e = doc?.GetElement(id); } catch { e = null; }
-                if (e == null) return new ChangedElement(id.IntegerValue, null);
+                // Not in the model: a transaction group rolled back after this was recorded.
+                if (e == null) return null;
                 return Hidden(e) ? null : new ChangedElement(id.IntegerValue, CategoryName(e));
             };
             Func<ElementId, ChangedElement> gone = id =>

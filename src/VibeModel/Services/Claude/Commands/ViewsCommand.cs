@@ -43,7 +43,7 @@ namespace VibeModel.Services.Claude.Commands
                     sb.AppendLine("  ID " + view.Id.IntegerValue + ": " + view.Name);
                 }
                 if (group.Count() > 20)
-                    sb.AppendLine("  ... and " + (group.Count() - 20) + " more");
+                    sb.AppendLine("  ... " + Truncation.Line(20, group.Count(), "the JSON output lists every view"));
                 sb.AppendLine();
             }
             sb.AppendLine("Total views: " + views.Count);

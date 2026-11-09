@@ -400,7 +400,7 @@ namespace VibeModel.Services.Claude
         public bool IsEmpty => Added.Count == 0 && Modified.Count == 0 && Deleted.Count == 0;
 
         /// <summary>"Walls 2, Floors 1, other 1" — most first, then by name; elements without a category last, as "other".</summary>
-        public static string ByCategory(IReadOnlyList<ChangedElement> elements, string unknown = "other")
+        public static string ByCategory(IReadOnlyList<ChangedElement> elements, string unknown = UnknownCategory)
         {
             if (elements == null || elements.Count == 0) return "";
             // Named categories first (most first, then by name); the unknown ones last.
@@ -436,6 +436,48 @@ namespace VibeModel.Services.Claude
             var counts = Counts();
             return "-- preview: nothing was changed. Would " + counts + "." +
                    (Added.Count > 0 ? " Ids are provisional." : "");
+        }
+
+        /// <summary>
+        /// "-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0" — what a run
+        /// that was kept did to the model; null when it did nothing the user can see.
+        /// </summary>
+        public string ChangedLine() => IsEmpty ? null
+            : "-- changed: " + Part("added", Added) + ", " + Part("modified", Modified) + ", " + Part("deleted", Deleted);
+
+        private const string UnknownCategory = "other";
+
+        /// <summary>Ids listed per group in the JSON <c>changes</c> object; the counts are always complete.</summary>
+        public const int MaxChangedIds = 50;
+
+        /// <summary>
+        /// The additive JSON <c>changes</c> object of a kept run:
+        /// <c>{added:{count,byCategory:{Walls:1},ids:[…]},modified:{…},deleted:{…}}</c>;
+        /// <c>idsTruncated:true</c> on a group with more ids than <see cref="MaxChangedIds"/>.
+        /// </summary>
+        public Dictionary<string, object> ChangesJson()
+        {
+            return new Dictionary<string, object>
+            {
+                { "added", ChangesGroup(Added) },
+                { "modified", ChangesGroup(Modified) },
+                { "deleted", ChangesGroup(Deleted) }
+            };
+        }
+
+        private static Dictionary<string, object> ChangesGroup(IReadOnlyList<ChangedElement> elements)
+        {
+            var byCategory = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in elements.GroupBy(e => e.Category ?? UnknownCategory, StringComparer.OrdinalIgnoreCase))
+                byCategory[g.Key] = g.Count();
+            var group = new Dictionary<string, object>
+            {
+                { "count", elements.Count },
+                { "byCategory", byCategory },
+                { "ids", elements.Take(MaxChangedIds).Select(e => (object)e.Id).ToList() }
+            };
+            if (elements.Count > MaxChangedIds) group["idsTruncated"] = true;
+            return group;
         }
 
         /// <summary>The additive JSON <c>preview</c> object.</summary>

@@ -284,7 +284,9 @@ namespace VibeModel.Services.Claude
             var targets = AnnotationScope.TargetIds(request.Command, request.Args);
             var gdoc = AnnotationGuard.Applies(request.Command) ? doc : null;
             var snapshot = gdoc != null ? GuardCapture(gdoc, targets) : null;
-            var preRead = runControl ? ApprovalRun.PreRead(doc, targets) : null;
+            // Read for every modifying command, not only under a run group: the "-- changed" line
+            // needs the deleted elements' categories too, and they cannot be read afterwards.
+            var preRead = modifying ? ApprovalRun.PreRead(doc, targets) : null;
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             TransactionGroup group = null;
             AnnotationOutcome annotations = null;
@@ -348,16 +350,40 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run);
+            // A failed command undid its own work (a generated family rolls back a whole group after
+            // child transactions were recorded); only a failed exec can have kept earlier transactions.
+            var kept = cr.Success || IsExec(request.Command) ? KeptChanges(doc, changes, preRead, run) : null;
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept);
+        }
+
+        /// <summary>
+        /// What a run kept in the model, for the "-- changed" line; null when it kept nothing. The
+        /// caller has already dropped the change set of a rolled-back run. A report never fails the
+        /// response it belongs to.
+        /// </summary>
+        private static ChangeSetSummary KeptChanges(Document doc, RecordedChanges changes, IDictionary<int, string> preRead, RunOutcome run)
+        {
+            if (changes == null || changes.IsEmpty) return null;
+            try
+            {
+                var summary = run.Summary ?? ApprovalRun.Summarize(doc, changes, preRead);
+                return summary.IsEmpty ? null : summary;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Change line skipped: " + ex.Message);
+                return null;
+            }
         }
 
         /// <summary>
         /// The response of a single command: the result, then the "-- revit", "-- check",
-        /// "-- annotations" and plan-15 lines, then the stamp (text); the same as additive JSON
+        /// "-- annotations", "-- changed" and plan-15 lines, then the stamp (text); the same as additive JSON
         /// objects next to the envelope.
         /// </summary>
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
-            List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null)
+            List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
+            ChangeSetSummary changed = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -380,6 +406,7 @@ namespace VibeModel.Services.Claude
                     if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
                     run?.AddJson(dict);
                     AddAnnotationsJson(dict, annotations, run);
+                    if (changed != null) dict["changes"] = changed.ChangesJson();
                 }
                 return _json.Serialize(obj);
             }
@@ -394,6 +421,7 @@ namespace VibeModel.Services.Claude
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
             if (annotationLine != null) text = AppendLine(text, annotationLine);
+            if (changed != null) text = AppendLine(text, changed.ChangedLine());
             if (run?.Line != null) text = AppendLine(text, run.Line);
             return stamp != null ? stamp.AppendToText(text) : text;
         }
@@ -571,8 +599,7 @@ namespace VibeModel.Services.Claude
                 if (!ProjectData.Enabled) return;
                 var doc = app.ActiveUIDocument?.Document;
                 if (doc == null) return;
-                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args, null, null, null,
-                    turn ?? ProjectJournal.CurrentTurn, null, ProjectJournal.DiscardedOutcome);
+                var line = ProjectJournal.CommandLineNow(command, args, null, null, null, turn, null, ProjectJournal.DiscardedOutcome);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)
@@ -734,7 +761,7 @@ namespace VibeModel.Services.Claude
             bool guarded = ChangeApprovalPolicy.IsGuardedBatch(batchItems.Select(i => i.Key));
             bool batchModifies = req.Batch.Any(i => _registry.IsModification(i.Command));
             bool runControl = ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, batchModifies, options.Preview, options.ReadOnly);
-            var preRead = runControl ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
+            var preRead = batchModifies ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             var run = new RunOutcome();
 
@@ -844,6 +871,9 @@ namespace VibeModel.Services.Claude
             annotations = ShownAnnotations(annotations, runControl, run);
             var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
+            // One line for the whole batch: the recorder holds one running change set.
+            var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
+            if (kept != null) sb.AppendLine(kept.ChangedLine());
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
 
             // One stamp for the whole batch, never per sub-command.
@@ -864,6 +894,7 @@ namespace VibeModel.Services.Claude
                     envelope["check"] = CheckEnvelope(checkLine, findings);
                 run.AddJson(envelope);
                 AddAnnotationsJson(envelope, annotations, run);
+                if (kept != null) envelope["changes"] = kept.ChangesJson();
                 // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
                 if (run.Replace != null && run.Replace.ToJsonObject() is Dictionary<string, object> replaced &&
                     replaced.TryGetValue("error", out var error))
@@ -919,9 +950,9 @@ namespace VibeModel.Services.Claude
                 if (changes == null || changes.IsEmpty || !ProjectData.Enabled) return;
                 var doc = app.ActiveUIDocument?.Document;
                 if (doc == null) return;
-                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args,
+                var line = ProjectJournal.CommandLineNow(command, args,
                     RecordedChanges.Values(changes.Added), RecordedChanges.Values(changes.Modified),
-                    RecordedChanges.Values(changes.Deleted), turn ?? ProjectJournal.CurrentTurn, written);
+                    RecordedChanges.Values(changes.Deleted), turn, written);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)
@@ -942,8 +973,7 @@ namespace VibeModel.Services.Claude
                 var files = journaled.JournalFiles(result);
                 var doc = app.ActiveUIDocument?.Document;
                 if (doc == null || files == null || files.Count == 0) return;
-                var line = ProjectJournal.FormatCommandLine(DateTime.Now, command, args, null, null, null,
-                    turn ?? ProjectJournal.CurrentTurn, files);
+                var line = ProjectJournal.CommandLineNow(command, args, null, null, null, turn, files);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)

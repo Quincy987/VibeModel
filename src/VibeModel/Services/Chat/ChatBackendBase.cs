@@ -323,6 +323,15 @@ namespace VibeModel.Services.Chat
         internal const string PhaseNoteRule =
             "Mention the active view's phase only when something this turn created or changed cannot be seen in that view, and then in one sentence. Do not restate that a step can be undone unless the user asks.";
 
+        // Review by a colleague, 2026-11: a modeller must be able to see what the AI did, what it
+        // assumed and what it left out, and must be able to check quantities without the AI.
+        internal const string ChangeReportRule =
+            "When this turn changed the model, end with ONE compact line: what was added, changed and deleted per category, taken from the command output (`-- changed:` in text, the `changes` counts in JSON), never estimated, plus the assumptions you made (type, level, phase, position) and what you skipped or could not do. One line, no list.";
+        internal const string OmissionsRule =
+            "When a command output says it is incomplete (showing N of M), tell the user the real total; never present a cut list as everything. Always name assumptions and omissions.";
+        internal const string QuantitiesRule =
+            "Quantities for an estimate or bill (hoeveelheden, begroting, palenstaat) are made as a Revit schedule with `schedule` by default, so anyone can check them in Revit; a list in the chat only when the user asks for one.";
+
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
@@ -375,11 +384,15 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
+            sb.AppendLine("- " + ChangeReportRule);
             sb.AppendLine("- " + NextStepRule);
             sb.AppendLine("- " + PhaseNoteRule);
             sb.AppendLine("- No element ids in running text unless the user asks for them; put ids in a single `code` line at the end if they are needed.");
             sb.AppendLine("- Use short bullet lists for choices. No headings for answers under ~120 words. Never repeat the question.");
             sb.AppendLine("- While working, emit at most one short line per step (what you are doing, 6 words max); the detailed reasoning stays internal.");
+            sb.AppendLine("Complete and checkable");
+            sb.AppendLine("- " + OmissionsRule);
+            sb.AppendLine("- " + QuantitiesRule);
             sb.AppendLine("Tables");
             sb.AppendLine("- " + TableRule);
             sb.AppendLine("Units");

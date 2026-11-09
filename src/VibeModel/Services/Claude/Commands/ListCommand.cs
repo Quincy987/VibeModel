@@ -111,12 +111,18 @@ namespace VibeModel.Services.Claude.Commands
                     break;
             }
 
-            var list = elements.Take(100).ToList();
-            var total = list.Count;
-            bool truncated = total >= 100;
+            // Walk the whole collector for the real total, but keep only what is shown.
+            var list = new List<Element>();
+            int total = 0;
+            foreach (var e in elements)
+            {
+                total++;
+                if (list.Count < MaxListed) list.Add(e);
+            }
+            bool truncated = total > list.Count;
 
             var sb = new StringBuilder();
-            sb.AppendLine(label + " (" + total + " shown" + (truncated ? ", may be more" : "") + ")" +
+            sb.AppendLine(label + " (" + (truncated ? Truncation.Line(list.Count, total, "narrow with filter or --view") : total + " shown") + ")" +
                           (viewScoped ? " [view: " + activeView.Name + "]" : ""));
             sb.AppendLine("=".PadRight(40, '='));
             sb.AppendLine();
@@ -214,12 +220,15 @@ namespace VibeModel.Services.Claude.Commands
                 { "category", label },
                 { "view", viewScoped ? activeView.Name : null },
                 { "total", total },
+                { "shown", list.Count },
                 { "truncated", truncated },
                 { "elements", elementsData }
             };
 
             return CommandResult.Ok(sb.ToString(), data);
         }
+
+        private const int MaxListed = 100;
 
         private static FilteredElementCollector GetCollector(Document doc, View view)
         {

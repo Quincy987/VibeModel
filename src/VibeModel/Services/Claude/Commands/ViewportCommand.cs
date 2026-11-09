@@ -51,7 +51,9 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     var on = SheetHelper.SheetOf(doc, v);
                     var placedVp = on == null ? null : new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>().FirstOrDefault(x => x.ViewId == v.Id);
-                    problems.Add("'" + v.Name + "' (" + v.Id.IntegerValue + ") " + (on != null
+                    problems.Add("'" + v.Name + "' (" + v.Id.IntegerValue + ") " + (v.ViewType == ViewType.Legend && on != null
+                        ? "is already on sheet " + SheetHelper.Label(sheet) + " — a legend can be on several sheets, but only once per sheet"
+                        : on != null
                         ? "is already on sheet " + SheetHelper.Label(on) + " — a view can be on one sheet only; move it here with 'viewport --move " +
                           placedVp?.Id.IntegerValue + " --to " + sheet.SheetNumber + "', or duplicate it ('exec' Duplicate(ViewDuplicateOption.WithDetailing))"
                         : "cannot be placed on a sheet (" + v.ViewType + ")"));

@@ -148,7 +148,7 @@ namespace VibeModel.Services.Claude.Commands
                 var shown = kvp.Value.Take(20).ToList();
                 sb.AppendLine("  IDs: " + string.Join(", ", shown.Select(e => e.Id.IntegerValue)));
                 if (kvp.Value.Count > 20)
-                    sb.AppendLine("  ... and " + (kvp.Value.Count - 20) + " more");
+                    sb.AppendLine("  ... " + Truncation.Line(20, kvp.Value.Count, "the count above is complete, this id list is not"));
             }
 
             return sb.ToString();
