@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using VibeModel.Services.Chat;
+using VibeModel.Services.Claude;
 
 namespace VibeModel.UI
 {
@@ -163,5 +164,20 @@ namespace VibeModel.UI
             var t = (text ?? "").Trim();
             return t.Length == 0 || t.EndsWith(".", StringComparison.Ordinal) ? t : t + ".";
         }
+
+        // --- Mode chip in the chat input (plan 18) --------------------------------------------
+
+        public static string ModeName(ChangeApprovalMode mode, string language) =>
+            Strings.For(language, mode == ChangeApprovalMode.Ask ? Strings.ModeAsk
+                : mode == ChangeApprovalMode.ReadOnly ? Strings.ModeReadOnly : Strings.ModeAuto);
+
+        public static string ModeHint(ChangeApprovalMode mode, string language) =>
+            Strings.For(language, mode == ChangeApprovalMode.Ask ? Strings.ModeAskHint
+                : mode == ChangeApprovalMode.ReadOnly ? Strings.ModeReadOnlyHint : Strings.ModeAutoHint);
+
+        /// <summary>The chip's tooltip: the policy as Diagnose words it, and whether IT locked it.</summary>
+        public static string ModeChipTip(ChangeApprovalMode chosen, ChangeApprovalSource source, bool dontAskThisSession, string language) =>
+            Strings.For(language, source == ChangeApprovalSource.Managed ? Strings.ModeChipManaged : Strings.ModeChipTip,
+                ChangeApprovalPolicy.Describe(chosen, source, dontAskThisSession));
     }
 }

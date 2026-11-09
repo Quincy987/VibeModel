@@ -112,6 +112,7 @@ namespace VibeModel.UI
 
         private readonly List<PendingFile> _pendingAttachments = new List<PendingFile>();
         private Button _attachButton;
+        private ModeChip _modeChip;
         private Border _attachmentBar;
         private WrapPanel _attachmentChipPanel;
 
@@ -206,6 +207,7 @@ namespace VibeModel.UI
             };
             // A model opened or switched: the welcome card names it.
             ActiveDocumentTracker.Changed += OnActiveDocumentChanged;
+            ChangeApprovalPolicy.Changed += OnApprovalPolicyChanged;
         }
 
         private Border CreateHeader()
@@ -331,40 +333,18 @@ namespace VibeModel.UI
             };
         }
 
+        // Plan 18 (mockup A, Cursor-style): one rounded box — the text on top, a footer row below
+        // with the paperclip, the mode chip and a round send arrow (Cancel takes its place while a
+        // turn runs).
         private Border CreateInputArea()
         {
-            var inputGrid = new Grid();
-            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
-            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
-
-            _attachButton = new Button
-            {
-                Content = "📎",
-                Background = Brushes.Transparent,
-                Foreground = FgSecondary,
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(6, 6, 6, 6),
-                Margin = new Thickness(0, 0, 4, 0),
-                FontSize = 14,
-                Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                ToolTip = "Attach documents or images (or paste / drag-and-drop)"
-            };
-            _attachButton.Click += OnAttachClick;
-            _attachButton.MouseEnter += (s, e) => _attachButton.Foreground = FgPrimary;
-            _attachButton.MouseLeave += (s, e) => _attachButton.Foreground = FgSecondary;
-            Grid.SetColumn(_attachButton, 0);
-            inputGrid.Children.Add(_attachButton);
-
             _inputBox = new TextBox
             {
-                Background = BgInput,
+                Background = Brushes.Transparent,
                 Foreground = FgPrimary,
                 CaretBrush = FgPrimary,
-                BorderBrush = BorderColor,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(8, 6, 8, 6),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(8, 6, 8, 2),
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap,
                 AcceptsReturn = false,
@@ -375,30 +355,62 @@ namespace VibeModel.UI
             _inputBox.TextChanged += OnInputTextChanged;
             // Intercept paste: files / clipboard images become attachments; text pastes normally.
             DataObject.AddPastingHandler(_inputBox, OnInputPasting);
-            Grid.SetColumn(_inputBox, 1);
-            inputGrid.Children.Add(_inputBox);
 
-            var buttonPanel = new StackPanel
+            var footer = new Grid { Margin = new Thickness(4, 2, 4, 4) };
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            _attachButton = new Button
             {
-                Orientation = Orientation.Vertical,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(4, 0, 0, 0)
+                Content = "📎",
+                Background = Brushes.Transparent,
+                Foreground = FgSecondary,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(4, 2, 4, 2),
+                FontSize = 13,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Attach documents or images (or paste / drag-and-drop)"
             };
+            _attachButton.Click += OnAttachClick;
+            _attachButton.MouseEnter += (s, e) => _attachButton.Foreground = FgPrimary;
+            _attachButton.MouseLeave += (s, e) => _attachButton.Foreground = FgSecondary;
+            footer.Children.Add(_attachButton);
+
+            _modeChip = new ModeChip();
+            _modeChip.ModeChanged += (s, e) => UpdateSendColour();
+            Grid.SetColumn(_modeChip, 1);
+            footer.Children.Add(_modeChip);
 
             _sendButton = new Button
             {
-                Content = "Send",
+                Template = RoundTemplate(),
+                Content = new TextBlock
+                {
+                    Text = "",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 12,
+                    Foreground = Brushes.White,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                },
+                Width = 28,
+                Height = 28,
                 Background = BgButton,
-                Foreground = Brushes.White,
                 BorderThickness = new Thickness(0),
-                Padding = new Thickness(12, 6, 12, 6),
-                FontSize = 12,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                ToolTip = Strings.Get(Strings.SendTip)
             };
+            // Automation scripts find the button by its name "Send".
+            System.Windows.Automation.AutomationProperties.SetName(_sendButton, "Send");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_sendButton, "SendButton");
             _sendButton.Click += OnSendClick;
             _sendButton.MouseEnter += (s, e) => _sendButton.Background = BgButtonHover;
-            _sendButton.MouseLeave += (s, e) => _sendButton.Background = BgButton;
-            buttonPanel.Children.Add(_sendButton);
+            _sendButton.MouseLeave += (s, e) => UpdateSendColour();
+            Grid.SetColumn(_sendButton, 3);
+            footer.Children.Add(_sendButton);
 
             _cancelButton = new Button
             {
@@ -406,28 +418,42 @@ namespace VibeModel.UI
                 Background = Brushes.Transparent,
                 Foreground = FgSecondary,
                 BorderThickness = new Thickness(0),
-                Padding = new Thickness(12, 4, 12, 4),
+                Padding = new Thickness(10, 4, 10, 4),
                 FontSize = 11,
                 Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
             _cancelButton.Click += OnCancelClick;
-            buttonPanel.Children.Add(_cancelButton);
+            Grid.SetColumn(_cancelButton, 3);
+            footer.Children.Add(_cancelButton);
 
-            Grid.SetColumn(buttonPanel, 2);
-            inputGrid.Children.Add(buttonPanel);
+            var boxContent = new StackPanel();
+            boxContent.Children.Add(_inputBox);
+            boxContent.Children.Add(footer);
+            var box = new Border
+            {
+                Background = BgInput,
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Child = boxContent
+            };
+            // Clicking the box's empty area puts the caret in the text.
+            box.MouseLeftButtonDown += (s, e) => { if (e.OriginalSource == box || e.OriginalSource == footer) _inputBox.Focus(); };
 
             _readyHint = new TextBlock
             {
                 Foreground = AccentBlue,
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(34, 4, 0, 0),
+                Margin = new Thickness(8, 4, 0, 0),
                 Visibility = Visibility.Collapsed
             };
             var inputStack = new StackPanel();
-            inputStack.Children.Add(inputGrid);
+            inputStack.Children.Add(box);
             inputStack.Children.Add(_readyHint);
+            UpdateSendColour();
 
             return new Border
             {
@@ -437,6 +463,40 @@ namespace VibeModel.UI
                 Padding = new Thickness(8),
                 Child = inputStack
             };
+        }
+
+        // The approval window's "don't ask again" (or Settings) changed the session's policy.
+        private void OnApprovalPolicyChanged(object sender, EventArgs e)
+            => Dispatcher.BeginInvoke(new Action(RefreshModeChip));
+
+        // Plan 18: the chip re-reads the policy (Settings, the approval window's "don't ask again"
+        // and managed.json can all change it); in Vragen the send arrow turns amber as a reminder.
+        private void RefreshModeChip()
+        {
+            if (_modeChip == null) return;
+            _modeChip.Refresh();
+            UpdateSendColour();
+        }
+
+        private void UpdateSendColour()
+        {
+            if (_sendButton == null || _modeChip == null) return;
+            _sendButton.Background = _modeChip.Shown == ChangeApprovalMode.Ask && !_modeChip.IsLocked ? ModeChip.Amber : BgButton;
+        }
+
+        private static ControlTemplate _roundTemplate;
+
+        // A round button (the send arrow): an Ellipse in the button's background.
+        private static ControlTemplate RoundTemplate()
+        {
+            if (_roundTemplate != null) return _roundTemplate;
+            var grid = new FrameworkElementFactory(typeof(Grid));
+            var ellipse = new FrameworkElementFactory(typeof(System.Windows.Shapes.Ellipse));
+            ellipse.SetValue(System.Windows.Shapes.Shape.FillProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            grid.AppendChild(ellipse);
+            grid.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+            _roundTemplate = new ControlTemplate(typeof(Button)) { VisualTree = grid };
+            return _roundTemplate;
         }
 
         // --- Backend integration ---
@@ -495,6 +555,7 @@ namespace VibeModel.UI
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (_userTurnCount == 0) RefreshWelcomeCard();
+                RefreshModeChip();
             }));
         }
 
@@ -1122,6 +1183,10 @@ namespace VibeModel.UI
                 };
             }
 
+            // Plan 18: "next message as preview" applies to this turn only.
+            ChangeApprovalPolicy.ArmNextTurn(_modeChip.PreviewNext);
+            _modeChip.PreviewNext = false;
+
             _backend.SendMessage(
                 text,
                 attachments,
@@ -1489,8 +1554,9 @@ namespace VibeModel.UI
             var hasDocument = !string.IsNullOrWhiteSpace(ActiveDocumentTracker.Title);
             var dialog = new SettingsDialog(hasDocument ? title : null, documentPath);
             var result = dialog.ShowDialog();
-            // Language or project folder may have changed.
+            // Language, project folder or the change-approval mode may have changed.
             RefreshWelcomeCard();
+            RefreshModeChip();
 
             if (result == true && dialog.BackendChanged)
             {
@@ -1514,6 +1580,8 @@ namespace VibeModel.UI
 
             if (!generating)
             {
+                // The approval window's "don't ask again" may have been ticked during the turn.
+                RefreshModeChip();
                 _inputBox.Focus();
                 _cts?.Dispose();
                 _cts = null;
@@ -2040,6 +2108,7 @@ namespace VibeModel.UI
         {
             ActiveDocumentTracker.Changed -= OnActiveDocumentChanged;
             _updateBanner?.Detach();
+            ChangeApprovalPolicy.Changed -= OnApprovalPolicyChanged;
             _cts?.Cancel();
             _backend?.Cancel();
             // Persist whatever conversation is open when Revit shuts down.

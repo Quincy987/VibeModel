@@ -68,11 +68,14 @@ namespace VibeModel.Services.Claude
                 // Plan 15: the run group (approval, read-only) lives in RevitCommandHandler, which
                 // this path does not use — so while the policy is anything but "auto" a change is
                 // refused here rather than slipping past it.
+                // A preview chat turn (plan 18) needs a rollback just the same.
                 var mode = ChangeApprovalPolicy.EffectiveMode;
-                if (mode != ChangeApprovalMode.Auto && _registry.IsModification(cmd))
+                bool previewTurn = ChangeApprovalPolicy.PreviewTurn;
+                if ((mode != ChangeApprovalMode.Auto || previewTurn) && _registry.IsModification(cmd))
                 {
-                    WriteOutput(commandText, "ERROR: Change approval is '" + ChangeApprovalPolicy.Name(mode) +
-                        "': the file-based fallback cannot ask or roll back, so it makes no changes.\nHint: " +
+                    WriteOutput(commandText, "ERROR: " + (previewTurn ? "This chat turn is a preview"
+                            : "Change approval is '" + ChangeApprovalPolicy.Name(mode) + "'") +
+                        ": the file-based fallback cannot ask or roll back, so it makes no changes.\nHint: " +
                         "use the HTTP server (restart Revit when its port was blocked).");
                     return;
                 }

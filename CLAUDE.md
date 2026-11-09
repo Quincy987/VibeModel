@@ -444,7 +444,26 @@ curl -s http://localhost:18884/approvals                                  # This
   counter (`ModelChangeTracker.RewindTo`) and leave `VibeModelCreated`; discarded runs are journaled
   (`· delete 1730959 · discarded by the user · chat …`), previews and refusals are not.
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
-  group: while the policy is not `auto` it refuses every modifying command instead of bypassing it.
+  group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
+  command instead of bypassing it.
+- **Mode chip** (plan 18, `UI/ModeChip.cs`; plan `docs/plans/18-mode-chip.md`): the chat input is one
+  rounded box — text on top, a footer with the paperclip, the chip and a round send arrow (amber in
+  *Vragen*; *Cancel* in its place during a turn). The chip shows the mode in force (*Automatisch* /
+  *Vragen* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a
+  menu that sets `ChangeApprovalPolicy.SessionOverride` for the rest of the Revit session
+  (`ChooseForSession`; choosing *Vragen* clears "don't ask again"). Precedence: managed.json → chip →
+  `VIBEMODEL_APPROVAL` → settings.json → auto (`WithSessionOverride` / `EffectiveOf` / `Chosen`;
+  Describe/Diagnose/`approvals` say `ask (this session)`, JSON `source: "session"`). Locked by
+  managed.json → greyed, no menu, tooltip "beheerd door IT". Settings shows the session choice as a
+  ticked box; untick + Save clears it. `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
+  refreshes the chip, as do Settings closing, `ActiveDocumentTracker.Changed` and a turn ending.
+  **Volgend bericht als preview**: the pane arms `ChangeApprovalPolicy.ArmNextTurn` on every send;
+  `RunJournaledTurn` takes it (`BeginTurn` → `PreviewTurn`, cleared in its finally) and both enqueue
+  paths merge it (`RunOptions.ForTurn`) — every modifying call of that turn runs as `?preview=1`
+  (also an external curl made meanwhile, like the journal's turn attribution; a request enqueued
+  before the turn started is not). The rules get `ChatBackendBase.PreviewTurnRule` only in such a
+  turn. AutomationIds `ModeChip`, `ModeAuto`, `ModeAsk`, `ModeReadOnly`, `PreviewNextToggle` (the menu
+  rows are UIA children of Revit's main window), `SendButton` (UIA name still "Send").
 - Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
   side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
   `ApprovalWindow`, `ApprovalSummary`, `ApprovalZoom`, `ApprovalDontAsk`, `ApprovalDiscard`,

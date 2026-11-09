@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using Autodesk.Revit.UI;
-using VibeModel.Infrastructure;
 
 namespace VibeModel.Services.Claude.Commands
 {
@@ -20,7 +19,7 @@ namespace VibeModel.Services.Claude.Commands
 
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)
         {
-            var configured = SettingsManager.GetChangeApproval(out var source);
+            var configured = ChangeApprovalPolicy.Chosen(out var source);
             var policy = "Change approval: " + ChangeApprovalPolicy.Describe(configured, source, ChangeApprovalPolicy.DontAskThisSession);
             var entries = ApprovalLog.List();
 

@@ -77,7 +77,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(command, args, fmt) { Turn = turn, Options = options ?? RunOptions.None };
+            var request = new CommandRequest(command, args, fmt) { Turn = turn, Options = RunOptions.ForTurn(options, ChangeApprovalPolicy.PreviewTurn) };
             _queue.Enqueue(request);
 
             try
@@ -134,7 +134,7 @@ namespace VibeModel.Services.Claude
             if (_queue.Count >= MaxQueueSize)
                 return "ERROR: Command queue full (" + MaxQueueSize + " pending). Revit may be in a modal dialog.";
 
-            var request = new CommandRequest(commands, atomic, fmt) { Turn = turn, Options = options ?? RunOptions.None };
+            var request = new CommandRequest(commands, atomic, fmt) { Turn = turn, Options = RunOptions.ForTurn(options, ChangeApprovalPolicy.PreviewTurn) };
             _queue.Enqueue(request);
 
             try
@@ -1010,6 +1010,18 @@ namespace VibeModel.Services.Claude
         public int? TimeoutSeconds { get; set; }
 
         public bool IsEmpty => !Preview && !ReadOnly && !TimeoutSeconds.HasValue;
+
+        /// <summary>
+        /// The request's options with a preview chat turn (plan 18) applied: while
+        /// <paramref name="previewTurn"/> every request runs as ?preview=1. Otherwise the options
+        /// as given (null → <see cref="None"/>), so nothing changes outside a preview turn.
+        /// </summary>
+        public static RunOptions ForTurn(RunOptions options, bool previewTurn)
+        {
+            options = options ?? None;
+            if (!previewTurn || options.Preview) return options;
+            return new RunOptions { Preview = true, ReadOnly = options.ReadOnly, TimeoutSeconds = options.TimeoutSeconds };
+        }
     }
 
     /// <summary>

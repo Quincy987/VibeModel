@@ -246,7 +246,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode));
+            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode, ChangeApprovalPolicy.PreviewTurn));
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
@@ -263,6 +263,8 @@ namespace VibeModel.Services.Chat
         /// </summary>
         protected static void RunJournaledTurn(string question, Action<string> onComplete, Action<Action<string>> run)
         {
+            // Plan 18: a turn the pane sent as a preview runs every change as ?preview=1.
+            ChangeApprovalPolicy.BeginTurn();
             var turn = ProjectJournal.BeginTurn(question);
             try
             {
@@ -275,6 +277,7 @@ namespace VibeModel.Services.Chat
             finally
             {
                 ProjectJournal.EndTurn(turn, null);
+                ChangeApprovalPolicy.EndTurn();
             }
         }
 
@@ -332,12 +335,19 @@ namespace VibeModel.Services.Chat
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
+        // Plan 18: the pane's "next message as preview" — the server previews every change of
+        // this turn on its own, the model only has to report it as such.
+        internal const string PreviewTurnRule =
+            "This turn is a PREVIEW: every change you make is rolled back by Revit and reported as `-- preview: …`. Say what WOULD change and that nothing was changed; do not retry.";
+
         /// <summary>
         /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
         /// reply language when the user's own language is unclear; <paramref name="approval"/> is
-        /// the change-approval policy in force (plan 15; auto = the text as before).
+        /// the change-approval policy in force (plan 15; auto = the text as before);
+        /// <paramref name="preview"/> = this turn was sent as a preview (plan 18).
         /// </summary>
-        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto)
+        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto,
+            bool preview = false)
         {
             var fallback = Strings.LanguageName(language);
             var sb = new StringBuilder();
@@ -359,6 +369,7 @@ namespace VibeModel.Services.Chat
                     sb.AppendLine("- " + UndoRule);
                     break;
             }
+            if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
             sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, view templates, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
