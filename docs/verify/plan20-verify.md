@@ -20,7 +20,7 @@ opens the approval window. Keep: `-- changed: … deleted 1 (Walls 1)`, then `--
 Settings shows the chip's choice as a ticked box; unticked + Save clears it, chip back to *Automatisch*.
 *Alleen lezen*: `wall` refused, no changed line. A legend on a second sheet is placed; the same legend
 again on that sheet: `a legend can be on several sheets, but only once per sheet`. `managed.json`
-(user-level) with `ChangeApproval: ask`: `ask (managed.json)`, chip *Vragen*, tooltip `… beheerd door IT`, no
+(user-level) with `ChangeApproval: ask`: `ask (managed.json)`, chip *Vragen*, tooltip `… beheerd door IT` (since 1.2.16: Revit-beheer), no
 menu; file removed: back to auto.
 
 **Real chat turns, 9/9 (Claude Code CLI).** "Maak een wand van (0, 70000) naar (4000, 70000), 3000 mm

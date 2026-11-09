@@ -13,7 +13,7 @@ namespace VibeModel.UI
 {
     /// <summary>
     /// Plan 20: the mode chip in the chat input's footer (Cursor-style). Shows the change-approval
-    /// mode in force — Automatisch / Vragen / Alleen lezen — and opens a menu to pick it for this
+    /// mode in force — Automatisch / Vragen / Alleen opmaak / Alleen lezen — and opens a menu to pick it for this
     /// Revit session (<see cref="ChangeApprovalPolicy.ChooseForSession"/>) and to send the next
     /// message as a preview. Locked (greyed, no menu) when managed.json sets the mode.
     /// The state lives in <see cref="ChangeApprovalPolicy"/>; <see cref="Refresh"/> re-reads it.
@@ -23,6 +23,7 @@ namespace VibeModel.UI
         public static readonly SolidColorBrush Teal = Frozen(0x4E, 0xC9, 0xB0);
         public static readonly SolidColorBrush Amber = Frozen(0xE5, 0xA5, 0x3A);
         public static readonly SolidColorBrush Grey = Frozen(0x9A, 0x9A, 0xA5);
+        public static readonly SolidColorBrush Violet = Frozen(0xB1, 0x8C, 0xE8);
         private static readonly SolidColorBrush ChipBg = Frozen(0x3A, 0x3A, 0x40);
         private static readonly SolidColorBrush ChipBorder = Frozen(0x50, 0x50, 0x58);
         private static readonly SolidColorBrush MenuBg = Frozen(0x2D, 0x2D, 0x30);
@@ -34,7 +35,7 @@ namespace VibeModel.UI
         private static readonly bool HasIconFont =
             Fonts.SystemFontFamilies.Any(f => string.Equals(f.Source, "Segoe MDL2 Assets", StringComparison.OrdinalIgnoreCase));
         private const string GlyphAuto = "", GlyphAsk = "", GlyphReadOnly = "",
-            GlyphCheck = "", GlyphChevron = "";
+            GlyphAnnotate = "", GlyphCheck = "", GlyphChevron = "";
 
         private static ControlTemplate _pillTemplate;
 
@@ -121,7 +122,7 @@ namespace VibeModel.UI
         }
 
         public static SolidColorBrush ColourOf(ChangeApprovalMode mode) =>
-            mode == ChangeApprovalMode.Ask ? Amber : mode == ChangeApprovalMode.ReadOnly ? Grey : Teal;
+            mode == ChangeApprovalMode.Ask ? Amber : mode == ChangeApprovalMode.Annotate ? Violet : mode == ChangeApprovalMode.ReadOnly ? Grey : Teal;
 
         public void CloseMenu()
         {
@@ -136,7 +137,7 @@ namespace VibeModel.UI
 
             var language = Strings.Current;
             var list = new StackPanel { Margin = new Thickness(4) };
-            foreach (var mode in new[] { ChangeApprovalMode.Auto, ChangeApprovalMode.Ask, ChangeApprovalMode.ReadOnly })
+            foreach (var mode in new[] { ChangeApprovalMode.Auto, ChangeApprovalMode.Ask, ChangeApprovalMode.Annotate, ChangeApprovalMode.ReadOnly })
                 list.Children.Add(ModeRow(mode, language));
 
             list.Children.Add(new Border { Height = 1, Background = MenuBorder, Margin = new Thickness(4, 4, 4, 4) });
@@ -243,6 +244,7 @@ namespace VibeModel.UI
                 Cursor = Cursors.Hand
             };
             AutomationProperties.SetAutomationId(row, mode == ChangeApprovalMode.Ask ? "ModeAsk"
+                : mode == ChangeApprovalMode.Annotate ? "ModeAnnotate"
                 : mode == ChangeApprovalMode.ReadOnly ? "ModeReadOnly" : "ModeAuto");
             AutomationProperties.SetName(row, UiText.ModeName(mode, language));
             row.MouseEnter += (s, e) => row.Background = RowHover;
@@ -263,7 +265,7 @@ namespace VibeModel.UI
             if (HasIconFont)
             {
                 target.FontFamily = IconFont;
-                target.Text = mode == ChangeApprovalMode.Ask ? GlyphAsk : mode == ChangeApprovalMode.ReadOnly ? GlyphReadOnly : GlyphAuto;
+                target.Text = mode == ChangeApprovalMode.Ask ? GlyphAsk : mode == ChangeApprovalMode.Annotate ? GlyphAnnotate : mode == ChangeApprovalMode.ReadOnly ? GlyphReadOnly : GlyphAuto;
             }
             else
             {

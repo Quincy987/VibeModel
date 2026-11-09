@@ -168,11 +168,11 @@ namespace VibeModel.Services.Chat
         /// </summary>
         public static string FormatCommandLine(DateTime local, string command, string args,
             IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn, IList<string> written = null,
-            string outcome = null, string user = null)
+            string outcome = null, string user = null, IList<string> recipes = null)
         {
             var parts = LineStart(local, user);
             parts.Add(Shorten((command ?? "") + (string.IsNullOrWhiteSpace(args) ? "" : " " + args), MaxArgsChars));
-            foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted), Files("wrote", written) })
+            foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted), Files("wrote", written), Files("recipe", recipes) })
                 if (p != null) parts.Add(p);
             // Plan 15: a run the user discarded in the approval window ("discarded by the user").
             if (!string.IsNullOrWhiteSpace(outcome)) parts.Add(outcome.Trim());
@@ -182,8 +182,8 @@ namespace VibeModel.Services.Chat
 
         /// <summary>A command's journal line as of now: this Windows user, and the running chat turn unless the request named one.</summary>
         public static string CommandLineNow(string command, string args, IList<long> created, IList<long> modified, IList<long> deleted,
-            ChatTurnRef turn, IList<string> written = null, string outcome = null)
-            => FormatCommandLine(DateTime.Now, command, args, created, modified, deleted, turn ?? CurrentTurn, written, outcome, CurrentUser);
+            ChatTurnRef turn, IList<string> written = null, string outcome = null, IList<string> recipes = null)
+            => FormatCommandLine(DateTime.Now, command, args, created, modified, deleted, turn ?? CurrentTurn, written, outcome, CurrentUser, recipes);
 
         private static List<string> LineStart(DateTime local, string user)
         {

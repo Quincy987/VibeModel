@@ -11,7 +11,7 @@ namespace VibeModel.Infrastructure
     /// Read-only settings that IT pushes to a machine: <c>managed.json</c>, searched at
     /// <c>%ProgramData%\VibeModel\managed.json</c> then <c>%APPDATA%\VibeModel\managed.json</c>
     /// (first one found wins). A key present here overrides the user's settings.json and is shown
-    /// as locked ("beheerd door IT") in Settings. Keys: <see cref="Keys"/>. VibeModel never writes
+    /// as locked ("beheerd door Revit-beheer") in Settings. Keys: <see cref="Keys"/>. VibeModel never writes
     /// this file. Re-read at most once a minute, and on <see cref="Reload"/>.
     /// <para>
     /// The machine-wide file is only trusted when it really comes from IT: ordinary users may

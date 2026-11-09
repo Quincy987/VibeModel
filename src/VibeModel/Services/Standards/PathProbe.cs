@@ -31,6 +31,7 @@ namespace VibeModel.Services.Standards
         public static bool? FileExists(string path, TimeSpan? timeout = null)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
+            if (IsLocalDrive(path)) return File.Exists(path);
             return Run<bool?>(() => File.Exists(path), timeout ?? Default, null);
         }
 
@@ -38,6 +39,7 @@ namespace VibeModel.Services.Standards
         public static bool? DirectoryExists(string path, TimeSpan? timeout = null)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
+            if (IsLocalDrive(path)) return Directory.Exists(path);
             return Run<bool?>(() => Directory.Exists(path), timeout ?? Default, null);
         }
 
@@ -58,6 +60,23 @@ namespace VibeModel.Services.Standards
             }
             catch { /* malformed path: treat as local, the read will report it */ }
             return false;
+        }
+
+        /// <summary>
+        /// A fixed or removable drive of this machine: it cannot hang like a network share, and a
+        /// task on a busy thread pool could lose the deadline to a file that is simply there.
+        /// </summary>
+        public static bool IsLocalDrive(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || IsNetworkPath(path)) return false;
+            try
+            {
+                var root = Path.GetPathRoot(path.Trim());
+                if (root == null || root.Length < 2 || root[1] != ':') return false;
+                var type = new DriveInfo(root.Substring(0, 1)).DriveType;
+                return type == DriveType.Fixed || type == DriveType.Removable;
+            }
+            catch { return false; }
         }
 
         /// <summary>"K:\", "\\server\share\" — the unit that is reachable or not as a whole.</summary>

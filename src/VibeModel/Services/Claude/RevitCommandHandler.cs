@@ -274,6 +274,11 @@ namespace VibeModel.Services.Claude
             bool runControl = doc != null && ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, modifying, options.Preview, options.ReadOnly);
             RecordedChanges changes = null;
             CommandResult cr;
+
+            // What the office protects is refused before anything runs.
+            var refused = modifying ? ForbiddenGuard.PreCheck(doc, request.Command, request.Args) : null;
+            if (refused != null) return Render(request, refused, app);
+            var protectedBefore = modifying ? ForbiddenGuard.Capture(doc) : null;
             FailureReport revit = null;
 
             // Annotations on the elements this command replaces/changes (spot elevations,
@@ -310,6 +315,7 @@ namespace VibeModel.Services.Claude
             }
 
             var run = new RunOutcome();
+            string forbidden = null;
             RunContext.InRunGroup = runControl && group != null;
             try
             {
@@ -323,8 +329,10 @@ namespace VibeModel.Services.Claude
                     if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
                 }
                 if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, changes, revit);
+                if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                 if (runControl)
-                    run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false);
+                    run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
+                        modifyingCommands: new[] { request.Command }, forbidden: forbidden);
             }
             finally
             {
@@ -338,6 +346,13 @@ namespace VibeModel.Services.Claude
             bool rolledBack = runControl && !run.Keep;
             if (rolledBack) changes = null;
 
+            // A failed command undid its own work (a generated family rolls back a whole group after
+            // child transactions were recorded); only a failed exec can have kept earlier transactions.
+            var kept = cr.Success || IsExec(request.Command) ? KeptChanges(doc, changes, preRead, run) : null;
+            var recipes = kept != null && IsExec(request.Command) ? SaveRecipes(doc, new[] { request.Args }, kept, request.Turn) : null;
+            var forbiddenKept = !rolledBack ? forbidden : null;
+            var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
+
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
             if (cr.Success && changes != null)
             {
@@ -345,15 +360,14 @@ namespace VibeModel.Services.Claude
                 IList<string> written = null;
                 if (_registry.GetCommands().TryGetValue(request.Command, out var cmd) && cmd is IJournaledCommand j)
                     try { written = j.JournalFiles(cr); } catch { written = null; }
-                Journal(app, request.Command, request.Args, changes, request.Turn, written);
+                Journal(app, request.Command, request.Args, changes, request.Turn, written, forbiddenOutcome, recipes);
             }
+            else if (!cr.Success && kept != null)
+                Journal(app, request.Command, request.Args, changes, request.Turn, null, forbiddenOutcome ?? "failed; changes kept", recipes);
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            // A failed command undid its own work (a generated family rolls back a whole group after
-            // child transactions were recorded); only a failed exec can have kept earlier transactions.
-            var kept = cr.Success || IsExec(request.Command) ? KeptChanges(doc, changes, preRead, run) : null;
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept);
         }
 
         /// <summary>
@@ -361,7 +375,7 @@ namespace VibeModel.Services.Claude
         /// caller has already dropped the change set of a rolled-back run. A report never fails the
         /// response it belongs to.
         /// </summary>
-        private static ChangeSetSummary KeptChanges(Document doc, RecordedChanges changes, IDictionary<int, string> preRead, RunOutcome run)
+        private static ChangeSetSummary KeptChanges(Document doc, RecordedChanges changes, IDictionary<int, ApprovalRun.PreReadElement> preRead, RunOutcome run)
         {
             if (changes == null || changes.IsEmpty) return null;
             try
@@ -383,7 +397,7 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
             List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
-            ChangeSetSummary changed = null)
+            ChangeSetSummary changed = null, string forbidden = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -407,6 +421,7 @@ namespace VibeModel.Services.Claude
                     run?.AddJson(dict);
                     AddAnnotationsJson(dict, annotations, run);
                     if (changed != null) dict["changes"] = changed.ChangesJson();
+                    if (forbidden != null) dict["forbidden"] = forbidden;
                 }
                 return _json.Serialize(obj);
             }
@@ -423,6 +438,7 @@ namespace VibeModel.Services.Claude
             if (annotationLine != null) text = AppendLine(text, annotationLine);
             if (changed != null) text = AppendLine(text, changed.ChangedLine());
             if (run?.Line != null) text = AppendLine(text, run.Line);
+            if (forbidden != null) text = ForbiddenActions.KeptLine(forbidden) + "\n" + text;
             return stamp != null ? stamp.AppendToText(text) : text;
         }
 
@@ -449,7 +465,7 @@ namespace VibeModel.Services.Claude
             public void AddJson(Dictionary<string, object> envelope)
             {
                 if (Summary != null && (Decision == RunDecision.Preview || Decision == RunDecision.ReadOnly ||
-                                        Decision == RunDecision.QueryModified))
+                                        Decision == RunDecision.QueryModified || Decision == RunDecision.AnnotationOnly))
                     envelope["preview"] = Summary.ToJson(rolledBack: true);
                 if (Approval != null)
                     envelope["approval"] = ChangeApprovalPolicy.ApprovalJson(Approval.Id, Approval.Decision);
@@ -490,13 +506,17 @@ namespace VibeModel.Services.Claude
         /// window (modal) and logs the answer.
         /// </summary>
         private static RunOutcome DecideRun(UIApplication app, Document doc, CommandRequest request, ChangeApprovalMode mode,
-            bool guarded, RunOptions options, RecordedChanges changes, IDictionary<int, string> preRead,
-            CommandResult cr, FailureReport revit, AnnotationOutcome annotations, bool batch)
+            bool guarded, RunOptions options, RecordedChanges changes, IDictionary<int, ApprovalRun.PreReadElement> preRead,
+            CommandResult cr, FailureReport revit, AnnotationOutcome annotations, bool batch,
+            IEnumerable<string> modifyingCommands, string forbidden)
         {
             var run = new RunOutcome();
             bool empty = changes == null || changes.IsEmpty;
-            run.Decision = ChangeApprovalPolicy.Decide(mode, guarded, options.Preview, options.ReadOnly, empty);
             run.Summary = ApprovalRun.Summarize(doc, changes, preRead);
+            bool touchesModel = mode == ChangeApprovalMode.Annotate && ChangeApprovalPolicy.TouchesModel(run.Summary, modifyingCommands);
+            run.Decision = forbidden != null && !options.Preview
+                ? RunDecision.Forbidden
+                : ChangeApprovalPolicy.Decide(mode, guarded, options.Preview, options.ReadOnly, empty, touchesModel);
             switch (run.Decision)
             {
                 case RunDecision.Keep:
@@ -519,6 +539,14 @@ namespace VibeModel.Services.Claude
                         ChangeApprovalPolicy.ReadOnlyMessage, ChangeApprovalPolicy.ReadOnlyHint);
                     run.TextOverride = "ERROR: " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" + run.Summary.PreviewLine() +
                                        "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
+                    break;
+                case RunDecision.AnnotationOnly:
+                    var annotationOnly = ChangeApprovalPolicy.AnnotationOnlyMessage(run.Summary);
+                    run.Replace = CommandResult.Error(ChangeApprovalPolicy.AnnotationOnlyCode, annotationOnly, ChangeApprovalPolicy.AnnotationOnlyHint);
+                    run.TextOverride = "ERROR: " + annotationOnly + "\n" + run.Summary.PreviewLine() + "\nHint: " + ChangeApprovalPolicy.AnnotationOnlyHint;
+                    break;
+                case RunDecision.Forbidden:
+                    run.Replace = CommandResult.Error(ForbiddenActions.Code, ForbiddenActions.RolledBackMessage(forbidden), ForbiddenActions.Hint);
                     break;
                 case RunDecision.Prompt:
                     var lines = new List<string>();
@@ -765,6 +793,10 @@ namespace VibeModel.Services.Claude
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             var run = new RunOutcome();
 
+            var protectedBefore = batchModifies ? ForbiddenGuard.Capture(doc) : null;
+            var batchExecs = new List<string>();
+            string forbidden = null;
+
             RecordedChanges changes = null;
             using (var tg = new TransactionGroup(doc, BuildGroupName(req.Batch)))
             {
@@ -778,8 +810,14 @@ namespace VibeModel.Services.Claude
                         // ExecuteCore returns the structured result; decide on .Success, not a
                         // string prefix. Text output stays byte-identical via RenderText(), plus
                         // "-- revit" lines only when Revit's failure processing did something.
-                        var cr = FailureCollector.Collect(() => _registry.ExecuteCore(item.Command, item.Args, app), out var revit);
+                        var refused = _registry.IsModification(item.Command) ? ForbiddenGuard.PreCheck(doc, item.Command, item.Args) : null;
+                        int recordedBefore = CreatedElementsRecorder.RecordedCount;
+                        FailureReport revit;
+                        CommandResult cr;
+                        if (refused != null) { cr = refused; revit = new FailureReport(); }
+                        else cr = FailureCollector.Collect(() => _registry.ExecuteCore(item.Command, item.Args, app), out revit);
                         batchRevit.Merge(revit);
+                        if (IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore) batchExecs.Add(item.Args);
 
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
@@ -813,10 +851,12 @@ namespace VibeModel.Services.Claude
                         {
                             changes = CreatedElementsRecorder.DisarmChanges();
                             if (snapshot != null) annotations = GuardReconcile(snapshot, changes, batchRevit);
+                            if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                         }
                         // Nothing modified (every command failed or only read): an empty change set.
                         run = DecideRun(app, doc, req, mode, guarded, options, anyModified ? changes : null, preRead,
-                            null, batchRevit, annotations, batch: true);
+                            null, batchRevit, annotations, batch: true,
+                            modifyingCommands: req.Batch.Select(i => i.Command).Where(_registry.IsModification).ToList(), forbidden: forbidden);
                         if (run.Keep) tg.Assimilate();
                         else
                         {
@@ -826,11 +866,9 @@ namespace VibeModel.Services.Claude
                     }
                     else if (anyModified)
                     {
-                        if (snapshot != null)
-                        {
-                            changes = CreatedElementsRecorder.DisarmChanges();
-                            annotations = GuardReconcile(snapshot, changes, batchRevit);
-                        }
+                        changes = CreatedElementsRecorder.DisarmChanges();
+                        if (snapshot != null) annotations = GuardReconcile(snapshot, changes, batchRevit);
+                        if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                         tg.Assimilate(); // merge all committed child transactions into one undo entry
                     }
                     else
@@ -864,17 +902,21 @@ namespace VibeModel.Services.Claude
 
             // Office rules over everything the batch created (nothing when rolled back).
             List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
+            // One line for the whole batch: the recorder holds one running change set.
+            var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
+            var recipes = kept != null ? SaveRecipes(doc, batchExecs, kept, req.Turn) : null;
+            var forbiddenKept = !rolledBack ? forbidden : null;
             if (anyModified && !rolledBack)
-                Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn);
+                Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn, null,
+                    forbiddenKept != null ? "forbidden " + forbiddenKept : null, recipes);
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             if (checkLine != null) sb.AppendLine(checkLine);
             annotations = ShownAnnotations(annotations, runControl, run);
             var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
-            // One line for the whole batch: the recorder holds one running change set.
-            var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
             if (kept != null) sb.AppendLine(kept.ChangedLine());
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
+            if (forbiddenKept != null) sb.Insert(0, ForbiddenActions.KeptLine(forbiddenKept) + "\n");
 
             // One stamp for the whole batch, never per sub-command.
             var stamp = TryTakeStamp(app, !req.IsCancelled);
@@ -895,6 +937,7 @@ namespace VibeModel.Services.Claude
                 run.AddJson(envelope);
                 AddAnnotationsJson(envelope, annotations, run);
                 if (kept != null) envelope["changes"] = kept.ChangesJson();
+                if (forbiddenKept != null) envelope["forbidden"] = forbiddenKept;
                 // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
                 if (run.Replace != null && run.Replace.ToJsonObject() is Dictionary<string, object> replaced &&
                     replaced.TryGetValue("error", out var error))
@@ -919,6 +962,9 @@ namespace VibeModel.Services.Claude
                 case RunDecision.ReadOnly:
                     return "[read-only] rolled back — " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" +
                            run.Summary.PreviewLine() + "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
+                case RunDecision.AnnotationOnly:
+                case RunDecision.Forbidden:
+                    return "[" + run.Replace.ErrorCode.ToLowerInvariant() + "] rolled back — " + run.Replace.Message + "\nHint: " + run.Replace.Suggestion;
                 case RunDecision.QueryModified:
                     return "[readonly=1] rolled back — " + run.Replace.Message + "\nHint: " + ChangeApprovalPolicy.QueryModifiedHint;
                 case RunDecision.Prompt:
@@ -943,7 +989,8 @@ namespace VibeModel.Services.Claude
         /// Attributed to the chat turn of its X-VibeModel-Turn header, else to the chat turn
         /// running in this session (the Claude Code CLI's curls carry no header).
         /// </summary>
-        private static void Journal(UIApplication app, string command, string args, RecordedChanges changes, ChatTurnRef turn, IList<string> written = null)
+        private static void Journal(UIApplication app, string command, string args, RecordedChanges changes, ChatTurnRef turn, IList<string> written = null,
+            string outcome = null, IList<string> recipes = null)
         {
             try
             {
@@ -952,12 +999,37 @@ namespace VibeModel.Services.Claude
                 if (doc == null) return;
                 var line = ProjectJournal.CommandLineNow(command, args,
                     RecordedChanges.Values(changes.Added), RecordedChanges.Values(changes.Modified),
-                    RecordedChanges.Values(changes.Deleted), turn, written);
+                    RecordedChanges.Values(changes.Deleted), turn, written, outcome, recipes);
                 ProjectJournal.Enqueue(doc.Title, doc.PathName, line);
             }
             catch (Exception ex)
             {
                 Logger.Warn("Journal line skipped: " + ex.Message);
+            }
+        }
+
+        /// <summary>Saves each exec snippet that changed the model; returns the file names for the journal.</summary>
+        private static IList<string> SaveRecipes(Document doc, IEnumerable<string> snippets, ChangeSetSummary kept, ChatTurnRef turn)
+        {
+            try
+            {
+                if (doc == null || !ProjectData.Enabled) return null;
+                var now = DateTime.Now;
+                var question = (turn ?? ProjectJournal.CurrentTurn)?.Question;
+                var names = new List<string>();
+                foreach (var snippet in snippets)
+                {
+                    var name = ProjectRecipes.NextFileName(now, question);
+                    ProjectRecipes.Save(doc.Title, doc.PathName, name,
+                        ProjectRecipes.Content(now, ProjectJournal.CurrentUser, question, kept.ChangedLine(), snippet));
+                    names.Add(name);
+                }
+                return names;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Recipe not saved: " + ex.Message);
+                return null;
             }
         }
 

@@ -83,7 +83,7 @@ namespace VibeModel.Services.Claude
                     return "token from " + RevitHttpServer.TokenEnvVar;
                 default:
                     return "OPEN, no token (OpenServer = true" +
-                           (ManagedSettings.IsManaged(ManagedSettings.OpenServer) ? ", managed by IT)" : ", settings)");
+                           (ManagedSettings.IsManaged(ManagedSettings.OpenServer) ? ", managed by your Revit administrators)" : ", settings)");
             }
         }
 

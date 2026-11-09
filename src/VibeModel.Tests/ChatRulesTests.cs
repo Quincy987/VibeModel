@@ -106,7 +106,7 @@ namespace VibeModel.Tests
             var rules = ChatBackendBase.BuildBehaviourRules(language);
             Assert.Contains("one Revit undo step (Ctrl+Z)", rules);
             Assert.Contains("never refused or redirected to manual steps", rules);
-            Assert.Contains("view templates, project materials, families/types, shared parameters, phases, worksets", rules);
+            Assert.Contains("project materials, families/types, shared parameters, phases, worksets", rules);
             Assert.Contains("ask for confirmation first", rules);
             Assert.Contains("just do it, then report", rules);
             Assert.Contains("at most 5 short lines", rules);

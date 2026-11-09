@@ -341,6 +341,12 @@ namespace VibeModel.Services.Chat
             UndoRule + " Change approval is on: the user keeps or discards a deletion or edit in Revit before you see the result (`-- approval: kept by the user` or `ERROR: Discarded by the user`). After a discard: do not retry, do not argue; ask what they want instead.";
         internal const string ApprovalWaitRule =
             "delete, set, phase, join, unjoin, an exec that changes the model and batches holding them wait for the user's Keep/Discard in Revit: when your shell tool has a timeout, set it to 600000 ms for those calls. If a call still times out (APPROVAL_PENDING), call approvals to learn the outcome; never re-run the change.";
+        internal const string ApprovalAnnotateRule =
+            UndoRule + " VibeModel is set to annotation-only (Settings → Wijzigingen door de AI): views, sheets, schedules and annotations (text, tags, dimensions, spot elevations, filled regions) are made and kept; a change to a model element is rolled back and refused (ANNOTATION_ONLY). After a refusal: say so, do not retry or work around it with exec, and offer the user to switch the mode in the chat's mode chip.";
+        internal const string ForbiddenRule =
+            "Never move the project base point or survey point, change the shared coordinates, unpin grids, levels, links or imports, or edit a view template, even when the user asks: VibeModel refuses it (FORBIDDEN). Say that Revit-beheer does this; do not work around it.";
+        internal const string ExecRecipeRule =
+            "Begin every exec snippet with `// Doel: <what it does, in the user's words>` and `// Aannames: <units, levels, types, phases you assumed>` on their OWN lines (real newlines: in a one-line --data-urlencode argument a typed \\n is not a newline, so use `/* Doel: … */ /* Aannames: … */` there). They are saved with the script so a colleague can read, re-run or change it without the AI.";
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
@@ -371,6 +377,9 @@ namespace VibeModel.Services.Chat
                     sb.AppendLine("- " + ApprovalAskRule);
                     sb.AppendLine("- " + ApprovalWaitRule);
                     break;
+                case ChangeApprovalMode.Annotate:
+                    sb.AppendLine("- " + ApprovalAnnotateRule);
+                    break;
                 case ChangeApprovalMode.ReadOnly:
                     sb.AppendLine("- " + ApprovalReadOnlyRule);
                     break;
@@ -380,7 +389,7 @@ namespace VibeModel.Services.Chat
             }
             if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
-            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, view templates, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
+            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
@@ -393,6 +402,9 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Complete and checkable");
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
+            if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
+            sb.AppendLine("Never");
+            sb.AppendLine("- " + ForbiddenRule);
             sb.AppendLine("Tables");
             sb.AppendLine("- " + TableRule);
             sb.AppendLine("Units");

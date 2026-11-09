@@ -116,7 +116,7 @@ namespace VibeModel.Services.Claude.Commands
             if (status.LastError != null) sb.AppendLine("Last check/action failed: " + status.LastError);
             sb.AppendLine("Installed: VibeModel " + installed + " · loader " + LoaderInfo.Describe());
             sb.AppendLine("Running from: " + UpdateService.DescribeRunningFrom());
-            sb.AppendLine("Source: " + source.Describe() + (ManagedSettings.IsManaged(ManagedSettings.UpdateSource) ? " (managed by IT)" : ""));
+            sb.AppendLine("Source: " + source.Describe() + (ManagedSettings.IsManaged(ManagedSettings.UpdateSource) ? " (managed by your Revit administrators)" : ""));
             if (status.Latest != null)
                 sb.AppendLine("Latest: " + status.Latest.VersionText + " (" + ChatAttachment.FormatSize(status.Latest.Size) +
                               (status.Latest.Published != null ? ", published " + status.Latest.Published : "") + ")" +

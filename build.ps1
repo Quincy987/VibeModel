@@ -27,7 +27,7 @@
     .\build.ps1 -RevitVersion 2024
     .\build.ps1 -Debug
     .\build.ps1 -NoRestart
-    .\build.ps1 -Approval ask
+    .\build.ps1 -Approval ask     # or auto, annotate, readonly
 #>
 
 param(

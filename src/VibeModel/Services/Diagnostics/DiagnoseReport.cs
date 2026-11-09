@@ -162,7 +162,7 @@ namespace VibeModel.Services.Diagnostics
             }
         }
 
-        private static string Managed(string key) => ManagedSettings.IsManaged(key) ? " (managed by IT)" : "";
+        private static string Managed(string key) => ManagedSettings.IsManaged(key) ? " (managed by your Revit administrators)" : "";
 
         private static string KeySourceText(ApiKeySource source)
         {

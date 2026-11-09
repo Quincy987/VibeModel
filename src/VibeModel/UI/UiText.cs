@@ -169,10 +169,12 @@ namespace VibeModel.UI
 
         public static string ModeName(ChangeApprovalMode mode, string language) =>
             Strings.For(language, mode == ChangeApprovalMode.Ask ? Strings.ModeAsk
+                : mode == ChangeApprovalMode.Annotate ? Strings.ModeAnnotate
                 : mode == ChangeApprovalMode.ReadOnly ? Strings.ModeReadOnly : Strings.ModeAuto);
 
         public static string ModeHint(ChangeApprovalMode mode, string language) =>
             Strings.For(language, mode == ChangeApprovalMode.Ask ? Strings.ModeAskHint
+                : mode == ChangeApprovalMode.Annotate ? Strings.ModeAnnotateHint
                 : mode == ChangeApprovalMode.ReadOnly ? Strings.ModeReadOnlyHint : Strings.ModeAutoHint);
 
         /// <summary>The chip's tooltip: the policy as Diagnose words it, and whether IT locked it.</summary>

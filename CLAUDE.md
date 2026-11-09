@@ -414,6 +414,16 @@ curl -s http://localhost:18884/approvals                                  # This
   user what they want instead.` (JSON `DISCARDED`, additive `approval:{id,decision,by}`). Creating
   commands never ask; an `exec` that only read never asks. The isolate lives in a nested group that is
   rolled back on both answers — a temporary isolate the user had stays; the selection is restored.
+- **`annotate`** (*Alleen opmaak* / *Annotation only*): every modifying command runs in a group. Views, sheets, schedules and
+  annotations are kept with the normal `-- changed:` line; a run that touched the model is rolled back: `ERROR: VibeModel is set to
+  annotation-only; this change touched the model (added 1 (Walls 1)) and was rolled back.` + the preview line + `Hint:` (JSON
+  `ANNOTATION_ONLY` + `preview`). Decision (`ChangeApprovalPolicy.TouchesModel`, pure): an added or deleted model element always
+  refuses; a modified one refuses unless the run holds only view/annotation commands (`view section callout crop look viewport sheet
+  tag dimension spot text region schedule hide show isolate unisolate color colorsplash zoomto activate select`, where Revit's
+  regeneration marks hosts modified); a batch is held to its strictest command. A deletion nobody could read (an `exec` names no ids)
+  counts as model, except under those view/annotation commands. `ChangedElement.IsModel` comes from `AnnotationScope.IsModelElement`:
+  a model category that is not view-specific, not a view or type, and not drawing work filed under a model category (cameras, viewers,
+  sheets, lines, detail components, scope boxes, section boxes, views, raster images, materials).
 - **`readonly`**: a modifying command that changed something is rolled back: `ERROR: VibeModel is set to
   read-only; nothing was changed.` + the preview line + `Hint:` (JSON `READ_ONLY` + `preview`). Reading
   (an exec that only reads) works as usual.
@@ -452,18 +462,26 @@ curl -s http://localhost:18884/approvals                                  # This
   source, since Revit words its refusal per UI language). Rolled-back runs rewind the edit
   counter (`ModelChangeTracker.RewindTo`) and leave `VibeModelCreated`; discarded runs are journaled
   (`· delete 1730959 · discarded by the user · chat …`), previews and refusals are not.
+- **Forbidden actions** (`ForbiddenActions` pure, `ForbiddenGuard` Revit side): under any policy, also when the user asks: moving the
+  project base point or survey point, changing the shared coordinates, unpinning a grid, level, link or import, editing a view template.
+  Before the run: `set`/`delete`/`phase`/`join`/`unjoin` naming a base point, a template or `Pinned` on a pinned datum/link, and an `exec`
+  whose source writes to them (comments and strings stripped; variables taken from a protected item are followed; reading passes) →
+  `ERROR: Refused: <what> is protected by the office.` (JSON `FORBIDDEN`; in a batch that item fails like any other). After the run,
+  the same items are compared for the ids that existed before (a new pinned link is no change): in a run group the run is rolled back
+  (`FORBIDDEN`); without one the change stays and the response starts with `-- forbidden: <what> changed; press Ctrl+Z to undo — …`
+  (JSON `forbidden`), journaled as `· forbidden <what>`. Reading the items is logged above 50 ms.
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
   group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
   command instead of bypassing it.
 - **Mode chip** (plan 20, `UI/ModeChip.cs`; plan `docs/plans/20-mode-chip.md`): the chat input is one
   rounded box — text on top, a footer with the paperclip, the chip and a round send arrow (amber in
   *Vragen*; *Cancel* in its place during a turn). The chip shows the mode in force (*Automatisch* /
-  *Vragen* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a
+  *Vragen* / *Alleen opmaak* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a
   menu that sets `ChangeApprovalPolicy.SessionOverride` for the rest of the Revit session
   (`ChooseForSession`; choosing *Vragen* clears "don't ask again"). Precedence: managed.json → chip →
   `VIBEMODEL_APPROVAL` → settings.json → auto (`WithSessionOverride` / `EffectiveOf` / `Chosen`;
   Describe/Diagnose/`approvals` say `ask (this session)`, JSON `source: "session"`). Locked by
-  managed.json → greyed, no menu, tooltip "beheerd door IT". Settings shows the session choice as a
+  managed.json → greyed, no menu, tooltip "beheerd door Revit-beheer". Settings shows the session choice as a
   ticked box; untick + Save clears it. `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
   refreshes the chip, as do Settings closing, `ActiveDocumentTracker.Changed` and a turn ending.
   **Volgend bericht als preview**: the pane arms `ChangeApprovalPolicy.ArmNextTurn` on every send;
@@ -471,7 +489,7 @@ curl -s http://localhost:18884/approvals                                  # This
   paths merge it (`RunOptions.ForTurn`) — every modifying call of that turn runs as `?preview=1`
   (also an external curl made meanwhile, like the journal's turn attribution; a request enqueued
   before the turn started is not). The rules get `ChatBackendBase.PreviewTurnRule` only in such a
-  turn. AutomationIds `ModeChip`, `ModeAuto`, `ModeAsk`, `ModeReadOnly`, `PreviewNextToggle` (the menu
+  turn. AutomationIds `ModeChip`, `ModeAuto`, `ModeAsk`, `ModeAnnotate`, `ModeReadOnly`, `PreviewNextToggle` (the menu
   rows are UIA children of Revit's main window), `SendButton` (UIA name still "Send").
 - Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
   side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
@@ -755,6 +773,8 @@ curl -s http://localhost:18884/memory                          # Numbered, oldes
 curl -s "http://localhost:18884/forget?args=2"                 # By number, exact text or a unique fragment
 curl -s "http://localhost:18884/memory?args=--clear"           # Empty it (the header stays)
 curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday, 2026-10-12, --last 50 (default: last 20)
+curl -s http://localhost:18884/recipes                         # The exec scripts that changed this model
+curl -s "http://localhost:18884/recipes?args=3"                # One of them, in full (number or part of the name)
 ```
 - **Memory in the prompt.** Every chat turn (all backends) carries a `PROJECT MEMORY` block next
   to PROJECT FOLDER: ≤ 2 kB, newest last, `(+N older — run memory …)` when cut, plus the rule to
@@ -770,6 +790,12 @@ curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday
   (`<id> <url-encoded question>`, sent by the API backends) or else from the chat turn in flight
   in this Revit session (the Claude Code CLI's own curls) — an external curl made during a chat
   turn is attributed to that turn too.
+- **Recipes** (`recipes`, `ProjectRecipes`): every `exec` whose change was kept (also each exec of a kept batch, also a failed exec
+  that kept earlier transactions, then journaled `· failed; changes kept`) is saved in full as `VibeModel\recipes\<yyyy-MM-dd HHmmss> <question>.cs`
+  with a header (date, user, question, the `-- changed:` line), and the journal line says `· recipe <file>`. Not after a preview, Discard or
+  refusal. Written off the main thread with the 3 s deadline; when the project folder does not answer it goes to the local
+  `%LOCALAPPDATA%\VibeModel\projects\<title>\recipes\`, so a script is never lost. `recipes` lists both folders (date, user, `Doel:` line), `recipes <n|part of the name>`
+  prints one. The rules ask for `// Doel:` and `// Aannames:` lines (`ExecRecipeRule`); a snippet that is one `//` line is refused, since a `\n` typed inside a quoted argument is no newline.
 - **Never blocks Revit:** journal lines are queued; a background writer resolves the folder and
   appends with a 3 s deadline; an offline folder drops lines with one logged warning and is
   retried after 60 s. `journal` flushes the queue first. Rotation at 2 MB → `journal-<yyyymm>.md`
@@ -799,7 +825,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
 - **managed.json** (`Infrastructure/ManagedSettings.cs`, read-only, `%ProgramData%\VibeModel\` then
   `%APPDATA%\VibeModel\`, re-read at most once a minute): `PreferredBackend`, `Model`, `ApiBaseUrl`,
   `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer`, `ChangeApproval` override settings.json and
-  are locked in Settings ("beheerd door IT"). The `%ProgramData%` file is only trusted when `FileTrust`
+  are locked in Settings ("beheerd door Revit-beheer"). The `%ProgramData%` file is only trusted when `FileTrust`
   says it is IT's: file and folder owned by Administrators or SYSTEM, no Allow-write ACE for Users /
   Authenticated Users / Everyone / Interactive (ordinary users may create folders under ProgramData).
   Otherwise it is ignored, logged once as WARN and named by Diagnose (`ManagedSettings.UntrustedFile`).
@@ -897,7 +923,7 @@ run, every other tool is denied, never prompted) — narrower than `bypassPermis
 `Bash(curl:*)` it keeps the `cat > /tmp/q.cs` + `exec --data-binary` pattern working. Every
 VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with
 the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language, approval)` — reply language,
-undo (worded per change-approval policy), ask-first for sheets/shared resources, compact answers); edit the wording there, both
+undo (worded per change-approval policy), ask-first for sheets/shared resources, compact answers, what is never allowed); edit the wording there, both
 backends use it. Settings → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
 reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`) —
 the only language source and the only Dutch/English tables; `UI/UiText.cs` just composes them.

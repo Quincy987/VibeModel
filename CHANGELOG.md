@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added — *Alleen opmaak*, saved scripts, what the AI may never do
+- A new stand under *Wijzigingen door de AI*: **Alleen opmaak** (annotation only), in Settings, the mode chip and `managed.json`
+  (`ChangeApproval: annotate`). The AI makes views, sheets, schedules and annotations; a change that touches a model element is
+  rolled back and refused, and it says what it would have changed. A wall, a parameter value or a deleted floor is refused; a tag
+  on that wall is not.
+- Every `exec` script that changed the model is kept in full in the project folder (`VibeModel\recipes\`), with the date, who asked,
+  the question and what changed, so a colleague can read, re-run or change it without the AI. When the project folder does not
+  answer it goes to a local folder. The journal names the file; `recipes` lists them and prints one. The chat starts each script with
+  what it is for and what it assumed.
+- VibeModel refuses, also when asked: moving the project base point or survey point, changing the shared coordinates, unpinning grids,
+  levels, links or imports, and editing view templates. A script is checked before it runs and the protected items are compared
+  afterwards; a change that gets through anyway is undone, or named with *press Ctrl+Z* when it cannot be.
+
+### Changed
+- Locked settings read *beheerd door Revit-beheer* (*managed by your Revit administrators*) instead of *beheerd door IT*.
+- A failed `exec` that kept earlier work now gets a journal line (`failed; changes kept`) and its script is saved.
+- An `exec` that is one `//` line is refused with the reason, instead of reporting success after running nothing.
+
+### Fixed
+- Checking whether a file on this computer exists no longer waits on a busy thread pool; a missing local file could be reported
+  as an unreachable share.
+
 ## v1.2.15 — Zichtbaar wat er veranderde (2026-11-09)
 
 ### Added — see what the AI changed

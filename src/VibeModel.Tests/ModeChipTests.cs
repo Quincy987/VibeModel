@@ -135,11 +135,11 @@ namespace VibeModel.Tests
         public void ChipTip_SaysWhenITLockedIt()
         {
             var managed = UiText.ModeChipTip(ChangeApprovalMode.Ask, ChangeApprovalSource.Managed, false, "nl");
-            Assert.Contains("beheerd door IT", managed);
+            Assert.Contains("beheerd door Revit-beheer", managed);
             Assert.Contains("ask (managed.json)", managed);
             var session = UiText.ModeChipTip(ChangeApprovalMode.Ask, ChangeApprovalSource.Session, false, "en");
             Assert.Contains("ask (this session)", session);
-            Assert.DoesNotContain("managed by IT", session);
+            Assert.DoesNotContain("managed by your Revit administrators", session);
         }
     }
 
