@@ -494,7 +494,7 @@ curl -s http://localhost:18884/approvals                                  # This
 - Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
   side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
   `ApprovalWindow`, `ApprovalSummary`, `ApprovalZoom`, `ApprovalDontAsk`, `ApprovalDiscard`,
-  `ApprovalKeep`). `build.ps1 -Approval ask|auto|readonly` sets `VIBEMODEL_APPROVAL` for the Revit it starts.
+  `ApprovalKeep`). `build.ps1 -Approval ask|auto|annotate|readonly` sets `VIBEMODEL_APPROVAL` for the Revit it starts.
 
 ### exec helpers: apilookup and the loop deadline
 ```bash

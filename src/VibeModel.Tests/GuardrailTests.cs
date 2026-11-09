@@ -134,6 +134,7 @@ namespace VibeModel.Tests
         {
             var rules = ChatBackendBase.BuildBehaviourRules("nl", ChangeApprovalMode.Annotate);
             Assert.Contains("annotation-only", rules);
+            Assert.DoesNotContain("never refused", rules);
             Assert.DoesNotContain("annotation-only", ChatBackendBase.BuildBehaviourRules("nl", ChangeApprovalMode.Auto));
         }
     }
@@ -171,6 +172,9 @@ namespace VibeModel.Tests
         [InlineData("sb.AppendLine(\"bp.Pinned = false\");")]
         [InlineData("var views = all.Where(v => !v.IsTemplate).ToList(); views[0].Name = \"x\";")]
         [InlineData("var loc = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero).Angle; sb.AppendLine(loc.ToString());")]
+        [InlineData("BasePoint bp = BasePoint.GetSurveyPoint(doc); sb.AppendLine(bp.Position.X.ToString());")]
+        [InlineData("SiteLocation site = doc.SiteLocation; sb.AppendLine(site.PlaceName);")]
+        [InlineData("foreach (View v in views) { if (v.IsTemplate) found.Add(v); }")]
         [InlineData("grid.Pinned = true;")]
         [InlineData("wall.LookupParameter(\"Comments\").Set(\"x\");")]
         public void ReadingOrUnrelated_Passes(string code) => Assert.Null(ForbiddenActions.ScanExec(code));

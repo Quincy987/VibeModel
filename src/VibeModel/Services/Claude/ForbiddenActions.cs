@@ -49,7 +49,7 @@ namespace VibeModel.Services.Claude
         public const string BasePointWhat = "the project base point or survey point";
         public const string CoordinatesWhat = "the shared coordinates";
         public const string TemplateWhat = "a view template";
-        public const string PinWhat = "unpinning a grid, level, link or import";
+        public const string PinWhat = "the pin of a grid, level, link or import";
 
         public static string RefusedMessage(string what) => "Refused: " + what + " is protected by the office.";
 
@@ -132,12 +132,16 @@ namespace VibeModel.Services.Claude
         {
             var id = @"\b" + Regex.Escape(name) + @"\b";
 
-            // x.Position = …, doc.ActiveProjectLocation = …: the name left of the assignment.
+            // x.Position = …, doc.ActiveProjectLocation = …: the name left of the assignment. A
+            // declaration ("BasePoint bp = …") names the type there and assigns nothing to it.
             var assign = Assignment.Match(statement);
-            if (assign.Success && Regex.IsMatch(statement.Substring(0, assign.Index), id)) return true;
+            if (assign.Success && !Declaration.IsMatch(statement) && Regex.IsMatch(statement.Substring(0, assign.Index), id)) return true;
 
-            // x.Set(…), x.get_Parameter(…).Set(…), template.AddFilter(…)
-            if (Regex.IsMatch(statement, id + @"[^;]*?\.(Set\w*|Add\w*|Remove\w*|Move\w*|Rotate\w*)\s*\(")) return true;
+            // template.AddFilter(…), list.Remove(…): only on the name itself ("if (v.IsTemplate) list.Add(v)" reads).
+            if (Regex.IsMatch(statement, id + @"\.(Add\w*|Remove\w*)\s*\(")) return true;
+
+            // x.Set(…), x.get_Parameter(…).Set(…)
+            if (Regex.IsMatch(statement, id + @"[^;]*?\.(Set\w*|Move\w*|Rotate\w*)\s*\(")) return true;
 
             // ElementTransformUtils.MoveElement(doc, x.Id, …), doc.Delete(x.Id)
             return Regex.IsMatch(statement, @"\b(Move\w*|Rotate\w*|Delete)\s*\([^;]*" + id);

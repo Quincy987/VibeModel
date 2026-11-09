@@ -52,11 +52,15 @@ namespace VibeModel.Services.Claude.Commands
             int first = Math.Max(0, files.Count - MaxListed);
             if (first > 0) sb.AppendLine("(" + Truncation.Line(files.Count - first, files.Count, "these are the newest") + ")");
 
+            // Under one deadline: this runs on Revit's main thread and the folder may be a share.
+            var shown = files.Skip(first).ToList();
+            var headers = PathProbe.Run(() => shown.Select(ReadHeader).ToList(), ProjectData.IoTimeout, null);
+
             var rows = new List<object>();
             for (int i = first; i < files.Count; i++)
             {
                 var name = Path.GetFileName(files[i]);
-                var header = ReadHeader(files[i]);
+                var header = headers != null ? headers[i - first] : new RecipeHeader();
                 sb.AppendLine((i + 1).ToString(CultureInfo.InvariantCulture) + "  " + (header.Date ?? "?") + "  " + (header.User ?? "?") + "  " +
                               (header.Goal ?? "(no Doel line)") + "  [" + name + "]");
                 rows.Add(new Dictionary<string, object>

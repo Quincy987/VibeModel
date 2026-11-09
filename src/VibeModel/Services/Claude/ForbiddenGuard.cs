@@ -55,10 +55,11 @@ namespace VibeModel.Services.Claude
         /// <summary>Base points, shared coordinates, pins and view templates as they are now; null when unreadable.</summary>
         public static Dictionary<string, ProtectedState> Capture(Document doc)
         {
-            if (doc == null || doc.IsFamilyDocument) return null;
             var clock = Stopwatch.StartNew();
             try
             {
+                // Inside the try: an exec snippet may have closed this document.
+                if (doc == null || doc.IsFamilyDocument) return null;
                 var map = new Dictionary<string, ProtectedState>();
                 AddPoint(map, "project", BasePoint.GetProjectBasePoint(doc));
                 AddPoint(map, "survey", BasePoint.GetSurveyPoint(doc));
@@ -114,7 +115,9 @@ namespace VibeModel.Services.Claude
                     case StorageType.ElementId: sb.Append(p.AsElementId().IntegerValue); break;
                 }
             }
-            foreach (var f in v.GetFilters()) sb.Append("|f").Append(f.IntegerValue);
+            // Schedule templates have no graphics and GetFilters would throw.
+            if (v.AreGraphicsOverridesAllowed())
+                foreach (var f in v.GetFilters()) sb.Append("|f").Append(f.IntegerValue);
             return sb.ToString().GetHashCode().ToString(CultureInfo.InvariantCulture);
         }
 

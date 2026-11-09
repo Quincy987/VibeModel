@@ -963,8 +963,9 @@ namespace VibeModel.Services.Claude
                     return "[read-only] rolled back — " + ChangeApprovalPolicy.ReadOnlyMessage + "\n" +
                            run.Summary.PreviewLine() + "\nHint: " + ChangeApprovalPolicy.ReadOnlyHint;
                 case RunDecision.AnnotationOnly:
+                    return "[annotation-only] rolled back — " + run.Replace.Message + "\n" + run.Summary.PreviewLine() + "\nHint: " + run.Replace.Suggestion;
                 case RunDecision.Forbidden:
-                    return "[" + run.Replace.ErrorCode.ToLowerInvariant() + "] rolled back — " + run.Replace.Message + "\nHint: " + run.Replace.Suggestion;
+                    return "[forbidden] rolled back — " + run.Replace.Message + "\nHint: " + run.Replace.Suggestion;
                 case RunDecision.QueryModified:
                     return "[readonly=1] rolled back — " + run.Replace.Message + "\nHint: " + ChangeApprovalPolicy.QueryModifiedHint;
                 case RunDecision.Prompt:

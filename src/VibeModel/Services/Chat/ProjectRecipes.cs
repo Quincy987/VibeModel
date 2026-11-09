@@ -156,9 +156,11 @@ namespace VibeModel.Services.Chat
                 }
             }
 
-            var local = ProjectData.Locate(null, string.IsNullOrWhiteSpace(title) ? "untitled" : title);
-            WriteFile(Path.Combine(local.Directory, FolderName), fileName, content);
+            WriteFile(LocalFolder(title), fileName, content);
         }
+
+        private static string LocalFolder(string title)
+            => Path.Combine(ProjectData.Locate(null, string.IsNullOrWhiteSpace(title) ? "untitled" : title).Directory, FolderName);
 
         internal static void WriteFile(string folder, string fileName, string content)
         {
@@ -176,8 +178,7 @@ namespace VibeModel.Services.Chat
         public static List<string> Folders(ProjectDataLocation location, string title)
         {
             var folders = new List<string> { Path.Combine(location.Directory, FolderName) };
-            var local = ProjectData.Locate(null, string.IsNullOrWhiteSpace(title) ? "untitled" : title);
-            var localFolder = Path.Combine(local.Directory, FolderName);
+            var localFolder = LocalFolder(title);
             if (!folders.Contains(localFolder, StringComparer.OrdinalIgnoreCase)) folders.Add(localFolder);
             return folders;
         }

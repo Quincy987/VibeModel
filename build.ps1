@@ -41,7 +41,7 @@ param(
 
     [switch]$Debug,
 
-    [ValidateSet("auto", "ask", "readonly")]
+    [ValidateSet("auto", "ask", "annotate", "readonly")]
     [string]$Approval
 )
 
