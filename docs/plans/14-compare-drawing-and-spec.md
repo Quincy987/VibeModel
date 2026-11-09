@@ -1,4 +1,4 @@
-# Plan 12 — Compare: drawing and specification against the model
+# Plan 14 — Compare: drawing and specification against the model
 
 > Goal: close the two gaps in README "What it can do" §7 — "automatic drawing-vs-model
 > comparison ❌" and "checking against a specification 🟡 (a signal, not proof)" — with one

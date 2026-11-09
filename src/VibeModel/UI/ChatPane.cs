@@ -1341,10 +1341,11 @@ namespace VibeModel.UI
             var turn = _turn;
             if (turn == null || (!turn.TextDirty && !turn.ActivityDirty)) return;
 
-            // Text since the last tool call streams in the answer bubble; when a tool call
-            // follows, the model moves it into the block as a muted note and the bubble empties.
+            // Text since the last tool call streams in the answer bubble once it looks like the
+            // answer (long, or more than one line); until then the block shows it as a live note,
+            // so a short "I'll check X first" never flashes as the answer before its tool call.
             var live = turn.Model.LiveText;
-            if (live.Length > 0)
+            if (turn.Model.LiveIsAnswer)
             {
                 EnsureAnswerBubble(turn);
                 turn.AnswerText.Text = live + " …";

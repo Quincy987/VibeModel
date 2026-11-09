@@ -376,8 +376,34 @@ namespace VibeModel.Services.Chat
         /// <summary>Text streamed since the last tool call — the answer so far, if no tool follows.</summary>
         public string LiveText => _segment.ToString().Trim();
 
-        /// <summary>Nothing to show yet, or the model is between steps: "Aan het denken…".</summary>
-        public bool IsThinking => !IsFinished && !HasRunningStep && LiveText.Length == 0;
+        /// <summary>
+        /// The live text is long or structured enough to be the answer: it streams in the answer
+        /// bubble. Shorter text stays in the block as a live note — the pane cannot know yet
+        /// whether a tool call follows ("Ik lees eerst de commando's."), and showing it as the
+        /// answer and then pulling it back into the block when the tool call arrives reads as a
+        /// glitch. A single-line note under <see cref="AnswerMinLength"/> characters only becomes
+        /// the answer when the turn ends without another step.
+        /// </summary>
+        public bool LiveIsAnswer => LooksLikeAnswer(LiveText);
+
+        /// <summary>Live text shown in the block as a note in progress (null when none, or it is the answer).</summary>
+        public string LiveNote
+        {
+            get
+            {
+                if (IsFinished) return null;
+                var live = LiveText;
+                return live.Length == 0 || LooksLikeAnswer(live) ? null : live;
+            }
+        }
+
+        public const int AnswerMinLength = 280;
+
+        public static bool LooksLikeAnswer(string text) =>
+            !string.IsNullOrEmpty(text) && (text.Length >= AnswerMinLength || text.IndexOf('\n') >= 0);
+
+        /// <summary>Not running a step and not streaming the answer: "Aan het denken…".</summary>
+        public bool IsThinking => !IsFinished && !HasRunningStep && !LiveIsAnswer;
 
         public TimeSpan Elapsed(DateTime nowUtc) => (FinishedUtc ?? nowUtc) - StartedUtc;
 

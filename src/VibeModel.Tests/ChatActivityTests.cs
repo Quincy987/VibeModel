@@ -32,8 +32,47 @@ namespace VibeModel.Tests
             Assert.False(turn.HasSteps);
 
             turn.AppendText("Hallo", T0.AddSeconds(2));
-            Assert.False(turn.IsThinking);
             Assert.Equal("Hallo", turn.LiveText);
+            // Short single-line text may still be followed by a tool call: a live note, not the answer.
+            Assert.True(turn.IsThinking);
+            Assert.False(turn.LiveIsAnswer);
+            Assert.Equal("Hallo", turn.LiveNote);
+
+            turn.AppendText("\n\nTweede alinea.", T0.AddSeconds(3));
+            Assert.False(turn.IsThinking);
+            Assert.True(turn.LiveIsAnswer);
+            Assert.Null(turn.LiveNote);
+        }
+
+        [Fact]
+        public void ShortTextBeforeToolCall_NeverShowsAsAnswer()
+        {
+            var turn = new TurnActivity(T0);
+            turn.Apply(Start("a", "list", "walls"), T0);
+            turn.Apply(Done("a"), T0.AddSeconds(1));
+            turn.AppendText("\n\nOld C# compiler; ik vereenvoudig de code.", T0.AddSeconds(2));
+
+            Assert.False(turn.LiveIsAnswer);
+            Assert.Equal("Old C# compiler; ik vereenvoudig de code.", turn.LiveNote);
+
+            turn.Apply(Start("b", "exec"), T0.AddSeconds(9));
+            Assert.Null(turn.LiveNote);
+            Assert.Equal("Old C# compiler; ik vereenvoudig de code.", turn.Items.Last(i => !i.IsStep).Note);
+        }
+
+        [Fact]
+        public void LongSingleLine_IsTheAnswer_AndShortOneBecomesItAtTheEnd()
+        {
+            Assert.True(TurnActivity.LooksLikeAnswer(new string('x', TurnActivity.AnswerMinLength)));
+            Assert.False(TurnActivity.LooksLikeAnswer(new string('x', TurnActivity.AnswerMinLength - 1)));
+
+            var turn = new TurnActivity(T0);
+            turn.Apply(Start("a", "wall"), T0);
+            turn.Apply(Done("a"), T0.AddSeconds(1));
+            turn.AppendText("Muur 1543814 staat.", T0.AddSeconds(2));
+            turn.Finish(T0.AddSeconds(3));
+            Assert.Equal("Muur 1543814 staat.", turn.Answer);
+            Assert.Null(turn.LiveNote);
         }
 
         [Fact]

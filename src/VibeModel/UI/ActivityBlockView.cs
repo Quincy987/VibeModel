@@ -114,6 +114,13 @@ namespace VibeModel.UI
             int hidden;
             var items = _model.VisibleItems(false, out hidden);
             BuildRows(items, hidden);
+            // Short text since the last step: a note in progress, until it proves to be the answer.
+            var liveNote = _model.LiveNote;
+            if (liveNote != null)
+            {
+                _rows.Children.Add(NoteRow(liveNote + " …"));
+                _rows.Visibility = Visibility.Visible;
+            }
             Tick(nowUtc);
         }
 
