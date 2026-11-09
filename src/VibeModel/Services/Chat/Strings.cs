@@ -153,7 +153,7 @@ namespace VibeModel.Services.Chat
         public const string SettingApprovalSession = "SettingApprovalSession";
         public const string SettingApprovalEnv = "SettingApprovalEnv";          // {0} = mode, {1} = variable
         public const string SettingApprovalChip = "SettingApprovalChip";        // {0} = mode name
-        // Mode chip in the chat input (plan 18).
+        // Mode chip in the chat input (plan 20).
         public const string ModeAuto = "ModeAuto";
         public const string ModeAutoHint = "ModeAutoHint";
         public const string ModeAsk = "ModeAsk";

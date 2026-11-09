@@ -12,7 +12,7 @@ using VibeModel.Services.Claude;
 namespace VibeModel.UI
 {
     /// <summary>
-    /// Plan 18: the mode chip in the chat input's footer (Cursor-style). Shows the change-approval
+    /// Plan 20: the mode chip in the chat input's footer (Cursor-style). Shows the change-approval
     /// mode in force — Automatisch / Vragen / Alleen lezen — and opens a menu to pick it for this
     /// Revit session (<see cref="ChangeApprovalPolicy.ChooseForSession"/>) and to send the next
     /// message as a preview. Locked (greyed, no menu) when managed.json sets the mode.

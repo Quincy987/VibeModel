@@ -81,7 +81,7 @@
   a Revit call that opens its own transaction (loading a family back): whatever is committed while a
   VibeModel command runs counts as VibeModel's.
 ### Added — mode chip in the chat input (Cursor-style), next message as preview
-- Plan 18. The chat input is one rounded box with a footer row: paperclip, a **mode chip** and a round
+- Plan 20. The chat input is one rounded box with a footer row: paperclip, a **mode chip** and a round
   send arrow. The chip shows how the AI's changes are handled — **Automatisch**, **Vragen** (approve
   deletions and edits first) or **Alleen lezen** — and one click switches it for the rest of the Revit
   session, without opening Settings. In *Vragen* the send arrow turns amber. IT's managed.json still

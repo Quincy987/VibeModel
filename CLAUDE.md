@@ -446,7 +446,7 @@ curl -s http://localhost:18884/approvals                                  # This
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
   group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
   command instead of bypassing it.
-- **Mode chip** (plan 18, `UI/ModeChip.cs`; plan `docs/plans/18-mode-chip.md`): the chat input is one
+- **Mode chip** (plan 20, `UI/ModeChip.cs`; plan `docs/plans/20-mode-chip.md`): the chat input is one
   rounded box — text on top, a footer with the paperclip, the chip and a round send arrow (amber in
   *Vragen*; *Cancel* in its place during a turn). The chip shows the mode in force (*Automatisch* /
   *Vragen* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a

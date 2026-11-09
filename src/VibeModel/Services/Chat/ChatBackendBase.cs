@@ -263,7 +263,7 @@ namespace VibeModel.Services.Chat
         /// </summary>
         protected static void RunJournaledTurn(string question, Action<string> onComplete, Action<Action<string>> run)
         {
-            // Plan 18: a turn the pane sent as a preview runs every change as ?preview=1.
+            // Plan 20: a turn the pane sent as a preview runs every change as ?preview=1.
             ChangeApprovalPolicy.BeginTurn();
             var turn = ProjectJournal.BeginTurn(question);
             try
@@ -335,7 +335,7 @@ namespace VibeModel.Services.Chat
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
-        // Plan 18: the pane's "next message as preview" — the server previews every change of
+        // Plan 20: the pane's "next message as preview" — the server previews every change of
         // this turn on its own, the model only has to report it as such.
         internal const string PreviewTurnRule =
             "This turn is a PREVIEW: every change you make is rolled back by Revit and reported as `-- preview: …`. Say what WOULD change and that nothing was changed; do not retry.";
@@ -344,7 +344,7 @@ namespace VibeModel.Services.Chat
         /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
         /// reply language when the user's own language is unclear; <paramref name="approval"/> is
         /// the change-approval policy in force (plan 15; auto = the text as before);
-        /// <paramref name="preview"/> = this turn was sent as a preview (plan 18).
+        /// <paramref name="preview"/> = this turn was sent as a preview (plan 20).
         /// </summary>
         internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto,
             bool preview = false)

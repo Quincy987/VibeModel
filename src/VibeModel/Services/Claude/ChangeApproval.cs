@@ -80,7 +80,7 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public static event EventHandler Changed;
 
-        // Plan 18: the chat pane's mode chip. A Nullable cannot be volatile, so the choice is
+        // Plan 20: the chat pane's mode chip. A Nullable cannot be volatile, so the choice is
         // kept as an int (-1 = none).
         private static volatile int _sessionOverride = -1;
 
@@ -110,7 +110,7 @@ namespace VibeModel.Services.Claude
             SessionOverride = mode;
         }
 
-        // Plan 18: "next message as preview". The pane arms the flag before every send (true or
+        // Plan 20: "next message as preview". The pane arms the flag before every send (true or
         // false, so a send that never started a turn cannot leave it behind); the turn takes it.
         private static volatile bool _previewNextTurn;
         private static volatile bool _previewTurn;

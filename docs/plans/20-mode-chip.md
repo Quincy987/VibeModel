@@ -1,4 +1,4 @@
-# Plan 18 — mode chip in the chat input, "next message as preview"
+# Plan 20 — mode chip in the chat input, "next message as preview"
 
 > Goal: switching how the AI's changes are handled (plan 15: auto / ask / read-only) should not
 > need Settings. Cursor puts its agent mode in a chip at the bottom-left of the input box; the user

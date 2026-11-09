@@ -398,7 +398,7 @@ namespace VibeModel.UI
                 panel.Children.Add(_approvalSessionCheck);
             }
 
-            // Plan 18: the mode picked in the chat's mode chip wins over the choice above until
+            // Plan 20: the mode picked in the chat's mode chip wins over the choice above until
             // Revit closes (managed.json still wins over both).
             var chip = ChangeApprovalPolicy.SessionOverride;
             if (chip.HasValue && !managed)

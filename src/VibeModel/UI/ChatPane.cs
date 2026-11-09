@@ -333,7 +333,7 @@ namespace VibeModel.UI
             };
         }
 
-        // Plan 18 (mockup A, Cursor-style): one rounded box — the text on top, a footer row below
+        // Plan 20 (mockup A, Cursor-style): one rounded box — the text on top, a footer row below
         // with the paperclip, the mode chip and a round send arrow (Cancel takes its place while a
         // turn runs).
         private Border CreateInputArea()
@@ -469,7 +469,7 @@ namespace VibeModel.UI
         private void OnApprovalPolicyChanged(object sender, EventArgs e)
             => Dispatcher.BeginInvoke(new Action(RefreshModeChip));
 
-        // Plan 18: the chip re-reads the policy (Settings, the approval window's "don't ask again"
+        // Plan 20: the chip re-reads the policy (Settings, the approval window's "don't ask again"
         // and managed.json can all change it); in Vragen the send arrow turns amber as a reminder.
         private void RefreshModeChip()
         {
@@ -1183,7 +1183,7 @@ namespace VibeModel.UI
                 };
             }
 
-            // Plan 18: "next message as preview" applies to this turn only.
+            // Plan 20: "next message as preview" applies to this turn only.
             ChangeApprovalPolicy.ArmNextTurn(_modeChip.PreviewNext);
             _modeChip.PreviewNext = false;
 

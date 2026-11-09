@@ -9,7 +9,7 @@ using Xunit;
 namespace VibeModel.Tests
 {
     /// <summary>
-    /// Plan 18, the pure part: the chip's session choice in the precedence (managed.json → chip →
+    /// Plan 20, the pure part: the chip's session choice in the precedence (managed.json → chip →
     /// environment → settings → auto), "next message as preview" (the turn flag, the run options,
     /// the rules sentence) and the chip's texts. The WPF chip itself is verified live.
     /// </summary>

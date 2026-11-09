@@ -1012,7 +1012,7 @@ namespace VibeModel.Services.Claude
         public bool IsEmpty => !Preview && !ReadOnly && !TimeoutSeconds.HasValue;
 
         /// <summary>
-        /// The request's options with a preview chat turn (plan 18) applied: while
+        /// The request's options with a preview chat turn (plan 20) applied: while
         /// <paramref name="previewTurn"/> every request runs as ?preview=1. Otherwise the options
         /// as given (null → <see cref="None"/>), so nothing changes outside a preview turn.
         /// </summary>

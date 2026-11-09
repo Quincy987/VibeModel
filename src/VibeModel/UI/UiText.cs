@@ -165,7 +165,7 @@ namespace VibeModel.UI
             return t.Length == 0 || t.EndsWith(".", StringComparison.Ordinal) ? t : t + ".";
         }
 
-        // --- Mode chip in the chat input (plan 18) --------------------------------------------
+        // --- Mode chip in the chat input (plan 20) --------------------------------------------
 
         public static string ModeName(ChangeApprovalMode mode, string language) =>
             Strings.For(language, mode == ChangeApprovalMode.Ask ? Strings.ModeAsk
