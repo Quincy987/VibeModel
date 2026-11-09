@@ -436,7 +436,8 @@ curl -s http://localhost:18884/approvals                                  # This
 - **Change sets**: added/modified are read live, deleted ones from categories pre-read for the ids the
   command names AND their `GetDependentElements` (≤ 5000). Internal elements, sketch lines and automatic
   sketch dimensions are never shown (measured: a new wall adds two plain Element objects; a floor's
-  delete takes its sketch with 94 lines); an unreadable deletion counts as `other`. Revit regeneration
+  delete takes its sketch with 94 lines; a family load adds a preview legend component); element types
+  count as `Types`, not under their family's category; an unreadable deletion counts as `other`. Revit regeneration
   inflates "modified" (joined walls, the view) — shown by category.
 - **Waiting**: under `ask` a guarded request waits up to 10 min (HTTP, the in-pane WebClient
   `RevitWebClient`, the socket); then `ERROR: still waiting for the user's decision in Revit.`

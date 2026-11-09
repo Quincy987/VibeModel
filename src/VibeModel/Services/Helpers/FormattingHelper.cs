@@ -362,24 +362,24 @@ namespace VibeModel.Services.Helpers
         }
 
         /// <summary>
-        /// Finds a parameter on an element by name: instance first, then type.
+        /// Finds a parameter to read on an element by name: instance first, then type. An instance
+        /// parameter without a value gives way to the type's: measured, a foundation carries an empty
+        /// instance "Type Name" next to its type's filled one.
         /// </summary>
         public static Parameter FindParameter(Element elem, Document doc, string paramName)
         {
             var param = elem.Parameters.Cast<Parameter>()
                 .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
 
-            if (param != null) return param;
+            if (param != null && param.HasValue) return param;
 
             var typeId = elem.GetTypeId();
             if (typeId != ElementId.InvalidElementId)
             {
                 var elemType = doc.GetElement(typeId);
-                if (elemType != null)
-                {
-                    param = elemType.Parameters.Cast<Parameter>()
-                        .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
-                }
+                var onType = elemType?.Parameters.Cast<Parameter>()
+                    .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
+                if (onType != null) return onType;
             }
 
             return param;

@@ -99,6 +99,8 @@ namespace VibeModel.Services.Claude
             var cat = e.Category;
             if (cat == null) return true;
             int bic = cat.Id.IntegerValue;
+            // Measured: loading a family adds a preview legend component of it, which nobody ever sees.
+            if (bic == (int)BuiltInCategory.OST_PreviewLegendComponents) return true;
             return bic == (int)BuiltInCategory.OST_SketchLines || bic == (int)BuiltInCategory.OST_WeakDims;
         }
 
@@ -106,9 +108,9 @@ namespace VibeModel.Services.Claude
         {
             try
             {
-                var cat = e.Category;
-                if (cat != null) return cat.Name;
-                return e is ElementType ? "Types" : null;
+                // A family type has its family's category; counted there, one new pile would read as two.
+                if (e is ElementType) return "Types";
+                return e.Category?.Name;
             }
             catch
             {
