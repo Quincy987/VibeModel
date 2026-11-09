@@ -98,6 +98,12 @@ namespace VibeModel.Services.Claude
                 changes.Modified.Select(live).Where(e => e != null), changes.Deleted.Select(gone).Where(e => e != null));
         }
 
+        private static readonly HashSet<int> ViewHelperCategories = new HashSet<int>
+        {
+            (int)BuiltInCategory.OST_Cameras, (int)BuiltInCategory.OST_SectionBox, (int)BuiltInCategory.OST_Viewers,
+            (int)BuiltInCategory.OST_SunStudy, (int)BuiltInCategory.OST_IOSSketchGrid
+        };
+
         /// <summary>
         /// Parts of an element nobody thinks of as an element: no category (sketch, sketch plane,
         /// internal objects; types excepted), sketch lines and automatic sketch dimensions.
@@ -110,6 +116,10 @@ namespace VibeModel.Services.Claude
             int bic = cat.Id.IntegerValue;
             // Measured: loading a family adds a preview legend component of it, which nobody ever sees.
             if (bic == (int)BuiltInCategory.OST_PreviewLegendComponents) return true;
+            // Measured: a new view brings its own camera, section box, viewer, sun settings, work plane
+            // grid and a viewport on no sheet; it is one view to whoever reads the line.
+            if (ViewHelperCategories.Contains(bic)) return true;
+            if (e is Viewport vp && vp.SheetId == ElementId.InvalidElementId) return true;
             return bic == (int)BuiltInCategory.OST_SketchLines || bic == (int)BuiltInCategory.OST_WeakDims;
         }
 

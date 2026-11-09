@@ -18,6 +18,7 @@
 ### Changed
 - Locked settings and switched-off features name Revit-beheer (*managed by your Revit administrators*) instead of IT.
 - A failed `exec` that kept earlier work now gets a journal line (`failed; changes kept`) and its script is saved.
+- A new view counts as one view in the `-- changed:` line, not as seven elements (its camera, section box and sun settings are left out).
 - An `exec` that is one `//` line is refused with the reason, instead of reporting success after running nothing.
 
 ### Fixed
