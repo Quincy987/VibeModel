@@ -2,12 +2,10 @@
 
 ## [Unreleased]
 
-## v1.2.15 — Zichtbaar wat er veranderde (2026-11-09)
-
 ### Added — see what the AI changed
 - After every command that changed the model, one line says what happened, per category:
   `-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0` (in JSON a `changes` object
-  with counts per category and at most 50 ids per group). A batch gets one line for the whole batch.
+  with counts per category and at most 50 ids per group). A batch gets one line for the whole batch; a new family type counts as `Types`.
   Not after a preview or a discarded change, which changed nothing. The chat ends such an answer with
   one line built from it: what changed, what it assumed and what it skipped.
 - The project journal now says who did it: `- 2026-11-09 14:03:12 · by jjansen · wall … · created …`
