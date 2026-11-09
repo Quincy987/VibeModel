@@ -346,7 +346,7 @@ namespace VibeModel.Services.Chat
         internal const string ForbiddenRule =
             "Never move the project base point or survey point, change the shared coordinates, unpin grids, levels, links or imports, or edit a view template, even when the user asks: VibeModel refuses it (FORBIDDEN). This goes before every other rule here. Say that Revit-beheer does this; do not work around it.";
         internal const string ExecRecipeRule =
-            "Begin every exec snippet with `// Doel: <what it does, in the user's words>` and `// Aannames: <units, levels, types, phases you assumed>` on their OWN lines (real newlines: in a one-line --data-urlencode argument a typed \\n is not a newline, so use `/* Doel: … */ /* Aannames: … */` there). They are saved with the script so a colleague can read, re-run or change it without the AI.";
+            "Begin every exec snippet with `// Doel: <what it does, in the user's words>` and `// Aannames: <units, levels, types, phases you assumed>` on their OWN lines (real newlines: in a one-line --data-urlencode argument or a batch line a typed \\n is not a newline, so use `/* Doel: … */ /* Aannames: … */` there). They are saved with the script so a colleague can read, re-run or change it without the AI.";
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
