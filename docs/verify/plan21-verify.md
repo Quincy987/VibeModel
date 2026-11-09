@@ -35,7 +35,7 @@ comes from the question, and `recipes` shows the `Doel:` line.
 **Known limit.** `delete selected` and `set selected Pinned 0` name no id, so the check before the run does
 not see them; the comparison afterwards does, as for any change past the scan.
 
-**Test harness note.** The chip's menu closes itself when another application takes the foreground while
-Revit is in the background (a focus-free invoke from a script); the row was then not found. Retried, it opens.
+**Test harness note.** Twice a script's focus-free invoke of the chip did not produce the menu rows within 15 s
+(Revit in the background; the cause was not established). A retry a few minutes later opened the menu at once.
 
 Tests: 1708 passed (Revit 2023) in five of six runs; one run had one failure that was not captured and did not come back in the next four, also after the same build sequence. Log: no ERROR, only the WARN lines for the forbidden changes above.
