@@ -132,10 +132,12 @@ namespace VibeModel.Services.Claude
         {
             var id = @"\b" + Regex.Escape(name) + @"\b";
 
-            // x.Position = …, doc.ActiveProjectLocation = …: the name left of the assignment. A
-            // declaration ("BasePoint bp = …") names the type there and assigns nothing to it.
+            // x.Position = …, doc.ActiveProjectLocation = …: the name is the assignment's target, with
+            // only a member path between ("if (v.IsTemplate) n = 1" reads it). A declaration
+            // ("BasePoint bp = …") names the type there and assigns nothing to it.
             var assign = Assignment.Match(statement);
-            if (assign.Success && !Declaration.IsMatch(statement) && Regex.IsMatch(statement.Substring(0, assign.Index), id)) return true;
+            if (assign.Success && !Declaration.IsMatch(statement) &&
+                Regex.IsMatch(statement.Substring(0, assign.Index), id + @"[\w.\[\]\s]*$")) return true;
 
             // template.AddFilter(…), list.Remove(…): only on the name itself ("if (v.IsTemplate) list.Add(v)" reads).
             if (Regex.IsMatch(statement, id + @"\.(Add\w*|Remove\w*)\s*\(")) return true;

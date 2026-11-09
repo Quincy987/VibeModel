@@ -148,7 +148,7 @@ namespace VibeModel.Services.Diagnostics
                 sb.AppendLine("Versions installed: " + (installed.Count == 0 ? "none" : string.Join(", ", installed.Select(kv =>
                     kv.Key + (string.Equals(kv.Key, running, StringComparison.OrdinalIgnoreCase) ? " (running)" : "")))));
                 sb.AppendLine("Source: " + engine.Source.Describe() + Managed(ManagedSettings.UpdateSource));
-                sb.AppendLine("Updates: " + (SettingsManager.IsUpdateDisabled() ? "switched off by IT (DisableUpdates)" :
+                sb.AppendLine("Updates: " + (SettingsManager.IsUpdateDisabled() ? "switched off by your Revit administrators (DisableUpdates)" :
                               "automatic check " + (SettingsManager.GetUpdateCheck() ? "on" : "off")));
                 var last = SettingsManager.GetUpdateLastChecked();
                 sb.AppendLine("Last check: " + (last.HasValue ? last.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + " - " + SettingsManager.GetUpdateLastResult() : "never"));

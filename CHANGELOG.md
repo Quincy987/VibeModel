@@ -16,7 +16,7 @@
   afterwards; a change that gets through anyway is undone, or named with *press Ctrl+Z* when it cannot be.
 
 ### Changed
-- Locked settings read *beheerd door Revit-beheer* (*managed by your Revit administrators*) instead of *beheerd door IT*.
+- Locked settings and switched-off features name Revit-beheer (*managed by your Revit administrators*) instead of IT.
 - A failed `exec` that kept earlier work now gets a journal line (`failed; changes kept`) and its script is saved.
 - An `exec` that is one `//` line is refused with the reason, instead of reporting success after running nothing.
 

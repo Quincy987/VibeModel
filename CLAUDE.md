@@ -803,7 +803,7 @@ curl -s "http://localhost:18884/recipes?args=3"                # One of them, in
 - `remember` / `memory` / `forget` / `journal` are not modifications (no transaction, no undo
   step). `docs` does not list the `VibeModel` subfolder.
 - **Switch:** Settings → *Projectgeheugen en journaal bijhouden* (`ProjectMemoryEnabled`, default
-  on). Off: no block, no header, nothing written, and the four commands (`IProjectMemoryCommand`)
+  on). Off: no block, no header, nothing written, and the five commands (`IProjectMemoryCommand`, with `recipes`)
   are left out of the prompt file, the tool lists and `help` — the exact prompt as before.
 
 ### Connecting to Claude (wizard, keys, managed settings, Diagnose)

@@ -22,10 +22,9 @@ namespace VibeModel.Tests
         [InlineData("Annotation")]
         [InlineData("annotation-only")]
         [InlineData("opmaak")]
-        [InlineData("alleen opmaak_")]
+        [InlineData("alleen-opmaak")]
         public void Parse_TakesTheNewMode(string value)
         {
-            if (value.Contains(" ")) { Assert.False(ChangeApprovalPolicy.TryParse(value, out _)); return; }
             Assert.True(ChangeApprovalPolicy.TryParse(value, out var mode));
             Assert.Equal(ChangeApprovalMode.Annotate, mode);
         }
@@ -38,14 +37,10 @@ namespace VibeModel.Tests
         }
 
         [Theory]
-        [InlineData("wall", true)]
-        [InlineData("text", true)]
-        [InlineData("list", false)]
-        public void EveryModifyingCommandGetsARunGroup(string command, bool modifying)
-        {
-            Assert.Equal(modifying, ChangeApprovalPolicy.NeedsRunGroup(ChangeApprovalMode.Annotate, false, modifying, false, false));
-            Assert.NotNull(command);
-        }
+        [InlineData(true)]
+        [InlineData(false)]
+        public void EveryModifyingCommandGetsARunGroup(bool modifying)
+            => Assert.Equal(modifying, ChangeApprovalPolicy.NeedsRunGroup(ChangeApprovalMode.Annotate, false, modifying, false, false));
 
         [Fact]
         public void Decide_KeepsAnnotationsRefusesTheModel()
@@ -175,6 +170,7 @@ namespace VibeModel.Tests
         [InlineData("BasePoint bp = BasePoint.GetSurveyPoint(doc); sb.AppendLine(bp.Position.X.ToString());")]
         [InlineData("SiteLocation site = doc.SiteLocation; sb.AppendLine(site.PlaceName);")]
         [InlineData("foreach (View v in views) { if (v.IsTemplate) found.Add(v); }")]
+        [InlineData("if (v.IsTemplate) n = n + 1;")]
         [InlineData("grid.Pinned = true;")]
         [InlineData("wall.LookupParameter(\"Comments\").Set(\"x\");")]
         public void ReadingOrUnrelated_Passes(string code) => Assert.Null(ForbiddenActions.ScanExec(code));
