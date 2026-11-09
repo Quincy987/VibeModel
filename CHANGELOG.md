@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.16 — Alleen opmaak, recepten en de weigerlijst (2026-11-09)
+
 ### Added — *Alleen opmaak*, saved scripts, what the AI may never do
 - A new stand under *Wijzigingen door de AI*: **Alleen opmaak** (annotation only), in Settings, the mode chip and `managed.json`
   (`ChangeApproval: annotate`). The AI makes views, sheets, schedules and annotations; a change that touches a model element is
