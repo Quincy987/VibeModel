@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- A read or write of the project folder (memory, journal, recipes, documents) runs on its own thread instead of the thread pool: with a busy pool a local folder could be reported as `did not answer within 3 s` (seen once on the CI runner).
+
 ## v1.2.16 — Alleen opmaak, recepten en de weigerlijst (2026-11-09)
 
 ### Added — *Alleen opmaak*, saved scripts, what the AI may never do
