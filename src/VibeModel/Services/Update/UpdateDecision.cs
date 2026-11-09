@@ -87,7 +87,7 @@ namespace VibeModel.Services.Update
             string pending, UpdateManifest latest, string checkError)
         {
             var status = new UpdateStatus { Latest = latest, Pending = pending, Running = Loader.LoaderPaths.Normalize(running) };
-            if (disabled) return status.With(UpdateState.Disabled, "updates are switched off by IT (managed.json DisableUpdates)");
+            if (disabled) return status.With(UpdateState.Disabled, "updates are switched off by your Revit administrators (managed.json DisableUpdates)");
             if (inPlace) return status.With(UpdateState.InPlaceBuild, InPlaceReason);
 
             var runningN = Loader.LoaderPaths.Normalize(running);
@@ -123,7 +123,7 @@ namespace VibeModel.Services.Update
             var latest = s.Latest?.VersionText;
             switch (s.State)
             {
-                case UpdateState.Disabled: return "updates are switched off by IT (managed.json DisableUpdates)";
+                case UpdateState.Disabled: return "updates are switched off by your Revit administrators (managed.json DisableUpdates)";
                 case UpdateState.UpToDate: return "up to date (latest " + latest + ")";
                 case UpdateState.Available:
                     return "VibeModel " + latest + " is available - `update --install` (or the chat pane's Update button)" +

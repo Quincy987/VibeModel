@@ -274,6 +274,21 @@ namespace VibeModel.Services.Claude
 
         public static bool Applies(string command) => command != null && Guarded.Contains(command.Trim());
 
+        // Revit files these under model categories, but they are drawing work: measured, a section
+        // adds a viewer, a 3D view a camera, a filled region a detail item.
+        private static readonly HashSet<int> DrawingCategories = new HashSet<int>
+        {
+            (int)Autodesk.Revit.DB.BuiltInCategory.OST_Cameras, (int)Autodesk.Revit.DB.BuiltInCategory.OST_Viewers,
+            (int)Autodesk.Revit.DB.BuiltInCategory.OST_Sheets, (int)Autodesk.Revit.DB.BuiltInCategory.OST_Lines,
+            (int)Autodesk.Revit.DB.BuiltInCategory.OST_DetailComponents, (int)Autodesk.Revit.DB.BuiltInCategory.OST_VolumeOfInterest,
+            (int)Autodesk.Revit.DB.BuiltInCategory.OST_SectionBox, (int)Autodesk.Revit.DB.BuiltInCategory.OST_Views,
+            (int)Autodesk.Revit.DB.BuiltInCategory.OST_RasterImages, (int)Autodesk.Revit.DB.BuiltInCategory.OST_Materials
+        };
+
+        /// <summary>True for a real model element: not a view, type, view-specific or annotation element, nor drawing work.</summary>
+        public static bool IsModelElement(int categoryId, bool modelCategory, bool viewSpecific, bool isView, bool isType)
+            => modelCategory && !viewSpecific && !isView && !isType && !DrawingCategories.Contains(categoryId);
+
         /// <summary>True when any batch item applies.</summary>
         public static bool AppliesToAny(IEnumerable<string> commands) => commands != null && commands.Any(Applies);
 

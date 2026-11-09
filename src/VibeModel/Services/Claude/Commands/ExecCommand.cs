@@ -46,6 +46,9 @@ namespace VibeModel.Services.Claude.Commands
             if (string.IsNullOrWhiteSpace(args))
                 return "ERROR: Usage: exec <csharp_code>\n\nAvailable variables: doc, uiDoc, uiApp, sb (StringBuilder for output)\n\nExample: exec sb.AppendLine(doc.Title);";
 
+            if (Chat.ProjectRecipes.IsOnlyLineComment(args))
+                return "ERROR: the whole snippet is one comment line (a \\n inside quotes is not a newline), so nothing ran.\nHint: use /* */ comments or real newlines.";
+
             var uiDoc = uiApp.ActiveUIDocument;
             var doc = uiDoc?.Document;
 

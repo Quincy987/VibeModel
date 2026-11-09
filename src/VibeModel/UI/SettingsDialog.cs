@@ -355,6 +355,7 @@ namespace VibeModel.UI
             {
                 Tuple.Create(ChangeApprovalMode.Auto, Strings.SettingApprovalAuto, Strings.SettingApprovalAutoHint, "SettingApprovalAuto"),
                 Tuple.Create(ChangeApprovalMode.Ask, Strings.SettingApprovalAsk, Strings.SettingApprovalAskHint, "SettingApprovalAsk"),
+                Tuple.Create(ChangeApprovalMode.Annotate, Strings.SettingApprovalAnnotate, Strings.SettingApprovalAnnotateHint, "SettingApprovalAnnotate"),
                 Tuple.Create(ChangeApprovalMode.ReadOnly, Strings.SettingApprovalReadOnly, Strings.SettingApprovalReadOnlyHint, "SettingApprovalReadOnly"),
             };
             foreach (var o in options)

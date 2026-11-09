@@ -160,7 +160,7 @@ namespace VibeModel.Services.Chat
             {
                 if (SettingsManager.IsClaudeCodeDisabled())
                 {
-                    search.Add("switched off by IT (managed.json DisableClaudeCode)");
+                    search.Add("switched off by your Revit administrators (managed.json DisableClaudeCode)");
                     return null;
                 }
                 var explicitPath = SettingsManager.GetClaudeCliPath();

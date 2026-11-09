@@ -141,7 +141,7 @@ installs / logs in to Claude Code.
 ### Pre-configuring it: `managed.json`
 
 Put a `managed.json` in `%ProgramData%\VibeModel\` (machine) or `%APPDATA%\VibeModel\` (user). The first
-one found wins; its keys override the user's settings and show as locked ("beheerd door IT") in
+one found wins; its keys override the user's settings and show as locked ("beheerd door Revit-beheer") in
 Settings. VibeModel never writes it. Changes are read within a minute; which chat connection is
 used (`PreferredBackend`, a new key) is decided when Revit starts.
 
@@ -186,7 +186,7 @@ create-rights; a folder created by Intune/SCCM as SYSTEM already has the right o
 | `ClaudeCliPath` | Full path to `claude.exe` if it lives elsewhere; `none` switches discovery off |
 | `Language` | `nl` or `en`: the pane's texts and the fallback reply language |
 | `OpenServer` | `true` runs the local HTTP server **without** a token, as before 1.2.11 (default `false`). Only for scripts that cannot read the token from `%LOCALAPPDATA%\VibeModel\servers\<port>.json`; a set `VIBEMODEL_TOKEN` still wins. |
-| `ChangeApproval` | What happens to the AI's deletions and edits: `auto` (default, nothing changes), `ask` (the user keeps or discards each one in a window in Revit), `readonly` (every change is refused — for people who only look at models). Locked in Settings when set here. |
+| `ChangeApproval` | What happens to the AI's deletions and edits: `auto` (default, nothing changes), `ask` (the user keeps or discards each one in a window in Revit), `annotate` (views, sheets and annotations only: a change to a model element is rolled back and refused), `readonly` (every change is refused — for people who only look at models). Locked in Settings when set here. |
 | `DisableUpdates` | `true` switches the in-app update off entirely (see *Updates*) |
 | `UpdateSource` | Where updates come from: an https URL or a UNC/local folder holding `latest-Revit<year>.json` and the zip (default: GitHub releases) |
 

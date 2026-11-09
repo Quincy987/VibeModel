@@ -25,9 +25,9 @@ namespace VibeModel.Services.Claude
         /// "deleted 2 (Structural Foundations 2)" needs them now. Parts that are never shown
         /// (<see cref="Hidden"/>) are recorded as hidden. At most <see cref="MaxPreRead"/> ids.
         /// </summary>
-        public static Dictionary<int, string> PreRead(Document doc, IEnumerable<int> ids)
+        public static Dictionary<int, PreReadElement> PreRead(Document doc, IEnumerable<int> ids)
         {
-            var map = new Dictionary<int, string>();
+            var map = new Dictionary<int, PreReadElement>();
             if (doc == null || ids == null) return map;
             foreach (var id in ids)
             {
@@ -51,20 +51,28 @@ namespace VibeModel.Services.Claude
 
         private const int MaxPreRead = 5000;
 
-        // The value that marks a pre-read id as never shown.
-        private const string HiddenMark = "";
+        /// <summary>What a command's element was before it ran: a deleted element can no longer be read.</summary>
+        public sealed class PreReadElement
+        {
+            public string Category;
+            public bool IsModel;
+            /// <summary>A part that is never shown.</summary>
+            public bool Hidden;
+        }
 
-        private static void Read(Document doc, ElementId id, Dictionary<int, string> map, bool named)
+        private static void Read(Document doc, ElementId id, Dictionary<int, PreReadElement> map, bool named)
         {
             if (map.ContainsKey(id.IntegerValue)) return;
             Element e;
             try { e = doc.GetElement(id); } catch { e = null; }
             if (e == null) return;
-            map[id.IntegerValue] = !named && Hidden(e) ? HiddenMark : CategoryName(e) ?? e.GetType().Name;
+            map[id.IntegerValue] = !named && Hidden(e)
+                ? new PreReadElement { Hidden = true }
+                : new PreReadElement { Category = CategoryName(e) ?? e.GetType().Name, IsModel = IsModel(e) };
         }
 
         /// <summary>The change set with categories (added/modified read live, deleted from <paramref name="preRead"/>).</summary>
-        public static ChangeSetSummary Summarize(Document doc, RecordedChanges changes, IDictionary<int, string> preRead)
+        public static ChangeSetSummary Summarize(Document doc, RecordedChanges changes, IDictionary<int, PreReadElement> preRead)
         {
             if (changes == null) return new ChangeSetSummary(null, null, null);
             // Hidden parts (internal elements, sketch lines, automatic sketch dimensions) are never
@@ -77,17 +85,24 @@ namespace VibeModel.Services.Claude
                 try { e = doc?.GetElement(id); } catch { e = null; }
                 // Not in the model: a transaction group rolled back after this was recorded.
                 if (e == null) return null;
-                return Hidden(e) ? null : new ChangedElement(id.IntegerValue, CategoryName(e));
+                return Hidden(e) ? null : new ChangedElement(id.IntegerValue, CategoryName(e), IsModel(e));
             };
             Func<ElementId, ChangedElement> gone = id =>
             {
                 if (preRead != null && preRead.TryGetValue(id.IntegerValue, out var c))
-                    return c == HiddenMark ? null : new ChangedElement(id.IntegerValue, c);
-                return new ChangedElement(id.IntegerValue, null);
+                    return c.Hidden ? null : new ChangedElement(id.IntegerValue, c.Category, c.IsModel);
+                // Nobody could read it (an exec names no ids): under annotate that counts as model.
+                return new ChangedElement(id.IntegerValue, null, isModel: true);
             };
             return new ChangeSetSummary(changes.Added.Select(live).Where(e => e != null),
                 changes.Modified.Select(live).Where(e => e != null), changes.Deleted.Select(gone).Where(e => e != null));
         }
+
+        private static readonly HashSet<int> ViewHelperCategories = new HashSet<int>
+        {
+            (int)BuiltInCategory.OST_Cameras, (int)BuiltInCategory.OST_SectionBox, (int)BuiltInCategory.OST_Viewers,
+            (int)BuiltInCategory.OST_SunStudy, (int)BuiltInCategory.OST_IOSSketchGrid
+        };
 
         /// <summary>
         /// Parts of an element nobody thinks of as an element: no category (sketch, sketch plane,
@@ -101,7 +116,18 @@ namespace VibeModel.Services.Claude
             int bic = cat.Id.IntegerValue;
             // Measured: loading a family adds a preview legend component of it, which nobody ever sees.
             if (bic == (int)BuiltInCategory.OST_PreviewLegendComponents) return true;
+            // Measured: a new view brings its own camera, section box, viewer, sun settings, work plane
+            // grid and a viewport on no sheet; it is one view to whoever reads the line.
+            if (ViewHelperCategories.Contains(bic)) return true;
+            if (e is Viewport vp && vp.SheetId == ElementId.InvalidElementId) return true;
             return bic == (int)BuiltInCategory.OST_SketchLines || bic == (int)BuiltInCategory.OST_WeakDims;
+        }
+
+        private static bool IsModel(Element e)
+        {
+            var cat = e.Category;
+            return cat != null && AnnotationScope.IsModelElement(cat.Id.IntegerValue, cat.CategoryType == CategoryType.Model,
+                e.ViewSpecific, e is View, e is ElementType);
         }
 
         private static string CategoryName(Element e)

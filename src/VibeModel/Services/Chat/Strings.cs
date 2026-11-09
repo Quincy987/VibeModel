@@ -148,6 +148,8 @@ namespace VibeModel.Services.Chat
         public const string SettingApprovalAutoHint = "SettingApprovalAutoHint";
         public const string SettingApprovalAsk = "SettingApprovalAsk";
         public const string SettingApprovalAskHint = "SettingApprovalAskHint";
+        public const string SettingApprovalAnnotate = "SettingApprovalAnnotate";
+        public const string SettingApprovalAnnotateHint = "SettingApprovalAnnotateHint";
         public const string SettingApprovalReadOnly = "SettingApprovalReadOnly";
         public const string SettingApprovalReadOnlyHint = "SettingApprovalReadOnlyHint";
         public const string SettingApprovalSession = "SettingApprovalSession";
@@ -158,6 +160,8 @@ namespace VibeModel.Services.Chat
         public const string ModeAutoHint = "ModeAutoHint";
         public const string ModeAsk = "ModeAsk";
         public const string ModeAskHint = "ModeAskHint";
+        public const string ModeAnnotate = "ModeAnnotate";
+        public const string ModeAnnotateHint = "ModeAnnotateHint";
         public const string ModeReadOnly = "ModeReadOnly";
         public const string ModeReadOnlyHint = "ModeReadOnlyHint";
         public const string ModePreviewNext = "ModePreviewNext";
@@ -269,11 +273,11 @@ namespace VibeModel.Services.Chat
                 { QuickReplySendsTip, "{0}\n(sends right away)" },
                 { SettingProjectMemory, "Keep project memory and journal" },
                 { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
-                { SettingManaged, "managed by IT" },
+                { SettingManaged, "managed by your Revit administrators" },
                 { ApiRefusal, "Claude declined to answer this request. Rephrase it, or split it into smaller steps." },
                 { ApiMaxTokens, "[The answer was cut off at the length limit - ask \"continue\" for the rest.]" },
                 { ApiUnreachable, "Cannot reach {0}: {1}. Check the network or proxy, or press Diagnose and send the report to your administrator." },
-                { ClaudeDisabledByIt, "Claude Code is switched off on this computer by IT." },
+                { ClaudeDisabledByIt, "Claude Code is switched off on this computer by your Revit administrators." },
                 { StatusNotConnected, "Not connected" },
                 { UsageTip, "Tokens this answer used. At every step Claude re-reads the whole conversation, so the longer the chat, the more each question costs: start a new chat for each task." },
                 { UsageTipContext, "Conversation length now: {0} tokens per step." },
@@ -330,6 +334,8 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalAutoHint, "As before: the AI carries out changes directly." },
                 { SettingApprovalAsk, "Ask before a deletion or edit is kept" },
                 { SettingApprovalAskHint, "delete, parameter values, phases, joins and exec first show what changes; new elements never ask." },
+                { SettingApprovalAnnotate, "Annotation only - views, sheets and annotations" },
+                { SettingApprovalAnnotateHint, "The AI makes views, sheets and annotations; a change to a model element is rolled back and refused." },
                 { SettingApprovalReadOnly, "Read-only - the AI may not change anything" },
                 { SettingApprovalReadOnlyHint, "For viewers: every change is rolled back and refused; reading still works." },
                 { SettingApprovalSession, "Not asking for the rest of this Revit session (ticked in the approval window) - untick to ask again" },
@@ -339,13 +345,15 @@ namespace VibeModel.Services.Chat
                 { ModeAutoHint, "Changes applied at once · one Ctrl+Z" },
                 { ModeAsk, "Ask" },
                 { ModeAskHint, "Approve deletions and edits first" },
+                { ModeAnnotate, "Annotation only" },
+                { ModeAnnotateHint, "Views, sheets and annotations; the model stays as it is" },
                 { ModeReadOnly, "Read-only" },
                 { ModeReadOnlyHint, "Change nothing, only look and measure" },
                 { ModePreviewNext, "Next message as preview" },
                 { ModePreviewNextHint, "run, report, roll back" },
                 { ModePreviewBadge, "preview" },
                 { ModeChipTip, "Changes by the AI: {0}. Click to change it for this Revit session." },
-                { ModeChipManaged, "Changes by the AI: {0} - managed by IT" },
+                { ModeChipManaged, "Changes by the AI: {0} - managed by your Revit administrators" },
                 { SendTip, "Send (Enter)" },
                 { DiagnoseTitle, "VibeModel diagnosis" },
                 { DiagnoseTip, "What VibeModel sees of this computer: versions, connection, proxy, recent errors. Secrets are masked." },
@@ -373,7 +381,7 @@ namespace VibeModel.Services.Chat
                 { UpdateNotChecked, "Not checked yet." },
                 { UpdateCheckFailed, "Check failed: {0}" },
                 { UpdateLastError, "Last attempt failed: {0}" },
-                { UpdateDisabled, "Updates are switched off by IT." },
+                { UpdateDisabled, "Updates are switched off by your Revit administrators." },
                 { UpdateDevBuild, "A developer build in the Revit add-ins folder - updates do not apply." },
                 { UpdateChecking, "Checking…" },
                 { SettingsUpdatesTitle, "Updates" },
@@ -448,11 +456,11 @@ namespace VibeModel.Services.Chat
                 { QuickReplySendsTip, "{0}\n(wordt meteen verstuurd)" },
                 { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
                 { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
-                { SettingManaged, "beheerd door IT" },
+                { SettingManaged, "beheerd door Revit-beheer" },
                 { ApiRefusal, "Claude wil op deze vraag geen antwoord geven. Formuleer hem anders, of splits hem op in kleinere stappen." },
                 { ApiMaxTokens, "[Het antwoord is afgebroken op de maximale lengte - vraag \"ga door\" voor de rest.]" },
                 { ApiUnreachable, "{0} is niet bereikbaar: {1}. Controleer het netwerk of de proxy, of klik op Diagnose en stuur het rapport naar je beheerder." },
-                { ClaudeDisabledByIt, "Claude Code is op deze computer uitgeschakeld door IT." },
+                { ClaudeDisabledByIt, "Claude Code is op deze computer uitgeschakeld door Revit-beheer." },
                 { StatusNotConnected, "Niet verbonden" },
                 { UsageTip, "Tokens die dit antwoord gebruikte. Claude leest bij elke stap het hele gesprek opnieuw, dus hoe langer de chat, hoe meer elke vraag kost: begin per taak een nieuwe chat." },
                 { UsageTipContext, "Lengte van het gesprek nu: {0} tokens per stap." },
@@ -509,6 +517,8 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalAutoHint, "Zoals altijd: de AI voert wijzigingen direct uit." },
                 { SettingApprovalAsk, "Vragen voordat een verwijdering of bewerking blijft staan" },
                 { SettingApprovalAskHint, "Verwijderen, parameterwaarden, fases, joins en exec tonen eerst wat er verandert; nieuwe elementen vragen nooit." },
+                { SettingApprovalAnnotate, "Alleen opmaak - views, bladen en annotaties" },
+                { SettingApprovalAnnotateHint, "De AI maakt views, bladen en annotaties; een wijziging aan een modelelement wordt teruggedraaid en geweigerd." },
                 { SettingApprovalReadOnly, "Alleen lezen - de AI mag niets wijzigen" },
                 { SettingApprovalReadOnlyHint, "Voor meekijkers: elke wijziging wordt teruggedraaid en geweigerd; lezen kan wel." },
                 { SettingApprovalSession, "Deze Revit-sessie wordt niet meer gevraagd (aangevinkt in het venster) - vink uit om weer te vragen" },
@@ -518,13 +528,15 @@ namespace VibeModel.Services.Chat
                 { ModeAutoHint, "Wijzigingen direct doorvoeren · één Ctrl+Z" },
                 { ModeAsk, "Vragen" },
                 { ModeAskHint, "Verwijderen en bewerken eerst goedkeuren" },
+                { ModeAnnotate, "Alleen opmaak" },
+                { ModeAnnotateHint, "Views, bladen en annotaties; het model blijft zoals het is" },
                 { ModeReadOnly, "Alleen lezen" },
                 { ModeReadOnlyHint, "Niets wijzigen, alleen kijken en meten" },
                 { ModePreviewNext, "Volgend bericht als preview" },
                 { ModePreviewNextHint, "uitvoeren, rapporteren, terugdraaien" },
                 { ModePreviewBadge, "voorbeeld" },
                 { ModeChipTip, "Wijzigingen door de AI: {0}. Klik om het voor deze Revit-sessie te wijzigen." },
-                { ModeChipManaged, "Wijzigingen door de AI: {0} - beheerd door IT" },
+                { ModeChipManaged, "Wijzigingen door de AI: {0} - beheerd door Revit-beheer" },
                 { SendTip, "Versturen (Enter)" },
                 { DiagnoseTitle, "VibeModel-diagnose" },
                 { DiagnoseTip, "Wat VibeModel van deze computer ziet: versies, verbinding, proxy, recente fouten. Geheimen zijn afgeschermd." },
@@ -552,7 +564,7 @@ namespace VibeModel.Services.Chat
                 { UpdateNotChecked, "Nog niet gecontroleerd." },
                 { UpdateCheckFailed, "Controle mislukt: {0}" },
                 { UpdateLastError, "Laatste poging mislukt: {0}" },
-                { UpdateDisabled, "Updates zijn uitgezet door IT." },
+                { UpdateDisabled, "Updates zijn uitgezet door Revit-beheer." },
                 { UpdateDevBuild, "Een ontwikkelversie in de Revit-add-insmap - updates zijn niet van toepassing." },
                 { UpdateChecking, "Bezig met controleren…" },
                 { SettingsUpdatesTitle, "Versie en updates" },

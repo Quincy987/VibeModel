@@ -110,7 +110,7 @@ never replace the running file, and never takes effect before Revit restarts. So
   Never shown for a failed automatic check. *Niet nu* hides it for the session; an install started
   anywhere brings it back. Texts: `Strings` (nl/en), composed by `UiText.UpdateLine`.
 - **Settings → Versie en updates**: installed version + loader, runs from (or "a developer build …"),
-  update source (+ "beheerd door IT"), *Automatisch controleren op updates*, *Nu controleren* + result
+  update source (+ "beheerd door Revit-beheer"), *Automatisch controleren op updates*, *Nu controleren* + result
   line, the pending version, *Terug naar <version>*.
 - **Diagnose** `== Updates`: loader + rule, running from, current.txt, versions installed (running
   marked), source, automatic check / DisableUpdates, last check + result, state now.

@@ -17,6 +17,8 @@ namespace VibeModel.Services.Claude
         Auto,
         /// <summary>Delete/edit commands that changed something wait for Keep / Discard in Revit.</summary>
         Ask,
+        /// <summary>Views, sheets and annotations are kept; a run that touched a model element is rolled back and refused.</summary>
+        Annotate,
         /// <summary>No change is kept: a modifying command that changed something is rolled back and refused.</summary>
         ReadOnly
     }
@@ -35,6 +37,10 @@ namespace VibeModel.Services.Claude
         Preview,
         /// <summary>Policy readonly and the command changed something: roll back, READ_ONLY.</summary>
         ReadOnly,
+        /// <summary>Policy annotate and the run touched a model element: roll back, ANNOTATION_ONLY.</summary>
+        AnnotationOnly,
+        /// <summary>The run changed something protected (base point, pin, view template): roll back, FORBIDDEN.</summary>
+        Forbidden,
         /// <summary>?readonly=1 and the snippet/batch changed something: roll back, QUERY_MODIFIED_MODEL.</summary>
         QueryModified,
         /// <summary>No change recorded: roll the empty group back (no empty undo entry).</summary>
@@ -141,12 +147,13 @@ namespace VibeModel.Services.Claude
             switch (mode)
             {
                 case ChangeApprovalMode.Ask: return "ask";
+                case ChangeApprovalMode.Annotate: return "annotate";
                 case ChangeApprovalMode.ReadOnly: return "readonly";
                 default: return "auto";
             }
         }
 
-        /// <summary>auto | ask | readonly (case-insensitive; "read-only" and "never"/"always" tolerated).</summary>
+        /// <summary>auto | ask | annotate | readonly (case-insensitive; "read-only" and "never"/"always" tolerated).</summary>
         public static bool TryParse(string value, out ChangeApprovalMode mode)
         {
             mode = ChangeApprovalMode.Auto;
@@ -161,6 +168,12 @@ namespace VibeModel.Services.Claude
                 case "always":
                 case "on":
                     mode = ChangeApprovalMode.Ask; return true;
+                case "annotate":
+                case "annotation":
+                case "annotationonly":
+                case "opmaak":
+                case "alleenopmaak":
+                    mode = ChangeApprovalMode.Annotate; return true;
                 case "readonly":
                     mode = ChangeApprovalMode.ReadOnly; return true;
                 default:
@@ -261,7 +274,7 @@ namespace VibeModel.Services.Claude
         {
             if (!modifying) return false;
             if (preview || readOnlyFlag) return true;
-            if (mode == ChangeApprovalMode.ReadOnly) return true;
+            if (mode == ChangeApprovalMode.ReadOnly || mode == ChangeApprovalMode.Annotate) return true;
             return mode == ChangeApprovalMode.Ask && guarded;
         }
 
@@ -270,14 +283,43 @@ namespace VibeModel.Services.Claude
         /// (<see cref="NeedsRunGroup"/>). Success does not matter: a failed exec may still have
         /// committed transactions, and the user (or the preview) should see those too.
         /// </summary>
-        public static RunDecision Decide(ChangeApprovalMode mode, bool guarded, bool preview, bool readOnlyFlag, bool changesEmpty)
+        public static RunDecision Decide(ChangeApprovalMode mode, bool guarded, bool preview, bool readOnlyFlag, bool changesEmpty,
+            bool touchesModel = false)
         {
             if (preview) return RunDecision.Preview;
             if (changesEmpty) return RunDecision.Nothing;
             if (readOnlyFlag) return RunDecision.QueryModified;
             if (mode == ChangeApprovalMode.ReadOnly) return RunDecision.ReadOnly;
+            if (mode == ChangeApprovalMode.Annotate) return touchesModel ? RunDecision.AnnotationOnly : RunDecision.Keep;
             if (mode == ChangeApprovalMode.Ask && guarded) return RunDecision.Prompt;
             return RunDecision.Keep;
+        }
+
+        // Revit's regeneration marks hosts as modified when these run (a tag on a wall, a new view):
+        // their "modified" model elements are not edits, and whatever they delete is a view-level thing.
+        private static readonly HashSet<string> ViewAndAnnotationCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "view", "section", "callout", "crop", "look", "viewport", "sheet", "tag", "dimension", "spot", "text",
+            "region", "schedule", "hide", "show", "isolate", "unisolate", "color", "colorsplash", "zoomto", "activate", "select"
+        };
+
+        public static bool IsViewOrAnnotationCommand(string command)
+            => command != null && ViewAndAnnotationCommands.Contains(command.Trim());
+
+        /// <summary>
+        /// True when a finished run touched the model, for the annotate policy.
+        /// <paramref name="modifyingCommands"/> = the modifying commands of the run: a batch is held
+        /// to the strictest of them. A deletion nobody could read counts as model, except under
+        /// commands that only make views and annotations.
+        /// </summary>
+        public static bool TouchesModel(ChangeSetSummary changes, IEnumerable<string> modifyingCommands)
+        {
+            if (changes == null) return false;
+            var commands = (modifyingCommands ?? Enumerable.Empty<string>()).ToList();
+            bool onlyViews = commands.Count > 0 && commands.All(IsViewOrAnnotationCommand);
+            if (changes.Added.Any(e => e.IsModel)) return true;
+            if (changes.Deleted.Any(e => e.IsModel && (e.Category != null || !onlyViews))) return true;
+            return !onlyViews && changes.Modified.Any(e => e.IsModel);
         }
 
         /// <summary>True when the client may have to wait for the user's decision.</summary>
@@ -323,6 +365,13 @@ namespace VibeModel.Services.Claude
         public const string ReadOnlyCode = "READ_ONLY";
         public const string ReadOnlyMessage = "VibeModel is set to read-only; nothing was changed.";
         public const string ReadOnlyHint = "Settings → Wijzigingen door de AI.";
+
+        public const string AnnotationOnlyCode = "ANNOTATION_ONLY";
+        public const string AnnotationOnlyHint = "Settings → Wijzigingen door de AI, or ask the user.";
+
+        /// <summary>"VibeModel is set to annotation-only; this change touched the model (added 1 (Walls 1)) and was rolled back."</summary>
+        public static string AnnotationOnlyMessage(ChangeSetSummary changes)
+            => "VibeModel is set to annotation-only; this change touched the model (" + changes.ModelCounts() + ") and was rolled back.";
 
         public const string QueryModifiedCode = "QUERY_MODIFIED_MODEL";
         public const string QueryModifiedHint = "a run with readonly=1 must not modify the model; drop readonly=1 to apply the change.";
@@ -371,9 +420,13 @@ namespace VibeModel.Services.Claude
         public long Id { get; }
         public string Category { get; }
 
-        public ChangedElement(long id, string category)
+        /// <summary>A real model element, not a view, annotation or type. True for a deletion nobody could read.</summary>
+        public bool IsModel { get; }
+
+        public ChangedElement(long id, string category, bool isModel = false)
         {
             Id = id;
+            IsModel = isModel;
             Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
         }
     }
@@ -412,10 +465,22 @@ namespace VibeModel.Services.Claude
                 .Select(g => g.Key + " " + g.Count().ToString(CultureInfo.InvariantCulture)));
         }
 
-        private static string Part(string verb, IReadOnlyList<ChangedElement> elements)
+        private static string Part(string verb, IReadOnlyList<ChangedElement> elements, string unknown = UnknownCategory)
         {
             var text = verb + " " + elements.Count.ToString(CultureInfo.InvariantCulture);
-            return elements.Count == 0 ? text : text + " (" + ByCategory(elements) + ")";
+            return elements.Count == 0 ? text : text + " (" + ByCategory(elements, unknown) + ")";
+        }
+
+        /// <summary>"added 1 (Walls 1)" — only the model elements, only the groups that have any.</summary>
+        public string ModelCounts()
+        {
+            var parts = new List<string>();
+            foreach (var p in new[] { Tuple.Create("added", Added), Tuple.Create("modified", Modified), Tuple.Create("deleted", Deleted) })
+            {
+                var model = p.Item2.Where(e => e.IsModel).ToList();
+                if (model.Count > 0) parts.Add(Part(p.Item1, model, "unread, treated as model"));
+            }
+            return string.Join(", ", parts);
         }
 
         /// <summary>"add 2 (Walls 2), modify 1 (Floors 1), delete 0".</summary>
