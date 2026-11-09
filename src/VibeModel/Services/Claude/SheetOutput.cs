@@ -190,7 +190,7 @@ namespace VibeModel.Services.Claude
             var lines = new List<string> { line(headers), string.Join("-+-", widths.Select(w => new string('-', Math.Max(1, w)))) };
             lines.AddRange(shown.Select(r => line(r)));
             if (rows.Count > shown.Count)
-                lines.Add("… " + (rows.Count - shown.Count) + " more row(s)" + (moreHint != null ? " — " + moreHint : ""));
+                lines.Add("… " + Truncation.Line(shown.Count, rows.Count, moreHint));
             if (rows.Count == 0) lines.Add("(no rows — the filter may exclude everything, or the category has no elements)");
             return lines;
         }

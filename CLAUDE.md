@@ -193,7 +193,8 @@ owned by another user). The report ends with a one-line `Verdict:` naming the pr
 curl -s "http://localhost:18884/filter?args=walls"                      # Count/list by category
 curl -s "http://localhost:18884/filter?args=walls Height > 3000"         # Operators: = != > < >= <= contains
 curl -s "http://localhost:18884/filter?args=walls --view --select"       # Only the active view; select the hits (--ids: ids only)
-curl -s "http://localhost:18884/filter?args=walls --count Mark"          # Group by a parameter value
+curl -s "http://localhost:18884/filter?args=walls --count Mark"          # Group by a parameter value (Type, Level …: by name)
+curl -G -s "http://localhost:18884/filter" --data-urlencode 'args=foundations "Type Name" contains AZ'  # A name with spaces: quote it
 curl -s "http://localhost:18884/measure?args=12345 67890"                # Distance between two elements (also: 6 coordinates mm, or 'selected')
 curl -s "http://localhost:18884/whereused?args=67890"                    # Instances of a type per level (or: <family> <type>, loadable families)
 curl -s "http://localhost:18884/zoomto?args=12345"                       # Zoom the active view to element(s) / 'selected'
@@ -401,7 +402,7 @@ wall 0 0 5000 0 3000"
 curl -s -G "http://localhost:18884/exec" --data-urlencode "args=sb.AppendLine(doc.Title);" --data "readonly=1"  # Fails if it changes the model
 curl -s http://localhost:18884/approvals                                  # This session's Keep/Discard decisions
 ```
-- **`auto`** (default): never ask — every run exactly as before plan 15 (no group, no new lines).
+- **`auto`** (default): never ask — no run group, no prompt; only the `-- changed:` line below is added.
 - **`ask`**: `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and a batch holding one) that
   actually changed something wait for the user: the added/modified elements the active view can show
   are isolated temporarily and selected, and a modal window (owned by Revit, restored when minimized)
@@ -425,10 +426,18 @@ curl -s http://localhost:18884/approvals                                  # This
   Files a command writes (export, generated `.rfa`) are still written. **`?readonly=1`** on any
   modifying command (meant for exec and batch): a change → rolled back, `QUERY_MODIFIED_MODEL` ("the
   snippet / the batch / the command changed the model (added …) and was rolled back").
+- **`-- changed:` line** (v1.2.15, `ChangeSetSummary.ChangedLine`/`ChangesJson`, `RevitCommandHandler.KeptChanges`):
+  after every modifying command or batch that KEPT a change, under any policy, after the `-- revit`/`-- check`/`-- annotations` lines
+  and before the stamp: `-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0` (after an error only for `exec`, whose
+  earlier transactions stay; any other failed command undid its own work). JSON: additive `changes:{added:{count,byCategory:{Walls:1},ids:[…]},
+  modified:{…},deleted:{…}}`, ≤ 50 ids per group (`idsTruncated:true` beyond; the counts stay complete). A batch has one line and one
+  object for the whole batch. Never after a preview, Discard, READ_ONLY or a rolled-back atomic batch. The pre-read of deleted
+  elements' categories now runs for every modifying command with named ids; an `exec` names none, so what it deletes counts as `other`.
 - **Change sets**: added/modified are read live, deleted ones from categories pre-read for the ids the
   command names AND their `GetDependentElements` (≤ 5000). Internal elements, sketch lines and automatic
   sketch dimensions are never shown (measured: a new wall adds two plain Element objects; a floor's
-  delete takes its sketch with 94 lines); an unreadable deletion counts as `other`. Revit regeneration
+  delete takes its sketch with 94 lines; a family load adds a preview legend component); element types
+  count as `Types`, not under their family's category; an unreadable deletion counts as `other`. Revit regeneration
   inflates "modified" (joined walls, the view) — shown by category.
 - **Waiting**: under `ask` a guarded request waits up to 10 min (HTTP, the in-pane WebClient
   `RevitWebClient`, the socket); then `ERROR: still waiting for the user's decision in Revit.`
@@ -444,7 +453,26 @@ curl -s http://localhost:18884/approvals                                  # This
   counter (`ModelChangeTracker.RewindTo`) and leave `VibeModelCreated`; discarded runs are journaled
   (`· delete 1730959 · discarded by the user · chat …`), previews and refusals are not.
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
-  group: while the policy is not `auto` it refuses every modifying command instead of bypassing it.
+  group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
+  command instead of bypassing it.
+- **Mode chip** (plan 20, `UI/ModeChip.cs`; plan `docs/plans/20-mode-chip.md`): the chat input is one
+  rounded box — text on top, a footer with the paperclip, the chip and a round send arrow (amber in
+  *Vragen*; *Cancel* in its place during a turn). The chip shows the mode in force (*Automatisch* /
+  *Vragen* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a
+  menu that sets `ChangeApprovalPolicy.SessionOverride` for the rest of the Revit session
+  (`ChooseForSession`; choosing *Vragen* clears "don't ask again"). Precedence: managed.json → chip →
+  `VIBEMODEL_APPROVAL` → settings.json → auto (`WithSessionOverride` / `EffectiveOf` / `Chosen`;
+  Describe/Diagnose/`approvals` say `ask (this session)`, JSON `source: "session"`). Locked by
+  managed.json → greyed, no menu, tooltip "beheerd door IT". Settings shows the session choice as a
+  ticked box; untick + Save clears it. `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
+  refreshes the chip, as do Settings closing, `ActiveDocumentTracker.Changed` and a turn ending.
+  **Volgend bericht als preview**: the pane arms `ChangeApprovalPolicy.ArmNextTurn` on every send;
+  `RunJournaledTurn` takes it (`BeginTurn` → `PreviewTurn`, cleared in its finally) and both enqueue
+  paths merge it (`RunOptions.ForTurn`) — every modifying call of that turn runs as `?preview=1`
+  (also an external curl made meanwhile, like the journal's turn attribution; a request enqueued
+  before the turn started is not). The rules get `ChatBackendBase.PreviewTurnRule` only in such a
+  turn. AutomationIds `ModeChip`, `ModeAuto`, `ModeAsk`, `ModeReadOnly`, `PreviewNextToggle` (the menu
+  rows are UIA children of Revit's main window), `SendButton` (UIA name still "Send").
 - Pure parts: `Services/Claude/ChangeApproval.cs` (policy, `Decide`, summary, `ApprovalLog`); Revit
   side: `ApprovalRun.cs`, `RevitCommandHandler` (run group), `UI/ApprovalWindow.cs` (AutomationIds
   `ApprovalWindow`, `ApprovalSummary`, `ApprovalZoom`, `ApprovalDontAsk`, `ApprovalDiscard`,
@@ -734,7 +762,7 @@ curl -s "http://localhost:18884/journal?args=today"            # Also: yesterday
   and to read the block before answering "last time" questions (`ProjectMemory.PromptRule`).
 - **Journal lines** (`ProjectJournal`): one per modifying command / batch that changed the model,
   written by `RevitCommandHandler` from the `DocumentChanged` ids
-  (`- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`),
+  (`- 2026-10-12 14:03:12 · by jjansen · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 · chat t3f9a2c "maak een muur"`; `by` = the Windows user, `ProjectJournal.CurrentUser`),
   and one per chat turn with the `[bron: …]` / `[source: …]` markers its answer cited
   (`… · chat t3f9a2c "…" · sources: DEMO001- DO.pdf p.3`). A command that changed nothing (an
   `exec` that only read) is not journaled; `export` changes nothing but is (`IJournaledCommand`:
@@ -888,6 +916,11 @@ Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySi
 WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
 model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
 BOTH maps — a test checks).
+
+**Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
+assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).
+Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
+a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 
 **Tables, units, sources (RULES block).** The rules end with three more sections, each a constant
 in `ChatBackendBase` (`TableRule`, `UnitsRule`/`UnitsConversionRule`, `SourcesRule`/`SourceFormsRule`):

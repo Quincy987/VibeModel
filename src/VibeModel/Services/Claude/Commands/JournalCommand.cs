@@ -17,7 +17,7 @@ namespace VibeModel.Services.Claude.Commands
     public class JournalCommand : IClaudeCommand, IStructuredCommand, IProjectMemoryCommand
     {
         public string Name => "journal";
-        public string Description => "Project journal: what VibeModel changed in this model and why (command, ids, chat question, cited sources). Default: the last 20 lines";
+        public string Description => "Project journal: what VibeModel changed in this model, who asked for it and why (user, command, ids, chat question, cited sources). Default: the last 20 lines";
         public string Usage => "journal [today|yesterday|<yyyy-mm-dd>|--last <n>]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -57,7 +57,7 @@ namespace VibeModel.Services.Claude.Commands
             var sb = new StringBuilder();
             sb.AppendLine("Journal (" + query.Label + "): " + Path.Combine(loc.Directory, ProjectJournal.FileName) + "  " + loc.SourceLabel);
             if (shown.Count == 0) sb.AppendLine("(no entries" + (query.Date != null ? " on " + query.Date : "") + ")");
-            if (hidden > 0) sb.AppendLine("(+" + hidden + " earlier lines — narrow it with --last <n>)");
+            if (hidden > 0) sb.AppendLine("(" + Truncation.Line(shown.Count, lines.Count, "these are the newest") + ")");
             foreach (var l in shown) sb.AppendLine(l);
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {

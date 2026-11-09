@@ -94,14 +94,21 @@ namespace VibeModel.Services.Standards
         /// Every whitespace-separated term must occur in the name or the folder. Name hits rank
         /// above folder-only hits; shorter names first (closest match).
         /// </summary>
-        public List<LibraryEntry> Search(string query, int max = 15)
+        public List<LibraryEntry> Search(string query, int max = 15) => Search(query, max, out _);
+
+        /// <summary>The best <paramref name="max"/> hits; <paramref name="total"/> = how many matched in all.</summary>
+        public List<LibraryEntry> Search(string query, int max, out int total)
         {
+            total = 0;
             var terms = (query ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(t => t.ToLowerInvariant()).ToList();
             if (terms.Count == 0) return new List<LibraryEntry>();
-            return Entries
+            var matches = Entries
                 .Select(e => new { e, name = e.Name.ToLowerInvariant(), folder = (e.Folder ?? "").ToLowerInvariant() })
                 .Where(x => terms.All(t => x.name.Contains(t) || x.folder.Contains(t)))
+                .ToList();
+            total = matches.Count;
+            return matches
                 .OrderByDescending(x => terms.Count(t => x.name.Contains(t)))
                 .ThenBy(x => x.e.Name.Length)
                 .ThenBy(x => x.e.Name, StringComparer.OrdinalIgnoreCase)

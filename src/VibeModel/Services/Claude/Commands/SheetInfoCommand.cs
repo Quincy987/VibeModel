@@ -123,6 +123,7 @@ namespace VibeModel.Services.Claude.Commands
                     sb.AppendLine("  " + t.Id.IntegerValue + "  at " + Mm.F(RevitUnitHelper.FeetToMm(c.X - origin.X)) + ", " + Mm.F(RevitUnitHelper.FeetToMm(c.Y - origin.Y)) + " mm" +
                                   "  \"" + Short(t.Text) + "\"");
                 }
+                if (texts.Count > 30) sb.AppendLine("  " + Truncation.Line(30, texts.Count));
             }
 
             // Checks.

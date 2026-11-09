@@ -246,7 +246,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use revit_selected to inspect what the user has selected.");
             AppendTipsTail(sb);
             sb.AppendLine();
-            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode));
+            sb.Append(BuildBehaviourRules(Strings.Current, ChangeApprovalPolicy.EffectiveMode, ChangeApprovalPolicy.PreviewTurn));
             AppendOfficeContext(sb, Standards.StandardsPrompt.Combined);
             // Project folder (plan 10): the manifest of the model's reference documents.
             AppendOfficeContext(sb, ProjectDocs.BuildPromptBlockForActiveDocument(false, out _));
@@ -263,6 +263,8 @@ namespace VibeModel.Services.Chat
         /// </summary>
         protected static void RunJournaledTurn(string question, Action<string> onComplete, Action<Action<string>> run)
         {
+            // Plan 20: a turn the pane sent as a preview runs every change as ?preview=1.
+            ChangeApprovalPolicy.BeginTurn();
             var turn = ProjectJournal.BeginTurn(question);
             try
             {
@@ -275,6 +277,7 @@ namespace VibeModel.Services.Chat
             finally
             {
                 ProjectJournal.EndTurn(turn, null);
+                ChangeApprovalPolicy.EndTurn();
             }
         }
 
@@ -320,6 +323,15 @@ namespace VibeModel.Services.Chat
         internal const string PhaseNoteRule =
             "Mention the active view's phase only when something this turn created or changed cannot be seen in that view, and then in one sentence. Do not restate that a step can be undone unless the user asks.";
 
+        // Review by a colleague, 2026-11: a modeller must be able to see what the AI did, what it
+        // assumed and what it left out, and must be able to check quantities without the AI.
+        internal const string ChangeReportRule =
+            "When this turn changed the model, end with ONE compact line: what was added, changed and deleted per category, taken from the command output (`-- changed:` in text, the `changes` counts in JSON), never estimated, plus the assumptions you made (type, level, phase, position) and what you skipped or could not do. One line, no list.";
+        internal const string OmissionsRule =
+            "When a command output says it is incomplete (showing N of M), tell the user the real total; never present a cut list as everything. Always name assumptions and omissions.";
+        internal const string QuantitiesRule =
+            "Quantities for an estimate or bill (hoeveelheden, begroting, palenstaat) are made as a Revit schedule with `schedule` by default, so anyone can check them in Revit; a list in the chat only when the user asks for one.";
+
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
@@ -332,12 +344,19 @@ namespace VibeModel.Services.Chat
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
+        // Plan 20: the pane's "next message as preview" — the server previews every change of
+        // this turn on its own, the model only has to report it as such.
+        internal const string PreviewTurnRule =
+            "This turn is a PREVIEW: every change you make is rolled back by Revit and reported as `-- preview: …`. Say what WOULD change and that nothing was changed; do not retry.";
+
         /// <summary>
         /// The rules block. <paramref name="language"/> ("nl"/"en", the Settings choice) is the
         /// reply language when the user's own language is unclear; <paramref name="approval"/> is
-        /// the change-approval policy in force (plan 15; auto = the text as before).
+        /// the change-approval policy in force (plan 15; auto = the text as before);
+        /// <paramref name="preview"/> = this turn was sent as a preview (plan 20).
         /// </summary>
-        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto)
+        internal static string BuildBehaviourRules(string language, ChangeApprovalMode approval = ChangeApprovalMode.Auto,
+            bool preview = false)
         {
             var fallback = Strings.LanguageName(language);
             var sb = new StringBuilder();
@@ -359,16 +378,21 @@ namespace VibeModel.Services.Chat
                     sb.AppendLine("- " + UndoRule);
                     break;
             }
+            if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
             sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, view templates, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
+            sb.AppendLine("- " + ChangeReportRule);
             sb.AppendLine("- " + NextStepRule);
             sb.AppendLine("- " + PhaseNoteRule);
             sb.AppendLine("- No element ids in running text unless the user asks for them; put ids in a single `code` line at the end if they are needed.");
             sb.AppendLine("- Use short bullet lists for choices. No headings for answers under ~120 words. Never repeat the question.");
             sb.AppendLine("- While working, emit at most one short line per step (what you are doing, 6 words max); the detailed reasoning stays internal.");
+            sb.AppendLine("Complete and checkable");
+            sb.AppendLine("- " + OmissionsRule);
+            sb.AppendLine("- " + QuantitiesRule);
             sb.AppendLine("Tables");
             sb.AppendLine("- " + TableRule);
             sb.AppendLine("Units");

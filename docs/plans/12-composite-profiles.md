@@ -7,7 +7,8 @@
 > DirectShapes (the workshop corner stone, id 3114013, has no family/type and never shows up
 > in a schedule).
 
-> **STATUS (research — not built).** Every route below was probed live on 2026-10-13 in
+> **STATUS: phase 1 shipped in v1.2.11 (`profile` / `extrude` / `sweep` / `lwall`); phase 2 (arcs in a
+> profile, parametric slope, adaptive) not built.** Research notes: every route below was probed live on 2026-10-13 in
 > Revit 2023.1 (add-in v1.2.8, b716df4), in a fresh project from `DefaultMetric.rte`, in a
 > second Revit instance so the user's open model was never touched. Probe scripts:
 > `.verify/profiles/p01…p17*.cs` (gitignored, local); the numbers quoted here are their

@@ -327,7 +327,7 @@ namespace VibeModel.Services.Claude.Commands
                               " — elements outside the phase or the filter are not listed.");
             }
             sb.AppendLine("Columns: " + string.Join(", ", headers));
-            sb.AppendLine("Rows: " + rows.Count + (rows.Count > maxRows ? " (first " + maxRows + " shown)" : ""));
+            sb.AppendLine("Rows: " + rows.Count + (rows.Count > maxRows ? " (" + Truncation.Line(maxRows, rows.Count) + ")" : ""));
             sb.AppendLine();
             foreach (var l in ScheduleText.Table(headers, rows, maxRows, "'schedule " + vs.Id.IntegerValue + " --rows' for all")) sb.AppendLine(l);
             sb.AppendLine();

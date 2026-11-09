@@ -78,6 +78,24 @@ namespace VibeModel.Services.Helpers
         }
 
         /// <summary>
+        /// The value to group or match on: <see cref="GetParameterValue"/>, except that a parameter
+        /// holding an element (Type, Level, Material, …) gives that element's name. Grouping
+        /// foundations by Type then reads "Concrete 320x320: 390", not "ElementId(1571611): 390".
+        /// <c>params</c> keeps showing the id, which is what <c>set</c> needs.
+        /// </summary>
+        public static string GetDisplayValue(Parameter param)
+        {
+            if (param.StorageType != StorageType.ElementId) return GetParameterValue(param);
+            var id = param.AsElementId();
+            if (id == ElementId.InvalidElementId) return "(none)";
+            string text = null;
+            try { text = param.AsValueString(); } catch { }
+            if (string.IsNullOrWhiteSpace(text))
+                try { text = param.Element?.Document?.GetElement(id)?.Name; } catch { }
+            return string.IsNullOrWhiteSpace(text) ? GetParameterValue(param) : text;
+        }
+
+        /// <summary>
         /// A double parameter with its unit: lengths in mm, areas in m², volumes in m³, angles in °
         /// (converted from Revit's internal ft / ft² / ft³ / rad); pure numbers bare; any other
         /// measurable spec as Revit's project-unit string, with the unit symbol added when the
@@ -344,24 +362,24 @@ namespace VibeModel.Services.Helpers
         }
 
         /// <summary>
-        /// Finds a parameter on an element by name: instance first, then type.
+        /// Finds a parameter to read on an element by name: instance first, then type. An instance
+        /// parameter without a value gives way to the type's: measured, a foundation carries an empty
+        /// instance "Type Name" next to its type's filled one.
         /// </summary>
         public static Parameter FindParameter(Element elem, Document doc, string paramName)
         {
             var param = elem.Parameters.Cast<Parameter>()
                 .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
 
-            if (param != null) return param;
+            if (param != null && param.HasValue) return param;
 
             var typeId = elem.GetTypeId();
             if (typeId != ElementId.InvalidElementId)
             {
                 var elemType = doc.GetElement(typeId);
-                if (elemType != null)
-                {
-                    param = elemType.Parameters.Cast<Parameter>()
-                        .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
-                }
+                var onType = elemType?.Parameters.Cast<Parameter>()
+                    .FirstOrDefault(p => p.Definition.Name.Equals(paramName, StringComparison.OrdinalIgnoreCase));
+                if (onType != null) return onType;
             }
 
             return param;

@@ -22,7 +22,7 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>Where the policy in force came from (Diagnose names it).</summary>
-    public enum ChangeApprovalSource { Default, Settings, Environment, Managed }
+    public enum ChangeApprovalSource { Default, Settings, Environment, Managed, Session }
 
     /// <summary>What happens to a run's TransactionGroup once the command has run.</summary>
     public enum RunDecision
@@ -66,8 +66,75 @@ namespace VibeModel.Services.Claude
         public static bool DontAskThisSession
         {
             get => _dontAskThisSession;
-            set => _dontAskThisSession = value;
+            set
+            {
+                if (_dontAskThisSession == value) return;
+                _dontAskThisSession = value;
+                Changed?.Invoke(null, EventArgs.Empty);
+            }
         }
+
+        /// <summary>
+        /// Raised (on the setting thread) when <see cref="DontAskThisSession"/> or
+        /// <see cref="SessionOverride"/> changes, so the pane's mode chip follows the approval window.
+        /// </summary>
+        public static event EventHandler Changed;
+
+        // Plan 20: the chat pane's mode chip. A Nullable cannot be volatile, so the choice is
+        // kept as an int (-1 = none).
+        private static volatile int _sessionOverride = -1;
+
+        /// <summary>
+        /// The mode chosen in the chat pane's mode chip for the rest of this Revit session; null =
+        /// none (settings decide). managed.json still wins over it. Settings shows and clears it.
+        /// </summary>
+        public static ChangeApprovalMode? SessionOverride
+        {
+            get { var v = _sessionOverride; return v < 0 ? (ChangeApprovalMode?)null : (ChangeApprovalMode)v; }
+            set
+            {
+                int v = value.HasValue ? (int)value.Value : -1;
+                if (_sessionOverride == v) return;
+                _sessionOverride = v;
+                Changed?.Invoke(null, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// The chip's pick: the mode for the rest of this session. Choosing Ask clears "don't ask
+        /// again this session" — the user just asked to be asked.
+        /// </summary>
+        public static void ChooseForSession(ChangeApprovalMode mode)
+        {
+            if (mode == ChangeApprovalMode.Ask) DontAskThisSession = false;
+            SessionOverride = mode;
+        }
+
+        // Plan 20: "next message as preview". The pane arms the flag before every send (true or
+        // false, so a send that never started a turn cannot leave it behind); the turn takes it.
+        private static volatile bool _previewNextTurn;
+        private static volatile bool _previewTurn;
+
+        /// <summary>
+        /// True while a chat turn sent as a preview runs: every modifying command (the Claude Code
+        /// CLI's own curls and the API backends' tool calls, also an external curl made meanwhile —
+        /// like the journal's turn attribution) runs as ?preview=1.
+        /// </summary>
+        public static bool PreviewTurn => _previewTurn;
+
+        /// <summary>The pane, right before it sends a message: is that turn a preview?</summary>
+        public static void ArmNextTurn(bool preview) => _previewNextTurn = preview;
+
+        /// <summary>A turn starts: it takes the armed flag (and disarms it). Returns <see cref="PreviewTurn"/>.</summary>
+        public static bool BeginTurn()
+        {
+            _previewTurn = _previewNextTurn;
+            _previewNextTurn = false;
+            return _previewTurn;
+        }
+
+        /// <summary>The turn ended (also on error or cancel).</summary>
+        public static void EndTurn() => _previewTurn = false;
 
         public static string Name(ChangeApprovalMode mode)
         {
@@ -118,11 +185,51 @@ namespace VibeModel.Services.Claude
         public static ChangeApprovalMode Effective(ChangeApprovalMode configured, bool dontAskThisSession)
             => configured == ChangeApprovalMode.Ask && dontAskThisSession ? ChangeApprovalMode.Auto : configured;
 
-        /// <summary>The policy in force right now (reads managed.json, the environment and settings.json).</summary>
-        public static ChangeApprovalMode EffectiveMode
-            => Effective(Infrastructure.SettingsManager.GetChangeApproval(out _), DontAskThisSession);
+        /// <summary>
+        /// The configured mode with the session's chip choice applied: managed.json (IT) wins,
+        /// else the chip's <paramref name="sessionOverride"/>, else the configured one (environment
+        /// → settings → auto). <paramref name="chosenSource"/> is <see cref="ChangeApprovalSource.Session"/>
+        /// when the chip decided.
+        /// </summary>
+        public static ChangeApprovalMode WithSessionOverride(ChangeApprovalMode configured, ChangeApprovalSource source,
+            ChangeApprovalMode? sessionOverride, out ChangeApprovalSource chosenSource)
+        {
+            if (sessionOverride.HasValue && source != ChangeApprovalSource.Managed)
+            {
+                chosenSource = ChangeApprovalSource.Session;
+                return sessionOverride.Value;
+            }
+            chosenSource = source;
+            return configured;
+        }
 
-        /// <summary>"ask (settings)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)".</summary>
+        /// <summary>
+        /// The policy in force for a configuration: <see cref="WithSessionOverride"/>, then "don't ask
+        /// again this session" (ask → auto). The approval window's checkbox works the same under a
+        /// chip choice; the chip's Ask clears it (<see cref="ChooseForSession"/>).
+        /// </summary>
+        public static ChangeApprovalMode EffectiveOf(ChangeApprovalMode configured, ChangeApprovalSource source,
+            ChangeApprovalMode? sessionOverride, bool dontAskThisSession)
+            => Effective(WithSessionOverride(configured, source, sessionOverride, out _), dontAskThisSession);
+
+        /// <summary>The mode chosen right now (managed.json → the chip → environment → settings → auto), before "don't ask".</summary>
+        public static ChangeApprovalMode Chosen(out ChangeApprovalSource source)
+        {
+            var configured = Infrastructure.SettingsManager.GetChangeApproval(out var configuredSource);
+            return WithSessionOverride(configured, configuredSource, SessionOverride, out source);
+        }
+
+        /// <summary>The policy in force right now (reads managed.json, the chip, the environment and settings.json).</summary>
+        public static ChangeApprovalMode EffectiveMode
+        {
+            get
+            {
+                var configured = Infrastructure.SettingsManager.GetChangeApproval(out var source);
+                return EffectiveOf(configured, source, SessionOverride, DontAskThisSession);
+            }
+        }
+
+        /// <summary>"ask (settings)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)", "ask (this session)".</summary>
         public static string Describe(ChangeApprovalMode configured, ChangeApprovalSource source, bool dontAskThisSession)
         {
             string from;
@@ -131,6 +238,7 @@ namespace VibeModel.Services.Claude
                 case ChangeApprovalSource.Managed: from = "managed.json"; break;
                 case ChangeApprovalSource.Environment: from = EnvVar; break;
                 case ChangeApprovalSource.Settings: from = "settings"; break;
+                case ChangeApprovalSource.Session: from = "this session"; break;
                 default: from = "default"; break;
             }
             var text = Name(configured) + " (" + from + ")";
@@ -292,7 +400,7 @@ namespace VibeModel.Services.Claude
         public bool IsEmpty => Added.Count == 0 && Modified.Count == 0 && Deleted.Count == 0;
 
         /// <summary>"Walls 2, Floors 1, other 1" — most first, then by name; elements without a category last, as "other".</summary>
-        public static string ByCategory(IReadOnlyList<ChangedElement> elements, string unknown = "other")
+        public static string ByCategory(IReadOnlyList<ChangedElement> elements, string unknown = UnknownCategory)
         {
             if (elements == null || elements.Count == 0) return "";
             // Named categories first (most first, then by name); the unknown ones last.
@@ -328,6 +436,48 @@ namespace VibeModel.Services.Claude
             var counts = Counts();
             return "-- preview: nothing was changed. Would " + counts + "." +
                    (Added.Count > 0 ? " Ids are provisional." : "");
+        }
+
+        /// <summary>
+        /// "-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0" — what a run
+        /// that was kept did to the model; null when it did nothing the user can see.
+        /// </summary>
+        public string ChangedLine() => IsEmpty ? null
+            : "-- changed: " + Part("added", Added) + ", " + Part("modified", Modified) + ", " + Part("deleted", Deleted);
+
+        private const string UnknownCategory = "other";
+
+        /// <summary>Ids listed per group in the JSON <c>changes</c> object; the counts are always complete.</summary>
+        public const int MaxChangedIds = 50;
+
+        /// <summary>
+        /// The additive JSON <c>changes</c> object of a kept run:
+        /// <c>{added:{count,byCategory:{Walls:1},ids:[…]},modified:{…},deleted:{…}}</c>;
+        /// <c>idsTruncated:true</c> on a group with more ids than <see cref="MaxChangedIds"/>.
+        /// </summary>
+        public Dictionary<string, object> ChangesJson()
+        {
+            return new Dictionary<string, object>
+            {
+                { "added", ChangesGroup(Added) },
+                { "modified", ChangesGroup(Modified) },
+                { "deleted", ChangesGroup(Deleted) }
+            };
+        }
+
+        private static Dictionary<string, object> ChangesGroup(IReadOnlyList<ChangedElement> elements)
+        {
+            var byCategory = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in elements.GroupBy(e => e.Category ?? UnknownCategory, StringComparer.OrdinalIgnoreCase))
+                byCategory[g.Key] = g.Count();
+            var group = new Dictionary<string, object>
+            {
+                { "count", elements.Count },
+                { "byCategory", byCategory },
+                { "ids", elements.Take(MaxChangedIds).Select(e => (object)e.Id).ToList() }
+            };
+            if (elements.Count > MaxChangedIds) group["idsTruncated"] = true;
+            return group;
         }
 
         /// <summary>The additive JSON <c>preview</c> object.</summary>

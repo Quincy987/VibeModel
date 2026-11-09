@@ -152,6 +152,20 @@ namespace VibeModel.Services.Chat
         public const string SettingApprovalReadOnlyHint = "SettingApprovalReadOnlyHint";
         public const string SettingApprovalSession = "SettingApprovalSession";
         public const string SettingApprovalEnv = "SettingApprovalEnv";          // {0} = mode, {1} = variable
+        public const string SettingApprovalChip = "SettingApprovalChip";        // {0} = mode name
+        // Mode chip in the chat input (plan 20).
+        public const string ModeAuto = "ModeAuto";
+        public const string ModeAutoHint = "ModeAutoHint";
+        public const string ModeAsk = "ModeAsk";
+        public const string ModeAskHint = "ModeAskHint";
+        public const string ModeReadOnly = "ModeReadOnly";
+        public const string ModeReadOnlyHint = "ModeReadOnlyHint";
+        public const string ModePreviewNext = "ModePreviewNext";
+        public const string ModePreviewNextHint = "ModePreviewNextHint";
+        public const string ModePreviewBadge = "ModePreviewBadge";
+        public const string ModeChipTip = "ModeChipTip";                        // {0} = policy (Describe)
+        public const string ModeChipManaged = "ModeChipManaged";                // {0} = policy (Describe)
+        public const string SendTip = "SendTip";
         // Diagnose (header button, `diagnose` command).
         public const string DiagnoseTitle = "DiagnoseTitle";
         public const string DiagnoseTip = "DiagnoseTip";
@@ -320,6 +334,19 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalReadOnlyHint, "For viewers: every change is rolled back and refused; reading still works." },
                 { SettingApprovalSession, "Not asking for the rest of this Revit session (ticked in the approval window) - untick to ask again" },
                 { SettingApprovalEnv, "In force now: '{0}' from the environment variable {1}, which overrides the choice above." },
+                { SettingApprovalChip, "This Revit session: {0} (chosen in the chat) - untick to follow the choice above again" },
+                { ModeAuto, "Automatic" },
+                { ModeAutoHint, "Changes applied at once · one Ctrl+Z" },
+                { ModeAsk, "Ask" },
+                { ModeAskHint, "Approve deletions and edits first" },
+                { ModeReadOnly, "Read-only" },
+                { ModeReadOnlyHint, "Change nothing, only look and measure" },
+                { ModePreviewNext, "Next message as preview" },
+                { ModePreviewNextHint, "run, report, roll back" },
+                { ModePreviewBadge, "preview" },
+                { ModeChipTip, "Changes by the AI: {0}. Click to change it for this Revit session." },
+                { ModeChipManaged, "Changes by the AI: {0} - managed by IT" },
+                { SendTip, "Send (Enter)" },
                 { DiagnoseTitle, "VibeModel diagnosis" },
                 { DiagnoseTip, "What VibeModel sees of this computer: versions, connection, proxy, recent errors. Secrets are masked." },
                 { DiagnoseRunning, "Checking (network checks take up to 5 s each)…" },
@@ -486,6 +513,19 @@ namespace VibeModel.Services.Chat
                 { SettingApprovalReadOnlyHint, "Voor meekijkers: elke wijziging wordt teruggedraaid en geweigerd; lezen kan wel." },
                 { SettingApprovalSession, "Deze Revit-sessie wordt niet meer gevraagd (aangevinkt in het venster) - vink uit om weer te vragen" },
                 { SettingApprovalEnv, "Nu in werking: '{0}' uit de omgevingsvariabele {1}, die de keuze hierboven overschrijft." },
+                { SettingApprovalChip, "Deze Revit-sessie: {0} (gekozen in de chat) - vink uit om weer de keuze hierboven te volgen" },
+                { ModeAuto, "Automatisch" },
+                { ModeAutoHint, "Wijzigingen direct doorvoeren · één Ctrl+Z" },
+                { ModeAsk, "Vragen" },
+                { ModeAskHint, "Verwijderen en bewerken eerst goedkeuren" },
+                { ModeReadOnly, "Alleen lezen" },
+                { ModeReadOnlyHint, "Niets wijzigen, alleen kijken en meten" },
+                { ModePreviewNext, "Volgend bericht als preview" },
+                { ModePreviewNextHint, "uitvoeren, rapporteren, terugdraaien" },
+                { ModePreviewBadge, "voorbeeld" },
+                { ModeChipTip, "Wijzigingen door de AI: {0}. Klik om het voor deze Revit-sessie te wijzigen." },
+                { ModeChipManaged, "Wijzigingen door de AI: {0} - beheerd door IT" },
+                { SendTip, "Versturen (Enter)" },
                 { DiagnoseTitle, "VibeModel-diagnose" },
                 { DiagnoseTip, "Wat VibeModel van deze computer ziet: versies, verbinding, proxy, recente fouten. Geheimen zijn afgeschermd." },
                 { DiagnoseRunning, "Bezig met controleren (netwerkcontroles duren elk tot 5 s)…" },

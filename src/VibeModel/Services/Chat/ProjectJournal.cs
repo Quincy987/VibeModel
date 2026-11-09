@@ -104,7 +104,7 @@ namespace VibeModel.Services.Chat
             {
                 bool cancelled = answer == "[Cancelled]";
                 Enqueue(ActiveDocumentTracker.Title, ActiveDocumentTracker.PathName,
-                    FormatTurnLine(DateTime.Now, turn, cancelled ? new List<string>() : ParseSources(answer), cancelled));
+                    FormatTurnLine(DateTime.Now, turn, cancelled ? new List<string>() : ParseSources(answer), cancelled, CurrentUser));
             }
             catch (Exception ex)
             {
@@ -123,6 +123,19 @@ namespace VibeModel.Services.Chat
             var t = Regex.Replace(s.Trim(), @"\s*\r?\n\s*", " ⏎ ");
             t = Regex.Replace(t, @"[ \t]+", " ");
             return t.Length <= max ? t : t.Substring(0, Math.Max(1, max - 1)).TrimEnd() + "…";
+        }
+
+        /// <summary>Who works in this Revit session (the Windows user); null when it cannot be read.</summary>
+        internal static readonly string CurrentUser = ReadUser();
+
+        private static string ReadUser()
+        {
+            try
+            {
+                var user = Environment.UserName;
+                return string.IsNullOrWhiteSpace(user) ? null : user.Trim();
+            }
+            catch { return null; }
         }
 
         internal static string Stamp(DateTime local) => local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
@@ -149,15 +162,16 @@ namespace VibeModel.Services.Chat
         public const string DiscardedOutcome = "discarded by the user";
 
         /// <summary>
-        /// "- 2026-10-12 14:03:12 · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 ·
-        /// chat t3f9a2c "maak een muur van 5 m"". Empty id groups and the chat part are left out;
+        /// "- 2026-10-12 14:03:12 · by jjansen · wall 0 0 5000 0 3000 · created 1543814 · modified 1543700 ·
+        /// chat t3f9a2c "maak een muur van 5 m"". Empty id groups, the chat part and an unknown user are left out;
         /// <paramref name="outcome"/> (plan 15: "discarded by the user") goes before the chat part.
         /// </summary>
         public static string FormatCommandLine(DateTime local, string command, string args,
             IList<long> created, IList<long> modified, IList<long> deleted, ChatTurnRef turn, IList<string> written = null,
-            string outcome = null)
+            string outcome = null, string user = null)
         {
-            var parts = new List<string> { "- " + Stamp(local), Shorten((command ?? "") + (string.IsNullOrWhiteSpace(args) ? "" : " " + args), MaxArgsChars) };
+            var parts = LineStart(local, user);
+            parts.Add(Shorten((command ?? "") + (string.IsNullOrWhiteSpace(args) ? "" : " " + args), MaxArgsChars));
             foreach (var p in new[] { Ids("created", created), Ids("modified", modified), Ids("deleted", deleted), Files("wrote", written) })
                 if (p != null) parts.Add(p);
             // Plan 15: a run the user discarded in the approval window ("discarded by the user").
@@ -166,10 +180,23 @@ namespace VibeModel.Services.Chat
             return string.Join(Sep, parts);
         }
 
-        /// <summary>"- 2026-10-12 14:03:25 · chat t3f9a2c "vraag" · sources: a; b" (or "sources: none", "cancelled").</summary>
-        public static string FormatTurnLine(DateTime local, ChatTurnRef turn, IList<string> sources, bool cancelled)
+        /// <summary>A command's journal line as of now: this Windows user, and the running chat turn unless the request named one.</summary>
+        public static string CommandLineNow(string command, string args, IList<long> created, IList<long> modified, IList<long> deleted,
+            ChatTurnRef turn, IList<string> written = null, string outcome = null)
+            => FormatCommandLine(DateTime.Now, command, args, created, modified, deleted, turn ?? CurrentTurn, written, outcome, CurrentUser);
+
+        private static List<string> LineStart(DateTime local, string user)
         {
-            var parts = new List<string> { "- " + Stamp(local), Quote(turn) };
+            var parts = new List<string> { "- " + Stamp(local) };
+            if (!string.IsNullOrWhiteSpace(user)) parts.Add("by " + user.Trim());
+            return parts;
+        }
+
+        /// <summary>"- 2026-10-12 14:03:25 · by jjansen · chat t3f9a2c "vraag" · sources: a; b" (or "sources: none", "cancelled").</summary>
+        public static string FormatTurnLine(DateTime local, ChatTurnRef turn, IList<string> sources, bool cancelled, string user = null)
+        {
+            var parts = LineStart(local, user);
+            parts.Add(Quote(turn));
             if (cancelled) parts.Add("cancelled");
             else parts.Add("sources: " + (sources == null || sources.Count == 0 ? "none" : string.Join("; ", sources)));
             return string.Join(Sep, parts);

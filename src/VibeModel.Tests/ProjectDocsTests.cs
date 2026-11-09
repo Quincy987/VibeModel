@@ -255,7 +255,7 @@ namespace VibeModel.Tests
             Assert.Contains("(230 files, 0 subfolders)", text);
             Assert.Contains("f199.txt", text);
             Assert.DoesNotContain("f200.txt", text);
-            Assert.Contains("and 30 more", text);
+            Assert.Contains("showing 200 of 230 — incomplete", text);
             Assert.Contains("(ingesteld)", text);
         }
 

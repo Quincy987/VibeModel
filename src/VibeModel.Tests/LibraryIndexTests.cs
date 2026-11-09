@@ -59,6 +59,12 @@ namespace VibeModel.Tests
             Assert.Equal("EX_SheetPile_AZ12", idx.Search("sheet piles az12").Single().Name); // folder + name terms
             Assert.Empty(idx.Search("bridge"));
             Assert.Empty(idx.Search("   "));
+
+            // The cap never hides how many matched.
+            var cut = idx.Search("pile", 1, out int total);
+            Assert.Single(cut);
+            Assert.True(total > 1);
+            Assert.Equal(idx.Search("pile", 100).Count, total);
         }
 
         [Fact]

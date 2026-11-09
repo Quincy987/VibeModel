@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+## v1.2.15 — Zichtbaar wat er veranderde (2026-11-09)
+
+### Added — see what the AI changed
+- After every command that changed the model, one line says what happened, per category:
+  `-- changed: added 1 (Walls 1), modified 4 (Walls 3, Views 1), deleted 0` (in JSON a `changes` object
+  with counts per category and at most 50 ids per group). A batch gets one line for the whole batch; a new family type counts as `Types`.
+  Not after a preview or a discarded change, which changed nothing. The chat ends such an answer with
+  one line built from it: what changed, what it assumed and what it skipped.
+- The project journal now says who did it: `- 2026-11-09 14:03:12 · by jjansen · wall … · created …`
+  (the Windows user; also on a discarded change and on each chat question). Older lines stay as they are.
+
+### Added — mode chip in the chat input (Cursor-style), next message as preview
+- Plan 20. The chat input is one rounded box with a footer row: paperclip, a **mode chip** and a round
+  send arrow. The chip shows how the AI's changes are handled — **Automatisch**, **Vragen** (approve
+  deletions and edits first) or **Alleen lezen** — and one click switches it for the rest of the Revit
+  session, without opening Settings. In *Vragen* the send arrow turns amber. IT's managed.json still
+  wins (the chip is then greyed); Settings shows the chip's choice and can clear it; Diagnose and
+  `approvals` report it as `(this session)`.
+- **Volgend bericht als preview** in the same menu: the next message runs as a preview — every change
+  the AI makes in that turn is rolled back by Revit and reported, and the AI says what it *would*
+  change. Live in Revit 2023: "Verwijder wand …" as a preview turn ran the delete, the wall stayed, and
+  the answer said nothing was changed.
+
+### Changed
+- A list that was cut off now always gives the real total and says it is incomplete, in one wording:
+  *showing 100 of 312 — incomplete; narrow with filter or --view*. Before, `list` said "100 shown, may
+  be more" and `library` "20 match(es)" with no total. Covers `list`, `filter`, `familytypes`, `views`,
+  `whereused`, `schedule`, `sheetinfo`, `docs`, `library`, `journal`, `geometry`, `loadfamily`, `pcprobe`.
+  The chat is told to pass that total on, and to name its assumptions and omissions.
+- The chat makes quantities for an estimate or bill as a Revit schedule by default, so anyone can check them
+  in Revit without the AI.
+- `filter --count Type` and `colorsplash walls Type` group by type name instead of `ElementId(1571611)`;
+  `filter foundations Type contains AZ` finds them; a parameter name with spaces can be quoted
+  (`filter foundations "Type Name" contains AZ`).
+- A legend already on the sheet is refused with the right reason (a legend can be on several sheets,
+  once per sheet).
+- Publishing a release now runs the tests first; failing tests stop it.
+
+### Fixed
+- A short note between two steps ("Ik lees eerst de commando's.") no longer flashes as the answer and
+  disappears; it stays in the step list until it proves to be the answer.
+
 ## v1.2.14 — Update From Inside Revit (2026-10-20)
 
 ### Added — Update from inside Revit

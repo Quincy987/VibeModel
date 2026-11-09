@@ -86,7 +86,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (param == null || !param.HasValue)
                     val = "(empty)";
                 else
-                    val = FormattingHelper.GetParameterValue(param);
+                    val = FormattingHelper.GetDisplayValue(param);
 
                 if (!groups.ContainsKey(val))
                     groups[val] = new List<Element>();

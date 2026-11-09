@@ -45,7 +45,7 @@ namespace VibeModel.Services.Claude.Commands
             {
                 if (count >= 200)
                 {
-                    sb.AppendLine("... truncated (200 shown of " + symbols.Count + ")");
+                    sb.AppendLine("... " + Truncation.Line(count, symbols.Count, "narrow with familytypes <category or name>"));
                     break;
                 }
 

@@ -390,7 +390,7 @@ namespace VibeModel.Services.Chat
                 sb.AppendLine(ChatAttachment.FormatSize(e.SizeBytes));
             }
             if (files.Count > shown.Count)
-                sb.AppendLine("  … and " + (files.Count - shown.Count) + more + " more — list one subfolder with: docs <subfolder>" +
+                sb.AppendLine("  … " + Claude.Truncation.Line(shown.Count, files.Count + more, "list one subfolder with: docs <subfolder>") +
                               (listing.Subfolders.Count > 0 ? " (" + string.Join(", ", listing.Subfolders.Take(10)) + ")" : ""));
             return sb.ToString();
         }

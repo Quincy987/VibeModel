@@ -61,7 +61,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Category: " + (family.FamilyCategory?.Name ?? "?"));
             sb.AppendLine("Types (" + types.Count + "):");
             foreach (var t in types.Take(40)) sb.AppendLine("  " + t.Id.IntegerValue + "  " + t.Name);
-            if (types.Count > 40) sb.AppendLine("  … +" + (types.Count - 40) + " more");
+            if (types.Count > 40) sb.AppendLine("  … " + Truncation.Line(40, types.Count, "the JSON output lists every type"));
             sb.AppendLine("Place one with: placeid <typeId> <x> <y>");
 
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>

@@ -301,7 +301,7 @@ namespace VibeModel.Tests
             Assert.Equal("--------+------------", lines[1]);
             Assert.Equal("Pile 1  | 1000", lines[2]);
             Assert.Equal(2 + 20 + 1, lines.Count);
-            Assert.Equal("… 5 more row(s) — 'schedule 7 --rows' for all", lines.Last());
+            Assert.Equal("… showing 20 of 25 — incomplete; 'schedule 7 --rows' for all", lines.Last());
         }
 
         [Fact]

@@ -48,6 +48,8 @@ namespace VibeModel.Services.Claude.Commands
             return sb.ToString();
         }
 
+        private const int MaxGeometryObjects = 50;
+
         private static void AnalyzeGeometry(StringBuilder sb, GeometryElement geom, int indent)
         {
             var prefix = new string(' ', indent * 2);
@@ -56,11 +58,7 @@ namespace VibeModel.Services.Claude.Commands
             foreach (var obj in geom)
             {
                 count++;
-                if (count > 50)
-                {
-                    sb.AppendLine(prefix + "... and more (truncated)");
-                    break;
-                }
+                if (count > MaxGeometryObjects) continue; // keep counting for the real total
 
                 if (obj is Solid solid)
                 {
@@ -95,6 +93,7 @@ namespace VibeModel.Services.Claude.Commands
                     sb.AppendLine(prefix + obj.GetType().Name);
                 }
             }
+            if (count > MaxGeometryObjects) sb.AppendLine(prefix + "... " + Truncation.Line(MaxGeometryObjects, count));
         }
     }
 }

@@ -25,7 +25,8 @@ namespace VibeModel.Services.Claude.Commands
             if (string.IsNullOrWhiteSpace(args))
                 return "ERROR: Usage: filter <category> [paramName operator value] [--view] [--select] [--ids] [--count paramName]\n\nOperators: = != > < >= <= contains\nExamples:\n  filter walls\n  filter walls Mark = K01\n  filter walls Height > 3000\n  filter walls --view --select\n  filter walls --count Mark";
 
-            var tokens = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            // A quoted parameter name or value stays one token: "Type Name" contains AZ.
+            var tokens = FlagArgs.Tokenize(args);
 
             // Extract flags
             bool viewScoped = ExtractFlag(tokens, "--view");
@@ -147,7 +148,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("FILTER: " + categoryInput.ToUpper() +
                 (paramName != null ? " | " + paramName + " " + foundOp + " " + filterValue : "") +
                 (viewScoped ? " [view: " + activeView.Name + "]" : ""));
-            sb.AppendLine("Found: " + elements.Count + (elements.Count > 50 ? " (showing 50)" : ""));
+            sb.AppendLine("Found: " + elements.Count + (elements.Count > shown.Count
+                ? " (" + Truncation.Line(shown.Count, elements.Count, "--count groups them all, --ids lists every id") + ")" : ""));
             sb.AppendLine("=".PadRight(40, '='));
             sb.AppendLine();
 
@@ -214,6 +216,18 @@ namespace VibeModel.Services.Claude.Commands
                     default: return false;
                 }
             }
+            else if (param.StorageType == StorageType.ElementId)
+            {
+                // Type, Level, …: compare what the user reads, the name, not the id behind it.
+                var shown = FormattingHelper.GetDisplayValue(param);
+                switch (op)
+                {
+                    case "=": return shown.Equals(filterValue, StringComparison.OrdinalIgnoreCase);
+                    case "!=": return !shown.Equals(filterValue, StringComparison.OrdinalIgnoreCase);
+                    case "contains": return shown.IndexOf(filterValue, StringComparison.OrdinalIgnoreCase) >= 0;
+                    default: return false;
+                }
+            }
             else if (param.StorageType == StorageType.Integer)
             {
                 var intVal = param.AsInteger();
@@ -255,7 +269,7 @@ namespace VibeModel.Services.Claude.Commands
                 if (param == null || !param.HasValue)
                     val = "(empty)";
                 else
-                    val = FormattingHelper.GetParameterValue(param);
+                    val = FormattingHelper.GetDisplayValue(param);
 
                 if (!groups.ContainsKey(val))
                     groups[val] = 0;

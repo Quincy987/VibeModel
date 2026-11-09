@@ -67,6 +67,7 @@ namespace VibeModel.UI
         // Plan 15: "Wijzigingen door de AI" (auto / ask / readonly) + the session's "don't ask again".
         private readonly List<RadioButton> _approvalRadios = new List<RadioButton>();
         private CheckBox _approvalSessionCheck;
+        private CheckBox _approvalChipCheck;
 
         // Updates (plan 19)
         private CheckBox _updateCheckBox;
@@ -395,6 +396,23 @@ namespace VibeModel.UI
                 };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(_approvalSessionCheck, "SettingApprovalSession");
                 panel.Children.Add(_approvalSessionCheck);
+            }
+
+            // Plan 20: the mode picked in the chat's mode chip wins over the choice above until
+            // Revit closes (managed.json still wins over both).
+            var chip = ChangeApprovalPolicy.SessionOverride;
+            if (chip.HasValue && !managed)
+            {
+                _approvalChipCheck = new CheckBox
+                {
+                    Content = Strings.Get(Strings.SettingApprovalChip, UiText.ModeName(chip.Value, Strings.Current)),
+                    IsChecked = true,
+                    Foreground = FgSecondary,
+                    FontSize = 12,
+                    Margin = new Thickness(0, 6, 0, 2)
+                };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(_approvalChipCheck, "SettingApprovalChip");
+                panel.Children.Add(_approvalChipCheck);
             }
             return panel;
         }
@@ -1096,6 +1114,8 @@ namespace VibeModel.UI
                     SettingsManager.SetChangeApproval(mode);
             if (_approvalSessionCheck != null && _approvalSessionCheck.IsChecked != true)
                 ChangeApprovalPolicy.DontAskThisSession = false;
+            if (_approvalChipCheck != null && _approvalChipCheck.IsChecked != true)
+                ChangeApprovalPolicy.SessionOverride = null;
 
             if (_updateCheckBox.IsEnabled)
                 SettingsManager.SetUpdateCheck(_updateCheckBox.IsChecked == true);
