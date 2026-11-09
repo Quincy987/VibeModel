@@ -57,7 +57,7 @@ namespace VibeModel.Services.Claude.Commands
             var sb = new StringBuilder();
             sb.AppendLine("Journal (" + query.Label + "): " + Path.Combine(loc.Directory, ProjectJournal.FileName) + "  " + loc.SourceLabel);
             if (shown.Count == 0) sb.AppendLine("(no entries" + (query.Date != null ? " on " + query.Date : "") + ")");
-            if (hidden > 0) sb.AppendLine("(" + Truncation.Line(shown.Count, lines.Count, "these are the newest; ask for one date to see others") + ")");
+            if (hidden > 0) sb.AppendLine("(" + Truncation.Line(shown.Count, lines.Count, "these are the newest") + ")");
             foreach (var l in shown) sb.AppendLine(l);
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {
