@@ -150,14 +150,16 @@ namespace VibeModel.Services.Claude
                 var dir = line.Direction.Normalize();
                 bool alongX = Math.Abs(dir.DotProduct(f.R)) >= Math.Abs(dir.DotProduct(f.U));
                 XYZ first = null, last = null;
+                var bounds = new List<XYZ>();   // where the witness lines stand
                 if (d.NumberOfSegments > 1)
                 {
                     foreach (DimensionSegment s in d.Segments)
                     {
                         double half = (s.Value ?? 0) / 2;
                         var a = s.Origin - dir * half; var b = s.Origin + dir * half;
-                        if (first == null) first = a;
+                        if (first == null) { first = a; bounds.Add(a); }
                         last = b;
+                        bounds.Add(b);
                         var tp = Try(() => s.TextPosition) ?? s.Origin;
                         list.Add(new AnnoBox { Id = id, Kind = AnnoKind.DimensionText, Rect = AnnotationLayout.TextBox(f.X(tp), f.Y(tp), s.ValueString, size, wf, vertical: !alongX), Label = s.ValueString });
                     }
@@ -166,11 +168,28 @@ namespace VibeModel.Services.Claude
                 {
                     double half = (d.Value ?? 0) / 2;
                     first = d.Origin - dir * half; last = d.Origin + dir * half;
+                    bounds.Add(first); bounds.Add(last);
                     var tp = Try(() => d.TextPosition) ?? d.Origin;
                     list.Add(new AnnoBox { Id = id, Kind = AnnoKind.DimensionText, Rect = AnnotationLayout.TextBox(f.X(tp), f.Y(tp), d.ValueString, size, wf, vertical: !alongX), Label = d.ValueString });
                 }
                 if (first != null && last != null)
                     list.Add(new AnnoBox { Id = id, Kind = AnnoKind.DimensionLine, Rect = AnnotationLayout.Strip(f.X(first), f.Y(first), f.X(last), f.Y(last)), AlongX = alongX });
+                // Witness lines: at every reference, across the line over the dimension's own box (measured:
+                // the box runs from the witness ends to the text, e.g. y 201.6..213.7 for a line at 208).
+                var dbb = d.get_BoundingBox(view);
+                if (dbb != null)
+                {
+                    var box = f.Rect(dbb);
+                    foreach (var p in bounds)
+                    {
+                        double px = f.X(p), py = f.Y(p);
+                        list.Add(new AnnoBox
+                        {
+                            Id = id, Kind = AnnoKind.Witness, AlongX = !alongX,
+                            Rect = alongX ? AnnotationLayout.Strip(px, box.Y0, px, box.Y1) : AnnotationLayout.Strip(box.X0, py, box.X1, py)
+                        });
+                    }
+                }
                 return list;
             }
             if (e is IndependentTag tag)
@@ -181,11 +200,19 @@ namespace VibeModel.Services.Claude
                 double angle = tag.TagOrientation == TagOrientation.Vertical ? 90
                              : tag.TagOrientation == TagOrientation.AnyModelDirection ? (Try(() => (double?)tag.RotationAngle) ?? 0) * 180 / Math.PI : 0;
                 int host = tag.GetTaggedLocalElementIds().Where(i => i != ElementId.InvalidElementId).Select(i => i.IntegerValue).FirstOrDefault();
-                MmRect rect;
+                // Measured (IB rebar tags, 1:20): the text stands on TagHeadPosition (its underline there); the
+                // box without a leader is the family's label frame (36 x 16.5 mm for "1x ø6") - its width is
+                // ink (the underline), its height is not. With a leader the box takes the leader in.
+                if (head == null) return list;
+                double hx = f.X(head), hy = f.Y(head);
                 var bb = tag.HasLeader ? null : tag.get_BoundingBox(view);
-                if (bb != null) rect = f.Rect(bb);
-                else if (head != null) rect = new MmRect(f.X(head) - w / 2, f.Y(head) - h / 2, f.X(head) + w / 2, f.Y(head) + h / 2);
-                else return list;
+                MmRect rect;
+                if (bb != null)
+                {
+                    var frame = f.Rect(bb);
+                    rect = new MmRect(frame.X0, hy - 0.5, frame.X1, hy + h);
+                }
+                else rect = new MmRect(hx - w / 2, hy - 0.5, hx + w / 2, hy + h);
                 list.Add(new AnnoBox { Id = id, Kind = AnnoKind.Tag, Rect = rect, AngleDeg = angle, Label = text, Host = host });
                 if (tag.HasLeader && head != null)
                     foreach (var r in Try(() => tag.GetTaggedReferences()) ?? new List<Reference>())

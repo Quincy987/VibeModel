@@ -19,7 +19,10 @@ namespace VibeModel.Services.Claude
         /// <summary>A spot elevation's value text.</summary>
         SpotText,
         /// <summary>A leader segment (spot, tag or text), a thin strip.</summary>
-        Leader
+        Leader,
+        /// <summary>A dimension's witness line (reference → dimension line), a thin strip. Measured: they run
+        /// through spot texts on narrow elements whatever the placement, so crossing a text is INFO.</summary>
+        Witness
     }
 
     /// <summary>
@@ -42,7 +45,7 @@ namespace VibeModel.Services.Claude
         public bool AlongX;
 
         public bool IsText => Kind == AnnoKind.Text || Kind == AnnoKind.Tag || Kind == AnnoKind.DimensionText || Kind == AnnoKind.SpotText;
-        public bool IsLine => Kind == AnnoKind.DimensionLine || Kind == AnnoKind.Leader;
+        public bool IsLine => Kind == AnnoKind.DimensionLine || Kind == AnnoKind.Leader || Kind == AnnoKind.Witness;
 
         /// <summary>The annotation's word in reports: "spot", "dimension", "tag", "text".</summary>
         public string Word
@@ -53,7 +56,8 @@ namespace VibeModel.Services.Claude
                 {
                     case AnnoKind.Tag: return "tag";
                     case AnnoKind.DimensionText:
-                    case AnnoKind.DimensionLine: return "dimension";
+                    case AnnoKind.DimensionLine:
+                    case AnnoKind.Witness: return "dimension";
                     case AnnoKind.SpotText: return "spot";
                     case AnnoKind.Leader: return LeaderOf ?? "leader";
                     default: return "text";
@@ -71,6 +75,7 @@ namespace VibeModel.Services.Claude
             {
                 string part = Kind == AnnoKind.DimensionText ? " text '" + Label + "'"
                             : Kind == AnnoKind.DimensionLine ? " line"
+                            : Kind == AnnoKind.Witness ? " witness line"
                             : Kind == AnnoKind.SpotText ? " text"
                             : Kind == AnnoKind.Leader ? " leader" : "";
                 return Word + " " + Id.ToString(CultureInfo.InvariantCulture) + part;
@@ -198,7 +203,7 @@ namespace VibeModel.Services.Claude
             var text = a.IsLine ? b : a;
             if (!Crosses(line.Rect, line.AlongX, text.Rect)) return null;
             line.Rect.OverlapSize(text.Rect, out var lw, out var lh);
-            return new AnnoOverlap { A = line, B = text, Kind = "line-through-text", W = lw, H = lh, Severity = "WARN" };
+            return new AnnoOverlap { A = line, B = text, Kind = "line-through-text", W = lw, H = lh, Severity = line.Kind == AnnoKind.Witness ? "INFO" : "WARN" };
         }
 
         /// <summary>
@@ -245,7 +250,8 @@ namespace VibeModel.Services.Claude
                     return o.Severity + "  " + o.A.Name + " and " + o.B.Name + " lie " + Mm.F1(o.H) + " mm apart over " + Mm.F(o.W) +
                            " mm (stacked: they read as one) — delete one and place it again on another row ('dimension … --offset')";
                 case "line-through-text":
-                    return o.Severity + "  " + o.A.Name + " runs through " + o.B.Name + " (" + Mm.F1(o.W) + "×" + Mm.F1(o.H) + " mm)";
+                    return o.Severity + "  " + o.A.Name + " runs through " + o.B.Name + " (" + Mm.F1(o.W) + "×" + Mm.F1(o.H) + " mm)" +
+                           (o.A.Kind == AnnoKind.Witness ? " (a thin witness line — usual on narrow elements)" : "");
                 default:
                     return o.Severity + "  " + o.A.Name + " and " + o.B.Name + " overlap " + Mm.F1(o.W) + "×" + Mm.F1(o.H) + " mm" +
                            (o.IsWarn ? "" : " (thin strip — touching)");
@@ -281,7 +287,7 @@ namespace VibeModel.Services.Claude
             switch (o.Kind)
             {
                 case "stacked": return o.A.Word + " " + o.A.Id + " ↔ " + o.B.Word + " " + o.B.Id + " (stacked, " + Mm.F1(o.H) + " mm apart)";
-                case "line-through-text": return o.A.Word + " " + o.A.Id + " " + (o.A.Kind == AnnoKind.Leader ? "leader" : "line") + " through " + o.B.Word + " " + o.B.Id;
+                case "line-through-text": return o.A.Word + " " + o.A.Id + " " + (o.A.Kind == AnnoKind.Leader ? "leader" : o.A.Kind == AnnoKind.Witness ? "witness line" : "line") + " through " + o.B.Word + " " + o.B.Id;
                 default: return o.A.Word + " " + o.A.Id + " ↔ " + o.B.Word + " " + o.B.Id + " (" + Mm.F1(o.W) + "×" + Mm.F1(o.H) + " mm)";
             }
         }
@@ -323,6 +329,7 @@ namespace VibeModel.Services.Claude
                 var t = new MmRect(s.Text.X0 - 0.5, s.Text.Y0 - 0.5, s.Text.X1 + 0.5, s.Text.Y1 + 0.5);
                 foreach (var b in taken)
                 {
+                    if (b.Kind == AnnoKind.Witness) continue;   // thin, and unavoidable on narrow elements
                     if (t.Overlaps(b.Rect, 0.05)) { hits.Add(b); continue; }
                     if (!b.IsText) continue;
                     if (s.Leader.Any(l => Crosses(l, l.W >= l.H, b.Rect))) hits.Add(b);

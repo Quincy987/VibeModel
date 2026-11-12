@@ -112,7 +112,7 @@ namespace VibeModel.Services.Claude.Commands
                     doc.Regenerate();
                 }
                 tag = IndependentTag.Create(doc, tagSymbol.Id, view.Id,
-                    new Reference(element), ta.Leader, TagOrientation.Horizontal, head);
+                    AnnotationGeometry.TagReference(element), ta.Leader, TagOrientation.Horizontal, head);
                 // With a leader Revit places the head next to the element; put it where asked.
                 if (ta.At != null)
                 {
@@ -219,9 +219,9 @@ namespace VibeModel.Services.Claude.Commands
             if (!free) { note = "Revit's spot next to the element (every free spot around it is taken — check 'annolayout')"; return null; }
             var c = slots[i].Text;
             note = "free spot " + slots[i].Name + " the element" + (i > 0 && blocker != null ? " (" + slots[0].Name + " taken by " + blocker.Word + " " + blocker.Id + ")" : "");
-            // Paper centre → model point at the tag's own depth (the head is taken as the label's centre).
+            // The head stands under the text, mid-width (measured): slot bottom-centre -> model point at the tag's own depth.
             var cur = tag.TagHeadPosition;
-            double dx = frame.Feet(c.Cx - frame.X(cur)), dy = frame.Feet(c.Cy - frame.Y(cur));
+            double dx = frame.Feet(c.Cx - frame.X(cur)), dy = frame.Feet(c.Y0 + 0.5 - frame.Y(cur));
             return cur + frame.R * dx + frame.U * dy;
         }
 

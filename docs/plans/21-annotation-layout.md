@@ -57,9 +57,21 @@ bounding box of a dimension covers the whole string plus its witness lines (91 �
   213.7 − 209 = 4.7 mm at 2.5 mm). The line itself: a thin strip between the outer references.
 - **Spot text:** same estimate around `TextPosition` (value printed at 3 decimals in m:
   `+2.500` = 6 chars), plus the leader (origin → shoulder → end) as thin strips.
-- **Tag head:** estimate around `TagHeadPosition` from `TagText` at 2.5 mm; without a leader the
-  bounding box is used when it is smaller than the estimate. Live numbers for tags are taken in
-  this plan's verify step (the measuring Revit was restarted by another session mid-measurement).
+- **Tag head** (measured in verify, IB rebar tags at 1:20): `TagHeadPosition` lands exactly where it
+  is set; the text stands ON it, mid-width, with the family's underline at the head. Without a
+  leader the bounding box is the label frame (36 × 16.5 mm for "1x ø6", centred on the head) — its
+  width is ink (the underline), its height is not; with a leader the box takes the leader in
+  (y 72.5..103.2). Box used: the frame's width (no leader) or the `TagText` estimate, from the head
+  up 1.9 × 2.5 mm. `SetLeaderElbow`, a free `SetLeaderEnd`, `TagOrientation.AnyModelDirection` +
+  `RotationAngle` (radians) all read back as set; an attached leader's end cannot be read
+  ("no leader end because the tag does not use a free end leader").
+- **Rebar:** `IndependentTag.Create` refuses `new Reference(rebar)` and the bar's centre-line
+  curve reference ("The reference can not be tagged"); the sub-element reference
+  (`rebar.GetSubelements()[0].GetReference()`, `…:2000000:SUBELEMENT`) works — `tag` and the
+  annotation guard use it (`AnnotationGeometry.TagReference`).
+- **Witness lines** run from each reference to the line (covered by the dimension's box); on a
+  200 mm wall at 1:20 they cross a spot's text on that wall whatever the slot, so a witness line
+  through a text is `INFO`, and slots do not treat them as taken.
 
 ### Found on the way
 

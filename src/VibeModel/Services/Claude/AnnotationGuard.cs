@@ -561,7 +561,7 @@ namespace VibeModel.Services.Claude
             var centre = (old.BoxMin + old.BoxMax) * 0.5;
             var host = Candidates(doc, added, old, centre, false).FirstOrDefault(c => Contains(c, centre));
             if (host == null) return null;
-            var tag = IndependentTag.Create(doc, rec.TypeId, view.Id, new Reference(host), rec.TagLeader, rec.Orientation, rec.Head);
+            var tag = IndependentTag.Create(doc, rec.TypeId, view.Id, AnnotationGeometry.TagReference(host), rec.TagLeader, rec.Orientation, rec.Head);
             return tag == null ? null : new RehostResult { NewId = tag.Id.IntegerValue }.Host(host);
         }
 
@@ -920,6 +920,25 @@ namespace VibeModel.Services.Claude
                 break;
             }
             return best;
+        }
+
+        /// <summary>
+        /// The reference a tag hangs on. Measured (plan 21, Revit 2023): a rebar is refused as a whole
+        /// ("The reference can not be tagged" — also through its centre-line curve) and accepted through
+        /// its sub-element reference (<c>…:2000000:SUBELEMENT</c>); everything else as the element.
+        /// </summary>
+        public static Reference TagReference(Element e)
+        {
+            if (e is Autodesk.Revit.DB.Structure.Rebar bar)
+            {
+                try
+                {
+                    var sub = bar.GetSubelements().FirstOrDefault();
+                    if (sub != null) return sub.GetReference();
+                }
+                catch { /* fall back to the element */ }
+            }
+            return new Reference(e);
         }
 
         /// <summary>

@@ -264,6 +264,20 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void AWitnessLineThroughAText_IsInfo_AndDoesNotBlockASlot()
+        {
+            var spot = Text(1, 39.6, 212, 50.4, 216.75, AnnoKind.SpotText);
+            var witness = new AnnoBox { Id = 2, Kind = AnnoKind.Witness, Rect = AnnotationLayout.Strip(45, 201, 45, 236), AlongX = false };
+            var o = AnnotationLayout.Overlaps(new[] { spot, witness }).Single();
+            Assert.Equal("INFO", o.Severity);
+            Assert.Contains("dimension 2 witness line runs through spot 1 text", AnnotationLayout.Line(o));
+            Assert.Null(AnnotationLayout.LayoutLine(new[] { 1, 2 }, new[] { o }, "V"));
+            var slots = AnnotationLayout.SpotSlots(40, 200, true, 10.8, 4.75);
+            Assert.Equal(0, AnnotationLayout.PickSlot(slots, new[] { witness }, out _, out bool free));
+            Assert.True(free);
+        }
+
+        [Fact]
         public void TagSlots_UseTheSamePicker()
         {
             // A tag head 10×5 mm: right above is taken by a text, left above is clear.
