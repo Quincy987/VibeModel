@@ -40,14 +40,17 @@ namespace VibeModel.Services.Claude
                 s.IncludesLinks = def.IncludeLinkedFiles;
                 try { s.Embedded = def.HasEmbeddedSchedule; } catch { /* no embedded schedule */ }
 
+                var areaScheme = AreaSchemeOf(doc, def);
+                if (areaScheme != null) s.AreaScheme = areaScheme.Name;
+
                 var inSchedule = new HashSet<int>(new FilteredElementCollector(doc, vs.Id).WhereElementIsNotElementType()
                     .ToElementIds().Select(i => i.IntegerValue));
-                var all = new FilteredElementCollector(doc).OfCategoryId(def.CategoryId).WhereElementIsNotElementType()
-                    .ToElementIds().Select(i => i.IntegerValue).ToList();
+                var all = CategoryMembers(doc, def.CategoryId, areaScheme?.Id).Select(i => i.IntegerValue).ToList();
                 // A schedule can list what the category collector misses (an embedded or linked row): never "shows 30 of 22".
                 s.InSchedule = inSchedule.Count;
                 s.TotalInCategory = Math.Max(all.Count, inSchedule.Count);
                 s.FilterDescriptions = DescribeFilters(doc, def);
+                s.FilteredBySheet = IsFilteredBySheet(def);
 
                 var phaseId = vs.get_Parameter(BuiltInParameter.VIEW_PHASE)?.AsElementId();
                 var phaseFilter = doc.GetElement(vs.get_Parameter(BuiltInParameter.VIEW_PHASE_FILTER)?.AsElementId() ?? ElementId.InvalidElementId) as PhaseFilter;
@@ -57,15 +60,14 @@ namespace VibeModel.Services.Claude
                 var outside = all.Where(i => !inSchedule.Contains(i)).ToList();
                 if (outside.Count > ScheduleScopeSummary.ReasonCap) { s.ReasonsSkipped = true; return s; }
 
-                bool bySheet = IsFilteredBySheet(def);
+                // Phase and design option are decided per element; the rest is put down to the filters /
+                // filter-by-sheet as a whole (ScheduleScopeSummary.Rest), never re-evaluated here.
                 foreach (var idValue in outside)
                 {
                     var e = doc.GetElement(new ElementId(idValue));
-                    if (e == null) { s.OutUnexplained++; continue; }
+                    if (e == null) continue;
                     if (OutByPhase(e, phaseId, phaseFilter)) s.OutByPhase++;
                     else if (InSecondaryOption(e)) s.OutByDesignOption++;
-                    else if (bySheet) s.OutBySheetFilter++;
-                    else s.OutUnexplained++;
                 }
                 return s;
             }
@@ -89,7 +91,29 @@ namespace VibeModel.Services.Claude
 #endif
         }
 
-        /// <summary>True when the schedule's phase filter hides the element at the schedule's phase.</summary>
+        /// <summary>
+        /// An area schedule lists one area scheme (`ViewSchedule.CreateSchedule(doc, areas, scheme)`); null
+        /// for every other schedule.
+        /// </summary>
+        private static AreaScheme AreaSchemeOf(Document doc, ScheduleDefinition def)
+        {
+            if (def.CategoryId.IntegerValue != (int)BuiltInCategory.OST_Areas) return null;
+            try { return doc.GetElement(def.AreaSchemeId) as AreaScheme; } catch { return null; }
+        }
+
+        /// <summary>The instances a schedule of this category could list: every instance, or the areas of one scheme.</summary>
+        private static IEnumerable<ElementId> CategoryMembers(Document doc, ElementId categoryId, ElementId areaSchemeId)
+        {
+            var collector = new FilteredElementCollector(doc).OfCategoryId(categoryId).WhereElementIsNotElementType();
+            if (areaSchemeId == null) return collector.ToElementIds();
+            return collector.OfType<Area>().Where(a => a.AreaScheme?.Id == areaSchemeId).Select(a => a.Id).ToList();
+        }
+
+        /// <summary>
+        /// True when the schedule's phase / phase filter hides the element at the schedule's phase. A
+        /// future element (not built yet) or a past one (demolished in an earlier phase) is never shown,
+        /// whatever the filter; the filter only decides for new, existing, demolished and temporary.
+        /// </summary>
         private static bool OutByPhase(Element e, ElementId phaseId, PhaseFilter filter)
         {
             if (phaseId == null || phaseId == ElementId.InvalidElementId) return false;
@@ -97,10 +121,19 @@ namespace VibeModel.Services.Claude
             {
                 if (!e.HasPhases()) return false;
                 var status = e.GetPhaseStatus(phaseId);
-                // Without a filter Revit still never schedules what does not exist yet at this phase.
-                if (filter == null) return status == ElementOnPhaseStatus.Future;
-                return status == ElementOnPhaseStatus.Future ||
-                       filter.GetPhaseStatusPresentation(status) == PhaseStatusPresentation.DontShow;
+                switch (status)
+                {
+                    case ElementOnPhaseStatus.Future:
+                    case ElementOnPhaseStatus.Past:
+                        return true;
+                    case ElementOnPhaseStatus.New:
+                    case ElementOnPhaseStatus.Existing:
+                    case ElementOnPhaseStatus.Demolished:
+                    case ElementOnPhaseStatus.Temporary:
+                        return filter != null && filter.GetPhaseStatusPresentation(status) == PhaseStatusPresentation.DontShow;
+                    default:
+                        return false;
+                }
             }
             catch { return false; }
         }
@@ -221,6 +254,10 @@ namespace VibeModel.Services.Claude
             foreach (var vs in schedules.Take(MaxSchedules))
             {
                 var ids = byCategory[vs.Definition.CategoryId.IntegerValue];
+                // An area schedule lists one scheme: a new area of another scheme is not "missing" from it.
+                var scheme = AreaSchemeOf(doc, vs.Definition);
+                if (scheme != null) ids = ids.Where(i => (doc.GetElement(i) as Area)?.AreaScheme?.Id == scheme.Id).ToList();
+                if (ids.Count == 0) continue;
                 var shown = new HashSet<int>(new FilteredElementCollector(doc, vs.Id).WherePasses(new ElementIdSetFilter(ids))
                     .ToElementIds().Select(i => i.IntegerValue));
                 var missing = ids.Where(i => !shown.Contains(i.IntegerValue)).ToList();
@@ -265,19 +302,34 @@ namespace VibeModel.Services.Claude
                     var newIds = kv.Value;
                     var catId = new ElementId(kv.Key);
                     // Only a view that already draws this category is the "overview" of it.
-                    var others = new FilteredElementCollector(doc, view.Id).OfCategoryId(catId).WhereElementIsNotElementType()
-                        .Excluding(newIds).ToElements();
-                    if (others.Count == 0) continue;
+                    Func<FilteredElementCollector> others = () => new FilteredElementCollector(doc, view.Id).OfCategoryId(catId)
+                        .WhereElementIsNotElementType().Excluding(newIds);
+                    var first = others().FirstElementId();
+                    if (first == null || first == ElementId.InvalidElementId) continue;
                     var shown = new HashSet<int>(new FilteredElementCollector(doc, view.Id).WherePasses(new ElementIdSetFilter(newIds))
                         .ToElementIds().Select(i => i.IntegerValue));
 
-                    bool othersUnobscured = others.Any(o => IsUnobscured(o, view) == true);
                     var obscured = new List<ElementId>();
                     var notVisible = new List<ElementId>();
+                    bool? othersUnobscured = null; // read once, and only when a new bar is drawn there
+                    bool areaRead = false, hasArea = false;
+                    double[] areaMin = null, areaMax = null;
+                    var axes = ViewAxes(view);
                     foreach (var id in newIds)
                     {
-                        if (!shown.Contains(id.IntegerValue)) { notVisible.Add(id); continue; }
-                        if (othersUnobscured && IsUnobscured(doc.GetElement(id), view) == false) obscured.Add(id);
+                        var e = doc.GetElement(id);
+                        if (!shown.Contains(id.IntegerValue))
+                        {
+                            // Only inside what the view already draws of this category: a wall on the next
+                            // level is not "missing" from the plan of this one.
+                            if (!areaRead) { hasArea = ShownArea(others(), axes, out areaMin, out areaMax); areaRead = true; }
+                            if (hasArea && Within(e, view, axes, areaMin, areaMax)) notVisible.Add(id);
+                            continue;
+                        }
+                        var unobscured = IsUnobscured(e, view);
+                        if (unobscured != false) continue;
+                        if (othersUnobscured == null) othersUnobscured = others().Any(o => IsUnobscured(o, view) == true);
+                        if (othersUnobscured == true) obscured.Add(id);
                     }
                     var catName = Category.GetCategory(doc, catId)?.Name ?? "elements";
                     var sheet = pair.Value != null ? SheetHelper.Label(pair.Value) : null;
@@ -302,6 +354,75 @@ namespace VibeModel.Services.Claude
             }
             catch { /* a view type that has no such setting */ }
             return null;
+        }
+
+        private const double TouchMm = 10;
+
+        /// <summary>
+        /// The axes a view is compared in: its own drawing plane (right, up) — a plan ignores height, a
+        /// section ignores depth — and for a 3D view also its view direction.
+        /// </summary>
+        private static XYZ[] ViewAxes(View view)
+        {
+            try
+            {
+                return view is View3D
+                    ? new[] { view.RightDirection, view.UpDirection, view.ViewDirection }
+                    : new[] { view.RightDirection, view.UpDirection };
+            }
+            catch { return new[] { XYZ.BasisX, XYZ.BasisY, XYZ.BasisZ }; }
+        }
+
+        /// <summary>The extent, along the view's axes, of the elements the view already draws of this category.</summary>
+        private static bool ShownArea(IEnumerable<Element> shown, XYZ[] axes, out double[] min, out double[] max)
+        {
+            min = Enumerable.Repeat(double.MaxValue, axes.Length).ToArray();
+            max = Enumerable.Repeat(double.MinValue, axes.Length).ToArray();
+            bool any = false;
+            foreach (var e in shown)
+            {
+                if (!Extent(e, axes, out var lo, out var hi)) continue;
+                any = true;
+                for (int i = 0; i < axes.Length; i++) { min[i] = Math.Min(min[i], lo[i]); max[i] = Math.Max(max[i], hi[i]); }
+            }
+            return any;
+        }
+
+        /// <summary>An element's bounding box projected on each axis (all eight corners).</summary>
+        private static bool Extent(Element e, XYZ[] axes, out double[] lo, out double[] hi)
+        {
+            lo = hi = null;
+            var bb = e?.get_BoundingBox(null);
+            if (bb == null) return false;
+            lo = Enumerable.Repeat(double.MaxValue, axes.Length).ToArray();
+            hi = Enumerable.Repeat(double.MinValue, axes.Length).ToArray();
+            foreach (var x in new[] { bb.Min.X, bb.Max.X })
+            foreach (var y in new[] { bb.Min.Y, bb.Max.Y })
+            foreach (var z in new[] { bb.Min.Z, bb.Max.Z })
+            {
+                var p = bb.Transform.OfPoint(new XYZ(x, y, z));
+                for (int i = 0; i < axes.Length; i++)
+                {
+                    var d = p.DotProduct(axes[i]);
+                    lo[i] = Math.Min(lo[i], d);
+                    hi[i] = Math.Max(hi[i], d);
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// A new element the view does not show only counts as "missing" when it lies where the view
+        /// already draws this category — and, in a plan, on the plan's own level when it has one (a wall
+        /// on the next level is not missing from this plan). Rebar has no level: the plane decides.
+        /// </summary>
+        private static bool Within(Element e, View view, XYZ[] axes, double[] areaMin, double[] areaMax)
+        {
+            if (e == null) return false;
+            if (view is ViewPlan plan && plan.GenLevel != null && e.LevelId != null &&
+                e.LevelId != ElementId.InvalidElementId && e.LevelId != plan.GenLevel.Id) return false;
+            if (!Extent(e, axes, out var lo, out var hi)) return false;
+            return CoverageGeometry.Overlaps(lo, hi, areaMin, areaMax, RevitUnitHelper.MmToFeet(TouchMm));
         }
 
         private static ViewMiss Miss(View view, string sheet, string category, List<ElementId> ids, string cause) => new ViewMiss

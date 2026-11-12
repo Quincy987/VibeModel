@@ -662,24 +662,30 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   Create and `--rows` print a **`Scope:` line** (`DerivedCoverage.ComputeScope`, wording `ScheduleScope.cs`, pure):
   `Scope: shows 14 of 22 elements of Structural Rebar (14 rows); outside: 5 phase (schedule phase 'Nieuw', filter 'Show Complete'),
   2 design option (not primary), 1 by the schedule filter(s) — schedule filter(s): Partition = 'Boven'.` (JSON `data.scope`
-  `{inSchedule, rows, totalInCategory, outside:{total,phase,designOption,sheet,unexplained}, filters, includesLinks}`). In the
-  schedule = Revit's view-scoped collector on the schedule; total = the category's instances in this document. Per element outside:
-  the schedule's phase + phase filter (`GetPhaseStatus` → `GetPhaseStatusPresentation`; a future element always), else a non-primary
-  design option, else "filtered by sheet" (2023+), else the schedule's filters — named, never re-evaluated by us. Rows differ from
-  elements when grouped (a rebar set is one element). Linked rows are shown but not counted; key schedules, material takeoffs and
-  multi-category schedules read `Scope: not computed (…)`; above 20 000 outside elements the reasons are skipped. Replaces the old
-  `Empty:` line. Not measured live yet.
+  `{inSchedule, rows, totalInCategory, areaScheme?, outside:{total, phase, designOption, rest, restCause}, filters, filteredBySheet,
+  includesLinks}`). In the schedule = Revit's view-scoped collector on the schedule; total = the category's instances in this
+  document (an area schedule: the areas of its own area scheme). Decided per element outside: the schedule's phase — a future or past
+  (demolished earlier) element always, otherwise its phase filter (`GetPhaseStatusPresentation`) — else a non-primary design option.
+  The rest (`restCause`) is put down to the schedule's filters (named, never re-evaluated by us) and/or "filter by sheet" (2023+) as a
+  whole, or reads "not explained by phase or design option" when it has neither. Rows are the read-back rows (a grand-total row
+  included), not elements: a group or a rebar set is one row. Linked rows are shown but not counted; key schedules, material takeoffs
+  and multi-category schedules read `Scope: not computed (…)`; above 20 000 outside elements the reasons are skipped. Replaces the
+  old `Empty:` line. Not measured live yet.
 - **`-- schedules:` / `-- views:`** (`DerivedCoverage.Check`, independent of an office pack): after a modifying command or batch that
   ADDED model elements, `-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why)` for every
-  schedule of that category that leaves them out (≤ 20 schedules checked, sorted by name; key/takeoff/multi-category skipped), and
-  `-- views: …` for views VibeModel created or put on a sheet this session that already draw that category: `12 new Structural Rebar
-  hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the other bars are unobscured — exec:
-  rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans/sections/elevations until *View Unobscured* is on;
-  3D views skipped) or `… not visible in '…' — whyhidden <id> <view>` (≤ 10 views). Only added ids: a modified element a filtered
-  schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON `schedules:[{schedule,id,category,
-  missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`. Never after a preview, Discard,
-  READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is logged. The RULES block's
-  `DerivedCoverageRule` tells the chat to fix it or say what is missing, never to report the overview as complete.
+  schedule of that category that leaves them out (≤ 20 schedules checked, sorted by name; key/takeoff/multi-category skipped; an area
+  schedule only for areas of its scheme), and `-- views: …` for views VibeModel created or put on a sheet this session that already
+  draw that category (≤ 10 views): `12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the
+  other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans, sections and
+  elevations until *View Unobscured* is on; not checked in 3D views, where rebar draws solid at Fine detail since 2023), or `… not
+  visible in '…' — whyhidden <id> <view>` — only for an element that lies where the view already draws that category, compared in
+  the view's own plane (a plan ignores height, a section its depth; a 3D view all three axes, 10 mm touching tolerance), and in a plan
+  only on the plan's level when the element has one (a wall on the next level is not "missing" from this plan). Only added ids: a
+  modified element a filtered schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON
+  `schedules:[{schedule,id,category,missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`.
+  Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
+  logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
+  (respecting *Ask first* for sheets) or to say what is missing where — never to report the overview as complete.
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:

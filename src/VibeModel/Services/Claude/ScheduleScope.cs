@@ -17,18 +17,23 @@ namespace VibeModel.Services.Claude
     {
         /// <summary>Elements the schedule lists (Revit's own view-scoped collector on the schedule).</summary>
         public int InSchedule;
-        /// <summary>Body rows of the table — differs from InSchedule when grouped (not itemized).</summary>
+        /// <summary>Data rows of the table as read back (a grand-total row included) — not the element count when grouped.</summary>
         public int Rows;
-        /// <summary>Instances of the category in this document (links not counted).</summary>
+        /// <summary>Instances of the category in this document (links not counted; an area schedule: its area scheme).</summary>
         public int TotalInCategory;
         public string Category;
-        public int OutByPhase, OutByDesignOption, OutBySheetFilter, OutUnexplained;
+        /// <summary>The area scheme an area schedule lists, else null.</summary>
+        public string AreaScheme;
+        /// <summary>Outside elements the schedule's phase / phase filter hides, and those in a non-primary design option.</summary>
+        public int OutByPhase, OutByDesignOption;
         /// <summary>The schedule's phase and phase filter names, for the phase part of the line.</summary>
         public string PhaseName, PhaseFilterName;
-        /// <summary>"Partition = Boven", "Length > 12000 mm" — Revit's filters, never re-evaluated by us.</summary>
+        /// <summary>"Partition = 'Boven'", "Length > 12000 mm" — Revit's filters, never re-evaluated by us.</summary>
         public List<string> FilterDescriptions = new List<string>();
+        /// <summary>The schedule is set to "Filter by sheet" (Revit 2023+).</summary>
+        public bool FilteredBySheet;
         public bool IncludesLinks;
-        /// <summary>Embedded schedule: only the parent category is counted.</summary>
+        /// <summary>The schedule has an embedded schedule: only the parent category is counted.</summary>
         public bool Embedded;
         /// <summary>Above the reason cap: counted, but the outside elements were not classified.</summary>
         public bool ReasonsSkipped;
@@ -39,22 +44,33 @@ namespace VibeModel.Services.Claude
 
         public int Outside => Math.Max(0, TotalInCategory - InSchedule);
 
+        /// <summary>
+        /// Outside elements that neither the phase nor a design option explains. What is left can only
+        /// be put down to the schedule's filters or "filter by sheet" as a whole — never per element.
+        /// </summary>
+        public int Rest => ReasonsSkipped ? Outside : Math.Max(0, Outside - OutByPhase - OutByDesignOption);
+
+        /// <summary>"filtersOrSheet" | "filters" | "sheet" | "unknown" — what the rest can be put down to.</summary>
+        public string RestCause =>
+            FilterDescriptions.Count > 0 && FilteredBySheet ? "filtersOrSheet"
+            : FilterDescriptions.Count > 0 ? "filters"
+            : FilteredBySheet ? "sheet"
+            : "unknown";
+
         public string ScopeLine()
         {
             if (SkippedReason != null) return "Scope: not computed (" + SkippedReason + ").";
-            var cat = string.IsNullOrEmpty(Category) ? "the category" : Category;
+            var cat = (string.IsNullOrEmpty(Category) ? "the category" : Category) +
+                      (string.IsNullOrEmpty(AreaScheme) ? "" : " in area scheme '" + AreaScheme + "'");
             string rows = " (" + Count(Rows, "row") + ")";
-            string links = IncludesLinks ? "; linked elements shown but not counted" : "";
-            string embedded = Embedded ? "; embedded schedule: only the parent category counted" : "";
+            string tail = (IncludesLinks ? "; linked elements shown but not counted" : "") +
+                          (Embedded ? "; embedded schedule: only the parent category counted" : "") + ".";
             if (Outside == 0)
-                return "Scope: shows all " + Count(InSchedule, "element") + " of " + cat + rows + links + embedded + ".";
+                return "Scope: shows all " + Count(InSchedule, "element") + " of " + cat + rows + tail;
 
-            var line = "Scope: shows " + InSchedule.ToString(CultureInfo.InvariantCulture) + " of " +
-                       TotalInCategory.ToString(CultureInfo.InvariantCulture) + " elements of " + cat + rows +
-                       "; outside: ";
+            var line = "Scope: shows " + ScopeText.N(InSchedule) + " of " + ScopeText.N(TotalInCategory) + " elements of " + cat + rows + "; outside: ";
             if (ReasonsSkipped)
-                return line + Outside.ToString(CultureInfo.InvariantCulture) + " (reasons skipped above " +
-                       ReasonCap.ToString(CultureInfo.InvariantCulture) + " elements)" + Filters() + links + embedded + ".";
+                return line + ScopeText.N(Outside) + " (reasons skipped above " + ScopeText.N(ReasonCap) + " elements)" + Filters() + tail;
 
             var parts = new List<string>();
             if (OutByPhase > 0)
@@ -62,24 +78,28 @@ namespace VibeModel.Services.Claude
                 var detail = new List<string>();
                 if (!string.IsNullOrEmpty(PhaseName)) detail.Add("schedule phase '" + PhaseName + "'");
                 if (!string.IsNullOrEmpty(PhaseFilterName)) detail.Add("filter '" + PhaseFilterName + "'");
-                parts.Add(OutByPhase.ToString(CultureInfo.InvariantCulture) + " phase" + (detail.Count > 0 ? " (" + string.Join(", ", detail) + ")" : ""));
+                parts.Add(ScopeText.N(OutByPhase) + " phase" + (detail.Count > 0 ? " (" + string.Join(", ", detail) + ")" : ""));
             }
-            if (OutByDesignOption > 0) parts.Add(OutByDesignOption.ToString(CultureInfo.InvariantCulture) + " design option (not primary)");
-            if (OutBySheetFilter > 0) parts.Add(OutBySheetFilter.ToString(CultureInfo.InvariantCulture) + " not on the sheet's views (filtered by sheet)");
-            if (OutUnexplained > 0)
-                parts.Add(OutUnexplained.ToString(CultureInfo.InvariantCulture) +
-                          (FilterDescriptions.Count > 0 ? " by the schedule filter(s)" : " not explained by phase/option/sheet"));
-            // Counted outside but every per-element test passed it: the residual still has to show.
-            int named = OutByPhase + OutByDesignOption + OutBySheetFilter + OutUnexplained;
-            if (named < Outside) parts.Add((Outside - named).ToString(CultureInfo.InvariantCulture) + " not explained");
-            return line + string.Join(", ", parts) + Filters() + links + embedded + ".";
+            if (OutByDesignOption > 0) parts.Add(ScopeText.N(OutByDesignOption) + " design option (not primary)");
+            if (Rest > 0) parts.Add(ScopeText.N(Rest) + RestText());
+            return line + string.Join(", ", parts) + Filters() + tail;
+        }
+
+        private string RestText()
+        {
+            switch (RestCause)
+            {
+                case "filtersOrSheet": return " by the schedule filter(s) or filter by sheet";
+                case "filters": return " by the schedule filter(s)";
+                case "sheet": return " not on the sheet's views (filtered by sheet)";
+                default: return " not explained by phase or design option";
+            }
         }
 
         private string Filters() =>
             FilterDescriptions.Count == 0 ? "" : " — schedule filter(s): " + string.Join("; ", FilterDescriptions);
 
-        private static string Count(int n, string noun) =>
-            n.ToString(CultureInfo.InvariantCulture) + " " + noun + (n == 1 ? "" : "s");
+        private static string Count(int n, string noun) => ScopeText.N(n) + " " + noun + (n == 1 ? "" : "s");
 
         public Dictionary<string, object> ToJson()
         {
@@ -92,18 +112,20 @@ namespace VibeModel.Services.Claude
             d["inSchedule"] = InSchedule;
             d["rows"] = Rows;
             d["totalInCategory"] = TotalInCategory;
-            d["outside"] = new Dictionary<string, object>
+            if (AreaScheme != null) d["areaScheme"] = AreaScheme;
+            var outside = new Dictionary<string, object> { { "total", Outside } };
+            if (!ReasonsSkipped)
             {
-                { "total", Outside },
-                { "phase", OutByPhase },
-                { "designOption", OutByDesignOption },
-                { "sheet", OutBySheetFilter },
-                { "unexplained", Math.Max(0, Outside - OutByPhase - OutByDesignOption - OutBySheetFilter) }
-            };
+                outside["phase"] = OutByPhase;
+                outside["designOption"] = OutByDesignOption;
+            }
+            outside["rest"] = Rest;
+            outside["restCause"] = ReasonsSkipped ? "skipped" : RestCause;
+            d["outside"] = outside;
             d["filters"] = FilterDescriptions.Cast<object>().ToList();
+            d["filteredBySheet"] = FilteredBySheet;
             d["includesLinks"] = IncludesLinks;
             if (Embedded) d["embedded"] = true;
-            if (ReasonsSkipped) d["reasonsSkipped"] = true;
             return d;
         }
     }
@@ -145,22 +167,22 @@ namespace VibeModel.Services.Claude
         public bool IsEmpty => Schedules.Count == 0 && Views.Count == 0;
 
         /// <summary>
-        /// "-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 'Wapeningsstaat' --rows for why); …",
+        /// "-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why); …",
         /// null when every new element is in every checked schedule.
         /// </summary>
         public string SchedulesLine()
         {
             if (Schedules.Count == 0) return null;
             var parts = Schedules.Take(MaxShown).Select(s =>
-                N(s.Missing) + " new " + s.Category + " not in '" + s.Schedule + "' (schedule " + s.Id.ToString(CultureInfo.InvariantCulture) + " --rows for why)").ToList();
-            if (Schedules.Count > MaxShown) parts.Add("+" + N(Schedules.Count - MaxShown) + " more schedules");
-            if (SchedulesNotChecked > 0) parts.Add(N(SchedulesNotChecked) + " more schedules not checked");
+                ScopeText.N(s.Missing) + " new " + s.Category + " not in '" + s.Schedule + "' (schedule " + ScopeText.N(s.Id) + " --rows for why)").ToList();
+            if (Schedules.Count > MaxShown) parts.Add("+" + ScopeText.N(Schedules.Count - MaxShown) + " more schedules");
+            if (SchedulesNotChecked > 0) parts.Add(ScopeText.N(SchedulesNotChecked) + " more schedules not checked");
             return "-- schedules: " + string.Join("; ", parts);
         }
 
         /// <summary>
-        /// "-- views: 12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003) — exec: rebar.SetUnobscuredInView(view, true)",
-        /// null when nothing is missing.
+        /// "-- views: 12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - Wapening), where the other
+        /// bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)"; null when nothing is missing.
         /// </summary>
         public string ViewsLine()
         {
@@ -169,14 +191,13 @@ namespace VibeModel.Services.Claude
             {
                 var where = "'" + v.View + "'" + (string.IsNullOrEmpty(v.Sheet) ? "" : " (sheet " + v.Sheet + ")");
                 if (v.Cause == ViewMiss.Obscured)
-                    return N(v.Missing) + " new " + v.Category + " hidden inside their host in " + where +
+                    return ScopeText.N(v.Missing) + " new " + v.Category + " hidden inside their host in " + where +
                            ", where the other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)";
                 var first = v.Ids.Count > 0 ? v.Ids[0].ToString(CultureInfo.InvariantCulture) : "<id>";
-                return N(v.Missing) + " new " + v.Category + " not visible in " + where +
-                       " — whyhidden " + first + " " + v.Id.ToString(CultureInfo.InvariantCulture);
+                return ScopeText.N(v.Missing) + " new " + v.Category + " not visible in " + where + " — whyhidden " + first + " " + ScopeText.N(v.Id);
             }).ToList();
-            if (Views.Count > MaxShown) parts.Add("+" + N(Views.Count - MaxShown) + " more views");
-            if (ViewsNotChecked > 0) parts.Add(N(ViewsNotChecked) + " more views not checked");
+            if (Views.Count > MaxShown) parts.Add("+" + ScopeText.N(Views.Count - MaxShown) + " more views");
+            if (ViewsNotChecked > 0) parts.Add(ScopeText.N(ViewsNotChecked) + " more views not checked");
             return "-- views: " + string.Join("; ", parts);
         }
 
@@ -192,7 +213,7 @@ namespace VibeModel.Services.Claude
             { "cause", v.Cause }, { "ids", v.Ids.Take(MaxIds).Cast<object>().ToList() }
         }).ToList();
 
-        /// <summary>Adds the text lines (before the stamp) — in the order schedules, views.</summary>
+        /// <summary>The text lines (before the stamp), in the order schedules, views.</summary>
         public IEnumerable<string> TextLines()
         {
             var s = SchedulesLine();
@@ -207,18 +228,36 @@ namespace VibeModel.Services.Claude
             if (Schedules.Count > 0) envelope["schedules"] = SchedulesJson();
             if (Views.Count > 0) envelope["views"] = ViewsJson();
         }
+    }
 
-        private static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
+    /// <summary>Axis-aligned box overlap for the `-- views:` noise guard (pure).</summary>
+    internal static class CoverageGeometry
+    {
+        /// <summary>
+        /// True when box A, shrunk by <paramref name="shrink"/> on every side, still overlaps box B, in
+        /// as many axes as the arrays have (the view's drawing plane, or 3 for a 3D view). A box that only
+        /// touches B — an element just beyond the edge of what the view draws — does not count.
+        /// </summary>
+        public static bool Overlaps(double[] aMin, double[] aMax, double[] bMin, double[] bMax, double shrink)
+        {
+            for (int i = 0; i < aMin.Length; i++)
+            {
+                double lo = aMin[i] + shrink, hi = aMax[i] - shrink;
+                if (lo > hi) lo = hi = (aMin[i] + aMax[i]) / 2; // thinner than twice the shrink: its middle
+                if (hi < bMin[i] || lo > bMax[i]) return false;
+            }
+            return true;
+        }
     }
 
     /// <summary>Wording of Revit's schedule filters for the scope line (pure parts).</summary>
     internal static class ScheduleFilterText
     {
-        /// <summary>"Partition = Boven", "Length > 12000 mm", "Comments has a value".</summary>
+        /// <summary>"Partition = 'Boven'", "Length > 12000 mm", "Comments has a value".</summary>
         public static string Describe(string field, string filterType, string value)
         {
             var op = Op(filterType);
-            if (filterType == "HasValue" || filterType == "HasNoValue")
+            if (filterType == "HasValue" || filterType == "HasNoValue" || filterType == "HasParameter")
                 return field + " " + op;
             return field + " " + op + (string.IsNullOrEmpty(value) ? " ''" : " " + value);
         }
@@ -248,5 +287,10 @@ namespace VibeModel.Services.Claude
                 default: return string.IsNullOrEmpty(filterType) ? "?" : filterType;
             }
         }
+    }
+
+    internal static class ScopeText
+    {
+        public static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
     }
 }

@@ -35,19 +35,19 @@ namespace VibeModel.Tests
             s.PhaseName = "Nieuw";
             s.PhaseFilterName = "Show Complete";
             s.OutByDesignOption = 2;
-            s.OutUnexplained = 1;
             s.FilterDescriptions.Add("Partition = 'Boven'");
             Assert.Equal("Scope: shows 14 of 22 elements of Structural Rebar (14 rows); outside: 5 phase (schedule phase 'Nieuw', " +
                          "filter 'Show Complete'), 2 design option (not primary), 1 by the schedule filter(s) — schedule filter(s): Partition = 'Boven'.",
                 s.ScopeLine());
+            Assert.Equal("filters", s.RestCause);
         }
 
         [Fact]
-        public void ScopeLine_WithoutFilters_SaysUnexplained()
+        public void ScopeLine_RestWithoutFiltersOrSheet_IsUnexplained()
         {
             var s = Scope(3, 4, 3);
-            s.OutUnexplained = 1;
-            Assert.Contains("1 not explained by phase/option/sheet", s.ScopeLine());
+            Assert.EndsWith("outside: 1 not explained by phase or design option.", s.ScopeLine());
+            Assert.Equal("unknown", s.RestCause);
         }
 
         [Fact]
@@ -66,10 +66,10 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void ScopeLine_SheetFilter_LinksAndEmbedded()
+        public void ScopeLine_SheetFilterOnly_LinksAndEmbedded()
         {
             var s = Scope(2, 5, 2);
-            s.OutBySheetFilter = 3;
+            s.FilteredBySheet = true;
             s.IncludesLinks = true;
             s.Embedded = true;
             Assert.Equal("Scope: shows 2 of 5 elements of Structural Rebar (2 rows); outside: 3 not on the sheet's views (filtered by sheet)" +
@@ -77,12 +77,39 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void ScopeLine_NeverShowsMoreThanTheTotal_AndNamesAResidual()
+        public void ScopeLine_FiltersAndSheet_NeverClaimsOne()
         {
-            // Reasons that do not add up to the outside count are never hidden.
+            // The rest is not re-evaluated, so with both set neither is named as the cause.
+            var s = Scope(2, 5, 2);
+            s.FilteredBySheet = true;
+            s.FilterDescriptions.Add("Mark = 'K1'");
+            Assert.Contains("3 by the schedule filter(s) or filter by sheet", s.ScopeLine());
+            Assert.Equal("filtersOrSheet", s.RestCause);
+        }
+
+        [Fact]
+        public void ScopeLine_PhaseAndRest_AddUpToTheOutsideCount()
+        {
             var s = Scope(10, 13, 10);
             s.OutByPhase = 1;
-            Assert.EndsWith("outside: 1 phase, 2 not explained.", s.ScopeLine());
+            Assert.EndsWith("outside: 1 phase, 2 not explained by phase or design option.", s.ScopeLine());
+        }
+
+        [Fact]
+        public void Rest_NeverNegative_WhenReasonsOutnumberTheGap()
+        {
+            var s = Scope(10, 12, 10);
+            s.OutByPhase = 5;
+            Assert.Equal(0, s.Rest);
+            Assert.DoesNotContain("not explained", s.ScopeLine());
+        }
+
+        [Fact]
+        public void ScopeLine_AreaSchedule_NamesItsScheme()
+        {
+            var s = new ScheduleScopeSummary { InSchedule = 4, TotalInCategory = 4, Rows = 4, Category = "Areas", AreaScheme = "Gross Building" };
+            Assert.Equal("Scope: shows all 4 elements of Areas in area scheme 'Gross Building' (4 rows).", s.ScopeLine());
+            Assert.Equal("Gross Building", s.ToJson()["areaScheme"]);
         }
 
         [Fact]
@@ -91,6 +118,9 @@ namespace VibeModel.Tests
             var s = Scope(5, 30005, 5);
             s.ReasonsSkipped = true;
             Assert.Equal("Scope: shows 5 of 30005 elements of Structural Rebar (5 rows); outside: 30000 (reasons skipped above 20000 elements).", s.ScopeLine());
+            var outside = (Dictionary<string, object>)s.ToJson()["outside"];
+            Assert.Equal("skipped", outside["restCause"]);
+            Assert.False(outside.ContainsKey("phase"));
         }
 
         [Theory]
@@ -110,7 +140,6 @@ namespace VibeModel.Tests
             var s = Scope(14, 22, 12);
             s.OutByPhase = 5;
             s.OutByDesignOption = 2;
-            s.OutUnexplained = 1;
             s.FilterDescriptions.Add("Length > 12000 mm");
             var json = s.ToJson();
             Assert.Equal(14, json["inSchedule"]);
@@ -120,16 +149,52 @@ namespace VibeModel.Tests
             Assert.Equal(8, outside["total"]);
             Assert.Equal(5, outside["phase"]);
             Assert.Equal(2, outside["designOption"]);
-            Assert.Equal(0, outside["sheet"]);
-            Assert.Equal(1, outside["unexplained"]);
+            Assert.Equal(1, outside["rest"]);
+            Assert.Equal("filters", outside["restCause"]);
             Assert.Single((List<object>)json["filters"]);
+            Assert.Equal(false, json["filteredBySheet"]);
             Assert.Equal(false, json["includesLinks"]);
+            Assert.False(json.ContainsKey("areaScheme"));
+        }
+
+        // ------------------------------------------------------------------ view-plane overlap (the -- views: noise guard)
+
+        [Fact]
+        public void Overlaps_InsideAndAcross()
+        {
+            var bMin = new[] { 0.0, 0.0 };
+            var bMax = new[] { 10.0, 10.0 };
+            Assert.True(CoverageGeometry.Overlaps(new[] { 2.0, 2.0 }, new[] { 3.0, 3.0 }, bMin, bMax, 0.1));
+            Assert.True(CoverageGeometry.Overlaps(new[] { -5.0, 4.0 }, new[] { 5.0, 6.0 }, bMin, bMax, 0.1));
+        }
+
+        [Fact]
+        public void Overlaps_OnlyTouchingOrBeyond_DoesNotCount()
+        {
+            Assert.False(CoverageGeometry.Overlaps(new[] { 10.0, 0.0 }, new[] { 20.0, 10.0 }, new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 }, 0.05));
+            Assert.False(CoverageGeometry.Overlaps(new[] { 30.0, 0.0 }, new[] { 40.0, 10.0 }, new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 }, 0.05));
+        }
+
+        [Fact]
+        public void Overlaps_AThinElementKeepsItsMiddle()
+        {
+            // A bar thinner than twice the shrink: its middle decides.
+            Assert.True(CoverageGeometry.Overlaps(new[] { 5.0, 4.999 }, new[] { 6.0, 5.001 }, new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 }, 0.01));
+            Assert.False(CoverageGeometry.Overlaps(new[] { 5.0, 10.0 }, new[] { 6.0, 10.002 }, new[] { 0.0, 0.0 }, new[] { 10.0, 10.0 }, 0.01));
+        }
+
+        [Fact]
+        public void Overlaps_ThreeAxes_For3DViews()
+        {
+            Assert.False(CoverageGeometry.Overlaps(new[] { 1.0, 1.0, 20.0 }, new[] { 2.0, 2.0, 30.0 }, new[] { 0.0, 0.0, 0.0 }, new[] { 10.0, 10.0, 10.0 }, 0.01));
+            Assert.True(CoverageGeometry.Overlaps(new[] { 1.0, 1.0, 5.0 }, new[] { 2.0, 2.0, 6.0 }, new[] { 0.0, 0.0, 0.0 }, new[] { 10.0, 10.0, 10.0 }, 0.01));
         }
 
         [Theory]
         [InlineData("Partition", "Equal", "'Boven'", "Partition = 'Boven'")]
         [InlineData("Length", "GreaterThan", "12000 mm", "Length > 12000 mm")]
         [InlineData("Comments", "HasValue", null, "Comments has a value")]
+        [InlineData("Comments", "HasParameter", null, "Comments has the parameter")]
         [InlineData("Mark", "NotBeginsWith", "'K'", "Mark does not begin with 'K'")]
         [InlineData("Mark", "Equal", null, "Mark = ''")]
         public void FilterText_IsReadable(string field, string type, string value, string expected)
