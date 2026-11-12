@@ -323,6 +323,17 @@ namespace VibeModel.Infrastructure
 
         public static void SetLanguage(string language) => SetValue("Language", Services.Chat.Strings.Normalize(language));
 
+        // --- Theme ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// The pane's look: "revit" (default: follow Revit — light on Revit 2023, Revit's own
+        /// light/dark theme on 2024+), "light" or "dark". managed.json wins (locked in Settings).
+        /// </summary>
+        public static UI.ThemeChoice GetTheme() => UI.ThemeColors.ParseChoice(
+            ManagedOrSetting(ManagedSettings.Theme, UI.ThemeColors.ChoiceRevit));
+
+        public static void SetTheme(UI.ThemeChoice choice) => SetValue("Theme", UI.ThemeColors.ChoiceName(choice));
+
         // --- Office standards (plan 11) --------------------------------------------------
 
         /// <summary>

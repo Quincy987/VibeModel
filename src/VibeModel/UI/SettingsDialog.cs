@@ -16,19 +16,19 @@ namespace VibeModel.UI
 {
     public class SettingsDialog : Window
     {
-        private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-        private static readonly SolidColorBrush BgInput = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
-        private static readonly SolidColorBrush BgPanel = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
-        private static readonly SolidColorBrush FgPrimary = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
-        private static readonly SolidColorBrush FgSecondary = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
-        private static readonly SolidColorBrush AccentBlue = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-        private static readonly SolidColorBrush BgButton = new SolidColorBrush(Color.FromRgb(0x0E, 0x63, 0x9C));
-        private static readonly SolidColorBrush BgButtonHover = new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xAC));
-        private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
-        private static readonly SolidColorBrush FgError = new SolidColorBrush(Color.FromRgb(0xF4, 0x43, 0x36));
-        private static readonly SolidColorBrush FgSuccess = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-        private static readonly SolidColorBrush BgSelectedTab = new SolidColorBrush(Color.FromRgb(0x0E, 0x63, 0x9C));
-        private static readonly SolidColorBrush BgUnselectedTab = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x30));
+        private static SolidColorBrush BgDark => Palette.BgDark;
+        private static SolidColorBrush BgInput => Palette.BgInput;
+        private static SolidColorBrush BgPanel => Palette.BgPanel;
+        private static SolidColorBrush FgPrimary => Palette.FgPrimary;
+        private static SolidColorBrush FgSecondary => Palette.FgSecondary;
+        private static SolidColorBrush AccentBlue => Palette.Accent;
+        private static SolidColorBrush BgButton => Palette.BgButton;
+        private static SolidColorBrush BgButtonHover => Palette.BgButtonHover;
+        private static SolidColorBrush BorderColor => Palette.BorderColor;
+        private static SolidColorBrush FgError => Palette.FgError;
+        private static SolidColorBrush FgSuccess => Palette.FgOk;
+        private static SolidColorBrush BgSelectedTab => Palette.BgButton;
+        private static SolidColorBrush BgUnselectedTab => Palette.BgTab;
 
         // Backend selector
         private Button _tabCli;
@@ -64,6 +64,7 @@ namespace VibeModel.UI
 
         // Chat language ("nl" / "en")
         private ComboBox _languageCombo;
+        private ComboBox _themeCombo;
         // Plan 15: "Wijzigingen door de AI" (auto / ask / readonly) + the session's "don't ask again".
         private readonly List<RadioButton> _approvalRadios = new List<RadioButton>();
         private CheckBox _approvalSessionCheck;
@@ -143,6 +144,7 @@ namespace VibeModel.UI
 
             // Chat language — independent of the backend tabs.
             mainPanel.Children.Add(CreateLanguagePanel());
+            mainPanel.Children.Add(CreateThemePanel());
 
             // Change approval (plan 15) — what happens to the AI's deletions and edits.
             mainPanel.Children.Add(CreateApprovalPanel());
@@ -212,7 +214,7 @@ namespace VibeModel.UI
             var btn = new Button
             {
                 Content = text,
-                Foreground = Brushes.White,
+                Foreground = Palette.Get(ThemeRole.TabFg),
                 Background = BgUnselectedTab,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(14, 6, 14, 6),
@@ -235,6 +237,8 @@ namespace VibeModel.UI
             _tabCli.Background = _selectedBackend == "claude-cli" ? BgSelectedTab : BgUnselectedTab;
             _tabApi.Background = _selectedBackend == "anthropic-api" ? BgSelectedTab : BgUnselectedTab;
             _tabLocal.Background = _selectedBackend == "local-llm" ? BgSelectedTab : BgUnselectedTab;
+            foreach (var tab in new[] { _tabCli, _tabApi, _tabLocal })
+                tab.Foreground = tab.Background == BgSelectedTab ? Palette.FgButton : Palette.Get(ThemeRole.TabFg);
 
             _cliPanel.Visibility = _selectedBackend == "claude-cli" ? Visibility.Visible : Visibility.Collapsed;
             _apiPanel.Visibility = _selectedBackend == "anthropic-api" ? Visibility.Visible : Visibility.Collapsed;
@@ -329,6 +333,43 @@ namespace VibeModel.UI
             if (ManagedSettings.IsManaged(ManagedSettings.Language))
             {
                 _languageCombo.IsEnabled = false;
+                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
+            }
+            return panel;
+        }
+
+        // --- Theme panel ---
+
+        private StackPanel CreateThemePanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = Strings.Get(Strings.SettingThemeTitle),
+                Foreground = FgPrimary,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingThemeHint)));
+
+            _themeCombo = new ComboBox
+            {
+                FontSize = 13,
+                Width = 200,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_themeCombo, "SettingsTheme");
+            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeFollowRevit), Tag = ThemeChoice.Revit });
+            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeLight), Tag = ThemeChoice.Light });
+            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeDark), Tag = ThemeChoice.Dark });
+            var current = SettingsManager.GetTheme();
+            _themeCombo.SelectedIndex = current == ThemeChoice.Light ? 1 : current == ThemeChoice.Dark ? 2 : 0;
+            panel.Children.Add(_themeCombo);
+            if (ManagedSettings.IsManaged(ManagedSettings.Theme))
+            {
+                _themeCombo.IsEnabled = false;
                 panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
             }
             return panel;
@@ -921,7 +962,7 @@ namespace VibeModel.UI
             {
                 Content = text,
                 Background = BgButton,
-                Foreground = Brushes.White,
+                Foreground = Palette.FgButton,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(16, 6, 16, 6),
                 FontSize = 13,
@@ -1108,6 +1149,8 @@ namespace VibeModel.UI
 
             if (_languageCombo.IsEnabled)
                 SettingsManager.SetLanguage((_languageCombo.SelectedItem as ComboBoxItem)?.Tag as string);
+            if (_themeCombo.IsEnabled && (_themeCombo.SelectedItem as ComboBoxItem)?.Tag is ThemeChoice theme)
+                SettingsManager.SetTheme(theme);
 
             // Change approval (plan 15): the user's own choice; IT's (managed.json) is locked.
             foreach (var radio in _approvalRadios)
@@ -1130,6 +1173,8 @@ namespace VibeModel.UI
                 SettingsManager.SetProjectContextFolder(_projectKey, _projectFolderOverride);
 
             SettingsManager.ClearCache();
+            // A new theme repaints the pane (and this dialog) at once: the shared brushes recolour.
+            ThemeManager.Refresh();
             // Pick up a new pack location / switch immediately (no Revit API involved).
             Services.Standards.StandardsContext.Reset();
 

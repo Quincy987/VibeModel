@@ -226,7 +226,7 @@ namespace VibeModel.Markdown.Renderers
         {
             if (string.IsNullOrEmpty(text)) return 0;
             var formatted = new FormattedText(CitationParser.PlaceholdersToSuperscript(text), CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, header ? HeaderFace : CellFace, MarkdownStyles.FontSizeTable, Brushes.Black, 1.0);
+                FlowDirection.LeftToRight, header ? HeaderFace : CellFace, MarkdownStyles.FontSizeTable, Brushes.Black, 1.0); // measuring only: never drawn
             return formatted.WidthIncludingTrailingWhitespace;
         }
 

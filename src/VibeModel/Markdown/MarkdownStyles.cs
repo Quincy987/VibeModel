@@ -1,28 +1,30 @@
 using System.Windows;
 using System.Windows.Media;
+using VibeModel.UI;
 
 namespace VibeModel.Markdown
 {
     /// <summary>
-    /// Programmatic dark-theme styles for markdown rendering.
+    /// Programmatic styles for markdown rendering (light or dark, see <see cref="ThemeManager"/>).
     /// Replaces the XAML resource dictionary approach from Markdig.Wpf.
     /// </summary>
     public static class MarkdownStyles
     {
-        // Colors matching ChatPane dark theme
-        public static readonly SolidColorBrush FgPrimary = Freeze(new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)));
-        public static readonly SolidColorBrush FgSecondary = Freeze(new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99)));
-        public static readonly SolidColorBrush BgCode = Freeze(new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A)));
-        // Inline code sits on the assistant bubble (#2D2D30): a slightly lighter pill reads as code
-        // without the hard black block of a code fence.
-        public static readonly SolidColorBrush BgCodeInline = Freeze(new SolidColorBrush(Color.FromRgb(0x3E, 0x3E, 0x44)));
-        public static readonly SolidColorBrush FgCodeInline = Freeze(new SolidColorBrush(Color.FromRgb(0xD8, 0xD8, 0xD8)));
-        public static readonly SolidColorBrush AccentBlue = Freeze(new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0)));
-        public static readonly SolidColorBrush BorderColor = Freeze(new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46)));
-        // Tables: a subtle header fill and row tint on the assistant bubble (#2D2D30).
-        public static readonly SolidColorBrush BgTableHeader = Freeze(new SolidColorBrush(Color.FromRgb(0x3C, 0x3C, 0x42)));
-        public static readonly SolidColorBrush BgTableRowAlt = Freeze(new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x37)));
-        public static readonly SolidColorBrush QuoteBorder = Freeze(new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0)));
+        // Colours come from the shared theme palette (UI.Palette): one brush per role per UI
+        // thread, recoloured in place when the theme switches — so a rendered answer follows too.
+        public static SolidColorBrush FgPrimary => Palette.FgPrimary;
+        public static SolidColorBrush FgSecondary => Palette.FgSecondary;
+        public static SolidColorBrush BgCode => Palette.BgCode;
+        // Inline code sits on the assistant bubble: a slightly different pill reads as code
+        // without the hard block of a code fence.
+        public static SolidColorBrush BgCodeInline => Palette.BgCodeInline;
+        public static SolidColorBrush FgCodeInline => Palette.FgCodeInline;
+        public static SolidColorBrush AccentBlue => Palette.Accent;
+        public static SolidColorBrush BorderColor => Palette.BorderColor;
+        // Tables: a subtle header fill and row tint on the assistant bubble.
+        public static SolidColorBrush BgTableHeader => Palette.BgTableHeader;
+        public static SolidColorBrush BgTableRowAlt => Palette.BgTableRowAlt;
+        public static SolidColorBrush QuoteBorder => Palette.AccentLine;
 
         public static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
@@ -46,11 +48,5 @@ namespace VibeModel.Markdown
         // message's Copy button still copies everything.
         public const int CodeBlockMaxLines = 20;
         public const int CodeBlockShownLines = 12;
-
-        private static SolidColorBrush Freeze(SolidColorBrush brush)
-        {
-            brush.Freeze();
-            return brush;
-        }
     }
 }

@@ -20,15 +20,15 @@ namespace VibeModel.UI
     /// </summary>
     internal sealed class ModeChip : Button
     {
-        public static readonly SolidColorBrush Teal = Frozen(0x4E, 0xC9, 0xB0);
-        public static readonly SolidColorBrush Amber = Frozen(0xE5, 0xA5, 0x3A);
-        public static readonly SolidColorBrush Grey = Frozen(0x9A, 0x9A, 0xA5);
-        public static readonly SolidColorBrush Violet = Frozen(0xB1, 0x8C, 0xE8);
-        private static readonly SolidColorBrush ChipBg = Frozen(0x3A, 0x3A, 0x40);
-        private static readonly SolidColorBrush ChipBorder = Frozen(0x50, 0x50, 0x58);
-        private static readonly SolidColorBrush MenuBg = Frozen(0x2D, 0x2D, 0x30);
-        private static readonly SolidColorBrush MenuBorder = Frozen(0x55, 0x55, 0x5C);
-        private static readonly SolidColorBrush RowHover = Frozen(0x3A, 0x3A, 0x40);
+        public static SolidColorBrush Teal => Palette.Get(ThemeRole.ModeAuto);
+        public static SolidColorBrush Amber => Palette.Get(ThemeRole.ModeAsk);
+        public static SolidColorBrush Grey => Palette.Get(ThemeRole.ModeReadOnly);
+        public static SolidColorBrush Violet => Palette.Get(ThemeRole.ModeAnnotate);
+        private static SolidColorBrush ChipBg => Palette.Get(ThemeRole.ChipBg);
+        private static SolidColorBrush ChipBorder => Palette.Get(ThemeRole.ChipBorder);
+        private static SolidColorBrush MenuBg => Palette.Get(ThemeRole.MenuBg);
+        private static SolidColorBrush MenuBorder => Palette.Get(ThemeRole.MenuBorder);
+        private static SolidColorBrush RowHover => Palette.Get(ThemeRole.MenuRowHover);
 
         // Segoe MDL2 Assets ships with Windows 10/11; without it a coloured dot stands in.
         private static readonly FontFamily IconFont = new FontFamily("Segoe MDL2 Assets");
@@ -290,13 +290,6 @@ namespace VibeModel.UI
             border.AppendChild(content);
             _pillTemplate = new ControlTemplate(typeof(Button)) { VisualTree = border };
             return _pillTemplate;
-        }
-
-        private static SolidColorBrush Frozen(byte r, byte g, byte b)
-        {
-            var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-            brush.Freeze();
-            return brush;
         }
     }
 }

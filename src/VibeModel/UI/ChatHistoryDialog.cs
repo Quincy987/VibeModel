@@ -18,15 +18,15 @@ namespace VibeModel.UI
     public class ChatHistoryDialog : Window
     {
         // Same dark palette as SettingsDialog / ChatPane
-        private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-        private static readonly SolidColorBrush BgPanel = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
-        private static readonly SolidColorBrush BgInput = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
-        private static readonly SolidColorBrush BgRowHover = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x30));
-        private static readonly SolidColorBrush FgPrimary = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
-        private static readonly SolidColorBrush FgSecondary = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
-        private static readonly SolidColorBrush AccentBlue = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-        private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
-        private static readonly SolidColorBrush FgError = new SolidColorBrush(Color.FromRgb(0xF4, 0x43, 0x36));
+        private static SolidColorBrush BgDark => Palette.BgDark;
+        private static SolidColorBrush BgPanel => Palette.BgPanel;
+        private static SolidColorBrush BgInput => Palette.BgInput;
+        private static SolidColorBrush BgRowHover => Palette.RowHover;
+        private static SolidColorBrush FgPrimary => Palette.FgPrimary;
+        private static SolidColorBrush FgSecondary => Palette.FgSecondary;
+        private static SolidColorBrush AccentBlue => Palette.Accent;
+        private static SolidColorBrush BorderColor => Palette.BorderColor;
+        private static SolidColorBrush FgError => Palette.FgError;
 
         /// <summary>Id of the session the user chose to open (null if the dialog was dismissed).</summary>
         public string SelectedSessionId { get; private set; }

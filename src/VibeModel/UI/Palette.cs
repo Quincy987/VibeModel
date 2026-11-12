@@ -1,27 +1,145 @@
+using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace VibeModel.UI
 {
     /// <summary>
-    /// The dark theme's colours and the flat button, shared by the connect wizard and the Diagnose
-    /// window (the chat pane and Settings still carry their own copies of the same values).
+    /// The one source of colour for every VibeModel window, the chat pane and the markdown renderer.
+    /// Each <see cref="ThemeRole"/> is ONE shared <see cref="SolidColorBrush"/>, deliberately not frozen:
+    /// when <see cref="ThemeManager"/> switches theme the brush's <c>Color</c> is set, and every element
+    /// holding it repaints in place — no rebuild, the conversation stays.
+    /// <para>
+    /// An unfrozen brush belongs to the thread that made it, so the set is per UI thread
+    /// (<c>[ThreadStatic]</c>): in Revit that is the one main thread; unit tests render on a fresh
+    /// STA thread each and get their own. A theme change recolours every live set on its own
+    /// dispatcher. Never hand a palette brush to another thread (worker code marshals back first).
+    /// </para>
     /// </summary>
     internal static class Palette
     {
-        public static readonly SolidColorBrush BgDark = Frozen(0x1E, 0x1E, 0x1E);
-        public static readonly SolidColorBrush BgPanel = Frozen(0x25, 0x25, 0x25);
-        public static readonly SolidColorBrush BgInput = Frozen(0x33, 0x33, 0x33);
-        public static readonly SolidColorBrush FgPrimary = Frozen(0xE0, 0xE0, 0xE0);
-        public static readonly SolidColorBrush FgSecondary = Frozen(0x99, 0x99, 0x99);
-        public static readonly SolidColorBrush FgOk = Frozen(0x4E, 0xC9, 0xB0);
-        public static readonly SolidColorBrush FgError = Frozen(0xF4, 0x43, 0x36);
-        public static readonly SolidColorBrush BgButton = Frozen(0x0E, 0x63, 0x9C);
-        public static readonly SolidColorBrush BgButtonSecondary = Frozen(0x3F, 0x3F, 0x46);
-        public static readonly SolidColorBrush Outline = Frozen(0x3F, 0x3F, 0x46);
+        private sealed class BrushSet
+        {
+            public readonly SolidColorBrush[] Brushes;
+            public int Version;
+            public Dispatcher Dispatcher => Brushes[0].Dispatcher;
+
+            public BrushSet()
+            {
+                var count = Enum.GetValues(typeof(ThemeRole)).Length;
+                Brushes = new SolidColorBrush[count];
+                for (int i = 0; i < count; i++) Brushes[i] = new SolidColorBrush();
+            }
+        }
+
+        [ThreadStatic] private static BrushSet _local;
+        private static readonly object Lock = new object();
+        private static readonly List<WeakReference<BrushSet>> Sets = new List<WeakReference<BrushSet>>();
+
+        static Palette()
+        {
+            ThemeManager.Changed += OnThemeChanged;
+        }
+
+        /// <summary>This thread's brush for <paramref name="role"/>, in the current theme.</summary>
+        public static SolidColorBrush Get(ThemeRole role)
+        {
+            var set = _local;
+            if (set == null)
+            {
+                set = _local = new BrushSet();
+                lock (Lock)
+                {
+                    Sets.RemoveAll(w => !w.TryGetTarget(out _));
+                    Sets.Add(new WeakReference<BrushSet>(set));
+                }
+            }
+            if (set.Version != ThemeManager.Version) Apply(set);
+            return set.Brushes[(int)role];
+        }
+
+        public static Color ColorOf(uint argb) =>
+            Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
+
+        private static void Apply(BrushSet set)
+        {
+            var version = ThemeManager.Version;
+            var colors = ThemeManager.Colors;
+            for (int i = 0; i < set.Brushes.Length; i++)
+                set.Brushes[i].Color = ColorOf(colors[(ThemeRole)i]);
+            set.Version = version;
+        }
+
+        private static void OnThemeChanged()
+        {
+            List<BrushSet> live = new List<BrushSet>();
+            lock (Lock)
+            {
+                foreach (var w in Sets)
+                    if (w.TryGetTarget(out var s)) live.Add(s);
+            }
+            foreach (var set in live)
+            {
+                var dispatcher = set.Dispatcher;
+                if (dispatcher.CheckAccess()) Apply(set);
+                else if (!dispatcher.HasShutdownStarted) dispatcher.BeginInvoke(new Action(() => Apply(set)));
+            }
+        }
+
+        // --- Roles ---------------------------------------------------------------------------
+
+        public static SolidColorBrush BgDark => Get(ThemeRole.WindowBg);
+        public static SolidColorBrush BgPanel => Get(ThemeRole.PanelBg);
+        public static SolidColorBrush BgInput => Get(ThemeRole.InputBg);
+        public static SolidColorBrush RowHover => Get(ThemeRole.RowHover);
+        public static SolidColorBrush ChipOutline => Get(ThemeRole.ChipOutline);
+        public static SolidColorBrush Outline => Get(ThemeRole.Border);
+        public static SolidColorBrush BorderColor => Get(ThemeRole.Border);
+
+        public static SolidColorBrush FgPrimary => Get(ThemeRole.FgPrimary);
+        public static SolidColorBrush FgSecondary => Get(ThemeRole.FgSecondary);
+        public static SolidColorBrush FgMuted => Get(ThemeRole.FgMuted);
+        public static SolidColorBrush FgDone => Get(ThemeRole.FgDone);
+
+        public static SolidColorBrush Accent => Get(ThemeRole.Accent);
+        public static SolidColorBrush AccentLine => Get(ThemeRole.AccentLine);
+        public static SolidColorBrush RunningStepBg => Get(ThemeRole.RunningStepBg);
+
+        public static SolidColorBrush BgButton => Get(ThemeRole.ButtonBg);
+        public static SolidColorBrush BgButtonHover => Get(ThemeRole.ButtonHover);
+        public static SolidColorBrush FgButton => Get(ThemeRole.ButtonFg);
+        public static SolidColorBrush BgButtonSecondary => Get(ThemeRole.ButtonSecondaryBg);
+        public static SolidColorBrush FgButtonSecondary => Get(ThemeRole.ButtonSecondaryFg);
+
+        public static SolidColorBrush BgUserMsg => Get(ThemeRole.UserMsgBg);
+        public static SolidColorBrush BgAssistantMsg => Get(ThemeRole.AssistantMsgBg);
+        public static SolidColorBrush BgSystemMsg => Get(ThemeRole.SystemMsgBg);
+        public static SolidColorBrush AssistantMsgBorder => Get(ThemeRole.AssistantMsgBorder);
+
+        public static SolidColorBrush BgCode => Get(ThemeRole.CodeBg);
+        public static SolidColorBrush BgCodeInline => Get(ThemeRole.CodeInlineBg);
+        public static SolidColorBrush FgCodeInline => Get(ThemeRole.CodeInlineFg);
+        public static SolidColorBrush BgTableHeader => Get(ThemeRole.TableHeaderBg);
+        public static SolidColorBrush BgTableRowAlt => Get(ThemeRole.TableRowAltBg);
+
+        public static SolidColorBrush FgOk => Get(ThemeRole.FgOk);
+        public static SolidColorBrush FgError => Get(ThemeRole.FgError);
+        public static SolidColorBrush FgFail => Get(ThemeRole.FgFail);
+        public static SolidColorBrush FgWarning => Get(ThemeRole.FgWarning);
+        public static SolidColorBrush BgWarning => Get(ThemeRole.WarningBg);
+        public static SolidColorBrush DotLong => Get(ThemeRole.DotLong);
+        public static SolidColorBrush DotVeryLong => Get(ThemeRole.DotVeryLong);
+
+        public static SolidColorBrush BannerBg => Get(ThemeRole.BannerBg);
+        public static SolidColorBrush BannerFg => Get(ThemeRole.BannerFg);
+        public static SolidColorBrush BannerMuted => Get(ThemeRole.BannerMuted);
+
+        public static SolidColorBrush BgTab => Get(ThemeRole.TabBg);
 
         /// <summary>A flat button with an AutomationId (UI-automation tests find it by that id).</summary>
         public static Button FlatButton(string text, string automationId, bool primary, Thickness padding, double fontSize)
@@ -29,7 +147,7 @@ namespace VibeModel.UI
             var button = new Button
             {
                 Content = text,
-                Foreground = FgPrimary,
+                Foreground = primary ? FgButton : FgButtonSecondary,
                 Background = primary ? BgButton : BgButtonSecondary,
                 BorderThickness = new Thickness(0),
                 Padding = padding,
@@ -39,14 +157,6 @@ namespace VibeModel.UI
             };
             AutomationProperties.SetAutomationId(button, automationId);
             return button;
-        }
-
-        // Frozen: shareable across windows and threads, and cheaper to render.
-        private static SolidColorBrush Frozen(byte r, byte g, byte b)
-        {
-            var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-            brush.Freeze();
-            return brush;
         }
     }
 }

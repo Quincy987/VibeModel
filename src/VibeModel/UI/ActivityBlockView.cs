@@ -18,14 +18,14 @@ namespace VibeModel.UI
     /// </summary>
     internal sealed class ActivityBlockView : Border
     {
-        private static readonly SolidColorBrush FgPrimary = MarkdownStyles.FgPrimary;
-        private static readonly SolidColorBrush FgSecondary = MarkdownStyles.FgSecondary;
-        private static readonly SolidColorBrush Accent = MarkdownStyles.AccentBlue;
-        private static readonly SolidColorBrush FgMuted = Frozen(Color.FromRgb(0x80, 0x80, 0x80));
-        private static readonly SolidColorBrush FgDone = Frozen(Color.FromRgb(0x8A, 0x8A, 0x8A));
-        private static readonly SolidColorBrush FgFail = Frozen(Color.FromRgb(0xE5, 0x73, 0x73));
-        private static readonly SolidColorBrush BgRunning = Frozen(Color.FromArgb(0x22, 0x4E, 0xC9, 0xB0));
-        private static readonly SolidColorBrush RailBrush = MarkdownStyles.BorderColor;
+        private static SolidColorBrush FgPrimary => Palette.FgPrimary;
+        private static SolidColorBrush FgSecondary => Palette.FgSecondary;
+        private static SolidColorBrush Accent => Palette.Accent;
+        private static SolidColorBrush FgMuted => Palette.FgMuted;
+        private static SolidColorBrush FgDone => Palette.FgDone;
+        private static SolidColorBrush FgFail => Palette.FgFail;
+        private static SolidColorBrush BgRunning => Palette.RunningStepBg;
+        private static SolidColorBrush RailBrush => Palette.BorderColor;
 
         private readonly TurnActivity _model;
         private readonly StackPanel _root = new StackPanel();
@@ -332,13 +332,6 @@ namespace VibeModel.UI
             foreach (UIElement dot in _dots.Children)
                 dot.BeginAnimation(OpacityProperty, null);
             _dots.Visibility = Visibility.Collapsed;
-        }
-
-        private static SolidColorBrush Frozen(Color color)
-        {
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-            return brush;
         }
     }
 }

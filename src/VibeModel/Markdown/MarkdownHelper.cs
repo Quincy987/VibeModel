@@ -14,7 +14,7 @@ namespace VibeModel.Markdown
             new MarkdownPipelineBuilder().UsePipeTables().UseGridTables().Build();
 
         /// <summary>
-        /// Parses markdown text and returns a styled FlowDocument for dark-theme display.
+        /// Parses markdown text and returns a styled FlowDocument in the current theme.
         /// </summary>
         public static FlowDocument ToFlowDocument(string markdown) => ToFlowDocument(markdown, null);
 
