@@ -1031,6 +1031,9 @@ text and tags horizontal; copy a hand-corrected example's spacing; annotations p
 assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
+`AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values, or a choice weaker than asked (hand-typed quantities,
+DirectShape, new type), the chat shows an assumptions table and asks first; one element or one invented value is built at once and
+reported in the closing line (interview 2026-11-12).
 
 **Tables, units, sources (RULES block).** The rules end with three more sections, each a constant
 in `ChatBackendBase` (`TableRule`, `UnitsRule`/`UnitsConversionRule`, `SourcesRule`/`SourceFormsRule`):
