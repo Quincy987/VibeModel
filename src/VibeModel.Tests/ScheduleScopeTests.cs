@@ -240,6 +240,30 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void NotChecked_IsSaid_AlsoWithoutAMiss()
+        {
+            // A cap that left schedules or views unchecked is never silent.
+            var r = new CoverageReport { SchedulesNotChecked = 7, ViewsNotChecked = 2 };
+            Assert.False(r.IsEmpty);
+            Assert.Equal("-- schedules: every checked schedule lists the new elements; 7 more schedules of these categories not checked", r.SchedulesLine());
+            Assert.Equal("-- views: every checked view shows the new elements; 2 more views not checked", r.ViewsLine());
+            var envelope = new Dictionary<string, object>();
+            r.AddJson(envelope);
+            Assert.Equal(7, envelope["schedulesNotChecked"]);
+            Assert.Equal(2, envelope["viewsNotChecked"]);
+            Assert.False(envelope.ContainsKey("schedules"));
+        }
+
+        [Fact]
+        public void ViewsLine_CapsFindings()
+        {
+            var r = new CoverageReport();
+            for (int i = 0; i < 7; i++)
+                r.Views.Add(new ViewMiss { View = "V" + i, Id = i, Category = "Walls", Missing = 1, Cause = ViewMiss.NotVisible, Ids = new List<long> { 9 } });
+            Assert.EndsWith("; +2 more", r.ViewsLine());
+        }
+
+        [Fact]
         public void ViewsLine_ObscuredRebar_GivesTheExecFix()
         {
             var r = new CoverageReport();

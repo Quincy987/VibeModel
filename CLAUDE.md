@@ -673,9 +673,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   old `Empty:` line. Not measured live yet.
 - **`-- schedules:` / `-- views:`** (`DerivedCoverage.Check`, independent of an office pack): after a modifying command or batch that
   ADDED model elements, `-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why)` for every
-  schedule of that category that leaves them out (≤ 20 schedules checked, sorted by name; key/takeoff/multi-category skipped; an area
+  schedule of that category that leaves them out (≤ 20 schedules checked: the ones VibeModel made this session first, then by name; key/takeoff/multi-category skipped; an area
   schedule only for areas of its scheme), and `-- views: …` for views VibeModel created or put on a sheet this session that already
-  draw that category (≤ 10 views): `12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the
+  draw that category (≤ 30 views, newest viewport first): `12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the
   other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans, sections and
   elevations until *View Unobscured* is on; decided from the bar itself, also when the view's element set does not list it; not checked
   in 3D views, where rebar draws solid at Fine detail since 2023), or `… not visible in '…' — whyhidden <id> <view>`. An element the
@@ -683,7 +683,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   the view's own plane (a plan ignores height, a section its depth; a 3D view all three axes, 10 mm touching tolerance), and in a plan
   only on the plan's level when the element has one (a wall on the next level is not "missing" from this plan). Only added ids: a
   modified element a filtered schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON
-  `schedules:[{schedule,id,category,missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`.
+  `schedules:[{schedule,id,category,missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`;
+  a cap that left some unchecked is never silent: `-- schedules: every checked schedule lists the new elements; 7 more schedules
+  of these categories not checked` (JSON `schedulesNotChecked` / `viewsNotChecked`).
   Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
   logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
   (respecting *Ask first* for sheets) or to say what is missing where — never to report the overview as complete.

@@ -20,7 +20,7 @@ namespace VibeModel.Services.Claude
     /// </summary>
     internal static class DerivedCoverage
     {
-        private const int MaxSchedules = 20, MaxViews = 10;
+        private const int MaxSchedules = 20, MaxViews = 30;
 
         // ------------------------------------------------------------------ schedule scope
 
@@ -46,9 +46,12 @@ namespace VibeModel.Services.Claude
                 var inSchedule = new HashSet<int>(new FilteredElementCollector(doc, vs.Id).WhereElementIsNotElementType()
                     .ToElementIds().Select(i => i.IntegerValue));
                 var all = CategoryMembers(doc, def.CategoryId, areaScheme?.Id).Select(i => i.IntegerValue).ToList();
-                // A schedule can list what the category collector misses (an embedded or linked row): never "shows 30 of 22".
+                // Outside = the category members the schedule leaves out; the total is both together, so a row
+                // the category collector misses (an embedded or linked one) never reads "shows 30 of 22" and the
+                // reasons below never outnumber the outside count.
+                var outside = all.Where(i => !inSchedule.Contains(i)).ToList();
                 s.InSchedule = inSchedule.Count;
-                s.TotalInCategory = Math.Max(all.Count, inSchedule.Count);
+                s.TotalInCategory = inSchedule.Count + outside.Count;
                 s.FilterDescriptions = DescribeFilters(doc, def);
                 s.FilteredBySheet = IsFilteredBySheet(def);
 
@@ -57,7 +60,6 @@ namespace VibeModel.Services.Claude
                 if (phaseId != null && phaseId != ElementId.InvalidElementId) s.PhaseName = doc.GetElement(phaseId)?.Name;
                 s.PhaseFilterName = phaseFilter?.Name;
 
-                var outside = all.Where(i => !inSchedule.Contains(i)).ToList();
                 if (outside.Count > ScheduleScopeSummary.ReasonCap) { s.ReasonsSkipped = true; return s; }
 
                 // Phase and design option are decided per element; the rest is put down to the filters /
@@ -221,8 +223,9 @@ namespace VibeModel.Services.Claude
                 if (byCategory.Count == 0) return null;
 
                 var report = new CoverageReport();
-                CheckSchedules(doc, byCategory, report);
-                CheckViews(doc, byCategory, report);
+                var created = new HashSet<int>(VibeModelCreated.Ids(doc));
+                CheckSchedules(doc, byCategory, created, report);
+                CheckViews(doc, byCategory, created, report);
                 return report.IsEmpty ? null : report;
             }
             catch (Exception ex)
@@ -236,7 +239,11 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        private static void CheckSchedules(Document doc, Dictionary<int, List<ElementId>> byCategory, CoverageReport report)
+        /// <summary>
+        /// Every schedule of a touched category; the ones VibeModel made this session (the chat's own
+        /// overviews) first, then by name, up to <see cref="MaxSchedules"/>.
+        /// </summary>
+        private static void CheckSchedules(Document doc, Dictionary<int, List<ElementId>> byCategory, HashSet<int> created, CoverageReport report)
         {
             var schedules = new FilteredElementCollector(doc).OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>()
                 .Where(v => !v.IsTemplate && !v.IsTitleblockRevisionSchedule && !v.IsInternalKeynoteSchedule)
@@ -249,7 +256,8 @@ namespace VibeModel.Services.Claude
                     }
                     catch { return false; }
                 })
-                .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                .OrderBy(v => created.Contains(v.Id.IntegerValue) ? 0 : 1)
+                .ThenBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
             report.SchedulesNotChecked = Math.Max(0, schedules.Count - MaxSchedules);
             foreach (var vs in schedules.Take(MaxSchedules))
             try
@@ -284,11 +292,12 @@ namespace VibeModel.Services.Claude
         /// touched category: per new element, rebar hidden inside its host while the view's other
         /// bars are unobscured, or not shown at all.
         /// </summary>
-        private static void CheckViews(Document doc, Dictionary<int, List<ElementId>> byCategory, CoverageReport report)
+        private static void CheckViews(Document doc, Dictionary<int, List<ElementId>> byCategory, HashSet<int> created, CoverageReport report)
         {
-            var created = new HashSet<int>(VibeModelCreated.Ids(doc));
             if (created.Count == 0) return;
-            var viewports = new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>().ToList();
+            // Newest first (a higher id is a later element): the drawing the chat is working on now.
+            var viewports = new FilteredElementCollector(doc).OfClass(typeof(Viewport)).Cast<Viewport>()
+                .OrderByDescending(vp => vp.Id.IntegerValue).ToList();
             var candidates = new List<KeyValuePair<View, ViewSheet>>();
             var seen = new HashSet<int>();
             foreach (var vp in viewports)

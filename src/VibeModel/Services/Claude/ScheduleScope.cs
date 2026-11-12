@@ -164,7 +164,8 @@ namespace VibeModel.Services.Claude
         /// <summary>Schedules / views of the touched categories that were over the cap and not checked.</summary>
         public int SchedulesNotChecked, ViewsNotChecked;
 
-        public bool IsEmpty => Schedules.Count == 0 && Views.Count == 0;
+        /// <summary>Nothing to say: no misses, and nothing left unchecked by the caps.</summary>
+        public bool IsEmpty => Schedules.Count == 0 && Views.Count == 0 && SchedulesNotChecked == 0 && ViewsNotChecked == 0;
 
         /// <summary>
         /// "-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why); …",
@@ -172,7 +173,10 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public string SchedulesLine()
         {
-            if (Schedules.Count == 0) return null;
+            if (Schedules.Count == 0 && SchedulesNotChecked == 0) return null;
+            if (Schedules.Count == 0)
+                return "-- schedules: every checked schedule lists the new elements; " + ScopeText.N(SchedulesNotChecked) +
+                       " more schedules of these categories not checked";
             var parts = Schedules.Take(MaxShown).Select(s =>
                 ScopeText.N(s.Missing) + " new " + s.Category + " not in '" + s.Schedule + "' (schedule " + ScopeText.N(s.Id) + " --rows for why)").ToList();
             if (Schedules.Count > MaxShown) parts.Add("+" + ScopeText.N(Schedules.Count - MaxShown) + " more schedules");
@@ -186,7 +190,9 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public string ViewsLine()
         {
-            if (Views.Count == 0) return null;
+            if (Views.Count == 0 && ViewsNotChecked == 0) return null;
+            if (Views.Count == 0)
+                return "-- views: every checked view shows the new elements; " + ScopeText.N(ViewsNotChecked) + " more views not checked";
             var parts = Views.Take(MaxShown).Select(v =>
             {
                 var where = "'" + v.View + "'" + (string.IsNullOrEmpty(v.Sheet) ? "" : " (sheet " + v.Sheet + ")");
@@ -196,7 +202,7 @@ namespace VibeModel.Services.Claude
                 var first = v.Ids.Count > 0 ? v.Ids[0].ToString(CultureInfo.InvariantCulture) : "<id>";
                 return ScopeText.N(v.Missing) + " new " + v.Category + " not visible in " + where + " — whyhidden " + first + " " + ScopeText.N(v.Id);
             }).ToList();
-            if (Views.Count > MaxShown) parts.Add("+" + ScopeText.N(Views.Count - MaxShown) + " more views");
+            if (Views.Count > MaxShown) parts.Add("+" + ScopeText.N(Views.Count - MaxShown) + " more");
             if (ViewsNotChecked > 0) parts.Add(ScopeText.N(ViewsNotChecked) + " more views not checked");
             return "-- views: " + string.Join("; ", parts);
         }
@@ -227,6 +233,8 @@ namespace VibeModel.Services.Claude
         {
             if (Schedules.Count > 0) envelope["schedules"] = SchedulesJson();
             if (Views.Count > 0) envelope["views"] = ViewsJson();
+            if (SchedulesNotChecked > 0) envelope["schedulesNotChecked"] = SchedulesNotChecked;
+            if (ViewsNotChecked > 0) envelope["viewsNotChecked"] = ViewsNotChecked;
         }
     }
 

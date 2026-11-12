@@ -335,7 +335,7 @@ namespace VibeModel.Services.Chat
         // Feedback 2026-11-12: the bottom rebar was modelled, but the overview made before kept showing only
         // the top rebar. The server now says so after the command (DerivedCoverage); the model has to act on it.
         internal const string DerivedCoverageRule =
-            "When a command output carries a `-- schedules:` or `-- views:` line (`schedules` / `views` in JSON: new elements an existing schedule leaves out, or a view on a sheet hides), they belong in that overview when the user asked for them there: fix it in the same turn (the schedule's filter or phase, rebar.SetUnobscuredInView(view, true) via exec), following the Ask first rules for sheets; otherwise tell the user in one line what is missing where. Never report that schedule or drawing as complete.";
+            "When a command output carries a `-- schedules:` or `-- views:` line (`schedules` / `views` in JSON: new elements an existing schedule leaves out, or a view on a sheet hides), if the user wanted those elements in that overview, fix it in the same turn (the schedule's filter or phase, rebar.SetUnobscuredInView(view, true) via exec), following the Ask first rules for sheets; otherwise tell the user in one line what is missing where. Never report that schedule or drawing as complete.";
 
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
