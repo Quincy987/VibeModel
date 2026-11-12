@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.21 — Instellingen in tabbladen (2026-11-12)
+
 ### Changed — Instellingen in tabbladen
 - Instellingen heeft nu vijf tabbladen: *Algemeen* (taal, thema), *AI-verbinding* (Claude Code, API-sleutel of een lokaal
   model; model, API-adres en wachttijd onder *Geavanceerd*), *Dit project* (projectmap, geheugen en journaal), *Standaarden*
