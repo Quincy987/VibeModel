@@ -218,13 +218,22 @@ namespace VibeModel.Services.Claude.Commands
                 if (nameCol < 0) return false;
                 return rows.All(r => r is List<object> cells && (nameCol >= cells.Count || string.IsNullOrWhiteSpace(cells[nameCol] as string)));
             }
-            int seen = 0;
-            foreach (var e in new FilteredElementCollector(doc).OfCategoryId(catId).WhereElementIsNotElementType())
+            // Runs after the schedule was committed: a read Revit refuses must not turn the result into an error.
+            try
             {
-                if (e.GetMaterialIds(false).Count > 0) return false;
-                if (++seen >= 2000) return false; // not read further: do not claim it
+                int seen = 0;
+                foreach (var e in new FilteredElementCollector(doc).OfCategoryId(catId).WhereElementIsNotElementType())
+                {
+                    if (e.GetMaterialIds(false).Count > 0) return false;
+                    if (++seen >= 2000) return false; // not read further: do not claim it
+                }
+                return seen > 0;
             }
-            return seen > 0;
+            catch (Exception ex)
+            {
+                VibeModel.Infrastructure.Logger.Warn("Takeoff material check skipped: " + ex.Message);
+                return false;
+            }
         }
 
         /// <summary>Widen each visible column to its longest cell (paper mm, see ScheduleText.ColumnWidthMm).</summary>
