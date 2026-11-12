@@ -928,7 +928,7 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public static void DefaultLeader(View view, XYZ p, bool top, out XYZ bend, out XYZ end)
         {
-            double step = RevitUnitHelper.MmToFeet(12 * Math.Max(1, view.Scale));
+            double step = RevitUnitHelper.MmToFeet(AnnotationLayout.SpotLeaderMm * Math.Max(1, view.Scale));
             var up = view.UpDirection.Normalize();
             var right = view.RightDirection.Normalize();
             bend = p + up * (top ? step : -step);

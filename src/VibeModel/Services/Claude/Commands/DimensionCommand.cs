@@ -162,7 +162,7 @@ namespace VibeModel.Services.Claude.Commands
                     double toPaper = 1.0 / Math.Max(1, view.Scale);
                     double a0 = RevitUnitHelper.FeetToMm(refs.First().Pos) * toPaper, a1 = RevitUnitHelper.FeetToMm(refs.Last().Pos) * toPaper;
                     var existing = ParallelDimensions(doc, view, d, perp, o, toPaper);
-                    var obstacles = TextObstacles(doc, view, d, perp, o, toPaper);
+                    var obstacles = TextObstacles(doc, view, d, perp, o, toPaper, new HashSet<int>(existing.Select(x => x.Id)));
                     int row = AnnotationLayout.ChooseRow(RevitUnitHelper.FeetToMm(far) * toPaper, a0, a1, existing, out var takenBy, PaperOffsetMm, obstacles: obstacles);
                     if (row > 1)
                     {
@@ -270,17 +270,19 @@ namespace VibeModel.Services.Claude.Commands
         }
 
         /// <summary>
-        /// Plan 21: the texts of the other annotations in the view (spot values, tags, notes, other
-        /// dimensions' texts) in (along, across) paper mm from <paramref name="o"/> — a new row must
-        /// not print over them.
+        /// Plan 21: the texts of the other annotations in the view (spot values, tags, notes, the
+        /// texts of dimensions that do not run parallel) in (along, across) paper mm from
+        /// <paramref name="o"/> — a new row must not print over them. The parallel strings
+        /// (<paramref name="parallel"/>) are left out: their lines already take their own row, and
+        /// their texts would push every next row one further.
         /// </summary>
-        private static List<AnnotationLayout.Obstacle> TextObstacles(Document doc, View view, XYZ d, XYZ perp, XYZ o, double toPaper)
+        private static List<AnnotationLayout.Obstacle> TextObstacles(Document doc, View view, XYZ d, XYZ perp, XYZ o, double toPaper, ISet<int> parallel)
         {
             var list = new List<AnnotationLayout.Obstacle>();
             List<AnnoBox> boxes;
             try { boxes = AnnotationExtents.OccupiedBoxes(doc, view); } catch { return list; }
             var f = new PaperFrame(view);
-            foreach (var b in boxes.Where(x => x.IsText && x.Kind != AnnoKind.DimensionText))
+            foreach (var b in boxes.Where(x => x.IsText && !(x.Kind == AnnoKind.DimensionText && parallel.Contains(x.Id))))
             {
                 double s0 = double.MaxValue, s1 = double.MinValue, c0 = double.MaxValue, c1 = double.MinValue;
                 foreach (var pt in new[] { new[] { b.Rect.X0, b.Rect.Y0 }, new[] { b.Rect.X1, b.Rect.Y0 }, new[] { b.Rect.X0, b.Rect.Y1 }, new[] { b.Rect.X1, b.Rect.Y1 } })

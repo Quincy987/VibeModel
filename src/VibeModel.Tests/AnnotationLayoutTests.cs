@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using VibeModel.Services.Chat;
@@ -140,6 +141,10 @@ namespace VibeModel.Tests
             };
             Assert.Equal(new[] { 2, 4 }, AnnotationLayout.Rotated(boxes).Select(b => b.Id));
             Assert.Equal(-90, AnnotationLayout.Normalize(270), 6);
+            Assert.True(AnnotationLayout.IsSkewed(boxes[1]));
+            Assert.False(AnnotationLayout.IsSkewed(boxes[3]));
+            Assert.StartsWith("WARN  text 2 is rotated 23°", AnnotationLayout.RotatedLine(boxes[1]));
+            Assert.StartsWith("INFO  tag 4 is rotated 90°", AnnotationLayout.RotatedLine(boxes[3]));
         }
 
         [Fact]
@@ -176,6 +181,7 @@ namespace VibeModel.Tests
             Assert.Equal("up-left", slots[1].Name);
             Assert.Equal(35, slots[1].Text.Cx, 3);
             Assert.Equal("up-right 24 mm", slots[2].Name);
+            Assert.Equal(AnnotationLayout.SpotLeaderMm, slots[2].Run);
             var down = AnnotationLayout.SpotSlots(40, 200, top: false, textW: 10.8, textH: 4.75);
             Assert.Equal("down-right", down[0].Name);
             Assert.Equal(-12, down[0].Rise);
@@ -210,12 +216,43 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void FirstFree_ReturnsMinusOneWhenEverythingIsTaken()
+        public void Overlaps_SweepFindsTheSamePairsInAnyOrder_AndFocusKeepsOnlyTheNewOnes()
         {
-            var cand = new List<MmRect> { new MmRect(0, 0, 5, 5), new MmRect(10, 0, 15, 5) };
-            Assert.Equal(1, AnnotationLayout.FirstFree(cand, new List<MmRect> { new MmRect(0, 0, 6, 6) }, out int blocker));
-            Assert.Equal(0, blocker);
-            Assert.Equal(-1, AnnotationLayout.FirstFree(cand, new List<MmRect> { new MmRect(-1, -1, 20, 20) }, out _));
+            // A long dimension line far left in the order must still meet a text far right on it.
+            var boxes = new List<AnnoBox>
+            {
+                Text(3, 200, 205, 212, 212, AnnoKind.SpotText),
+                DimLine(1, 0, 300, 208),
+                Text(2, 50, 0, 60, 5),
+                Text(4, 55, 1, 70, 6),
+            };
+            var all = AnnotationLayout.Overlaps(boxes);
+            var reversed = AnnotationLayout.Overlaps(Enumerable.Reverse(boxes).ToList());
+            Assert.Equal(2, all.Count);   // line through spot 3, text 2 ↔ text 4
+            Assert.Equal(all.Select(o => o.Kind + Math.Min(o.A.Id, o.B.Id) + Math.Max(o.A.Id, o.B.Id)).OrderBy(x => x),
+                         reversed.Select(o => o.Kind + Math.Min(o.A.Id, o.B.Id) + Math.Max(o.A.Id, o.B.Id)).OrderBy(x => x));
+            var focused = AnnotationLayout.Overlaps(boxes, new HashSet<int> { 4 });
+            Assert.Single(focused);
+            Assert.True(focused[0].Involves(4));
+            // Two vertical strings 1 mm apart: the sweep's 2 mm reach still pairs them.
+            var v1 = new AnnoBox { Id = 7, Kind = AnnoKind.DimensionLine, Rect = AnnotationLayout.Strip(10, 0, 10, 100), AlongX = false };
+            var v2 = new AnnoBox { Id = 8, Kind = AnnoKind.DimensionLine, Rect = AnnotationLayout.Strip(11, 0, 11, 100), AlongX = false };
+            Assert.Equal("stacked", AnnotationLayout.Overlaps(new[] { v1, v2 }).Single().Kind);
+        }
+
+        [Fact]
+        public void TagSlots_UseTheSamePicker()
+        {
+            // A tag head 10×5 mm: right above is taken by a text, left above is clear.
+            var slots = new List<AnnotationLayout.Slot>
+            {
+                new AnnotationLayout.Slot { Name = "right above", Text = new MmRect(108, 54, 118, 59) },
+                new AnnotationLayout.Slot { Name = "left above", Text = new MmRect(82, 54, 92, 59) },
+            };
+            int i = AnnotationLayout.PickSlot(slots, new[] { Text(5, 105, 50, 130, 60) }, out var blocker, out bool free);
+            Assert.True(free);
+            Assert.Equal(1, i);
+            Assert.Equal(5, blocker.Id);
         }
 
         [Fact]

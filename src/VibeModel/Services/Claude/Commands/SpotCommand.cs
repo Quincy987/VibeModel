@@ -106,7 +106,7 @@ namespace VibeModel.Services.Claude.Commands
                 {
                     var f = new PaperFrame(view);
                     bend = hit.Point + f.U * f.Feet(slot.Rise);
-                    end = bend + f.R * f.Feet(slot.Dir * 12);
+                    end = bend + f.R * f.Feet(slot.Dir * slot.Run);
                 }
             }
             else

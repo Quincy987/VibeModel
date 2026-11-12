@@ -111,6 +111,8 @@ namespace VibeModel.Services.Claude
         public const double LineMm = 0.3;
         /// <summary>A text or tag more than this off horizontal (degrees) counts as rotated.</summary>
         public const double RotatedDeg = 0.5;
+        /// <summary>A spot elevation's default leader: shoulder this far above/below the point, text this far to the side (paper mm).</summary>
+        public const double SpotLeaderMm = 12;
 
         /// <summary>Estimated width × height (paper mm) of a one-line text.</summary>
         public static void TextExtent(int chars, double sizeMm, double widthFactor, out double w, out double h)
@@ -140,32 +142,36 @@ namespace VibeModel.Services.Claude
         /// Every conflict between boxes of different annotations: two texts that overlap (a strip
         /// ≤ 1 mm is INFO), a dimension line or leader running through another annotation's text
         /// (WARN), and two parallel dimension lines closer than 2 mm whose spans overlap (WARN,
-        /// "stacked"). Lines crossing lines are normal and not reported.
+        /// "stacked"). Lines crossing lines are normal and not reported. With
+        /// <paramref name="focus"/>, only pairs in which at least one annotation is in it (the
+        /// `-- layout:` line: what a command added against everything else). A sweep over x keeps
+        /// this near-linear for the thousands of boxes a busy view holds.
         /// </summary>
-        public static List<AnnoOverlap> Overlaps(IList<AnnoBox> boxes)
+        public static List<AnnoOverlap> Overlaps(IList<AnnoBox> boxes, ICollection<int> focus = null)
         {
-            var result = new List<AnnoOverlap>();
-            var seen = new HashSet<string>();
-            for (int i = 0; i < boxes.Count; i++)
-                for (int j = i + 1; j < boxes.Count; j++)
+            var order = Enumerable.Range(0, boxes.Count).OrderBy(i => boxes[i].Rect.X0).ToList();
+            var found = new Dictionary<string, AnnoOverlap>();
+            var keys = new List<string>();
+            for (int p = 0; p < order.Count; p++)
+            {
+                var a = boxes[order[p]];
+                for (int q = p + 1; q < order.Count; q++)
                 {
-                    var a = boxes[i]; var b = boxes[j];
+                    var b = boxes[order[q]];
+                    // Sorted by x0: nothing further on can reach a (two vertical strings 2 mm apart included).
+                    if (b.Rect.X0 > a.Rect.X1 + StackedMm) break;
                     if (a.Id == b.Id) continue;
+                    if (focus != null && !focus.Contains(a.Id) && !focus.Contains(b.Id)) continue;
                     var o = Judge(a, b);
                     if (o == null) continue;
                     // One finding per pair of annotations and kind (a dimension with five texts
-                    // under one spot is one collision, not five) — the biggest one wins.
+                    // under one spot is one collision, not five) — a WARN over an INFO, then the biggest.
                     string key = Math.Min(a.Id, b.Id) + "|" + Math.Max(a.Id, b.Id) + "|" + o.Kind;
-                    if (!seen.Add(key))
-                    {
-                        var prev = result.First(r => r.Kind == o.Kind && (r.A.Id == a.Id && r.B.Id == b.Id || r.A.Id == b.Id && r.B.Id == a.Id));
-                        if (o.IsWarn && !prev.IsWarn || o.W * o.H > prev.W * prev.H && o.IsWarn == prev.IsWarn)
-                            result[result.IndexOf(prev)] = o;
-                        continue;
-                    }
-                    result.Add(o);
+                    if (!found.TryGetValue(key, out var prev)) { found[key] = o; keys.Add(key); }
+                    else if (o.IsWarn && !prev.IsWarn || o.IsWarn == prev.IsWarn && o.W * o.H > prev.W * prev.H) found[key] = o;
                 }
-            return result.OrderBy(r => r.IsWarn ? 0 : 1).ThenByDescending(r => r.W * r.H).ToList();
+            }
+            return keys.Select(k => found[k]).OrderBy(r => r.IsWarn ? 0 : 1).ThenByDescending(r => r.W * r.H).ToList();
         }
 
         private static AnnoOverlap Judge(AnnoBox a, AnnoBox b)
@@ -201,6 +207,14 @@ namespace VibeModel.Services.Claude
         public static List<AnnoBox> Rotated(IEnumerable<AnnoBox> boxes)
             => boxes.Where(b => (b.Kind == AnnoKind.Text || b.Kind == AnnoKind.Tag) && Math.Abs(Normalize(b.AngleDeg)) > RotatedDeg).ToList();
 
+        /// <summary>Rotated, and not a plain vertical (90°) one: skewed — what reads as "scheef" on the sheet.</summary>
+        public static bool IsSkewed(AnnoBox b) => Math.Abs(Math.Abs(Normalize(b.AngleDeg)) - 90) > RotatedDeg;
+
+        /// <summary>The CHECKS line of a rotated text or tag: WARN when skewed, INFO when vertical.</summary>
+        public static string RotatedLine(AnnoBox r)
+            => (IsSkewed(r) ? "WARN  " : "INFO  ") + r.Name + " is rotated " + Mm.F1(Normalize(r.AngleDeg)) + "° — keep text and tags horizontal" +
+               (r.Kind == AnnoKind.Tag ? " (delete " + r.Id + " and tag the element again: new tags are horizontal)" : " (delete " + r.Id + " and place it again with 'text': new notes are horizontal)");
+
         /// <summary>An angle in (-180, 180].</summary>
         public static double Normalize(double deg)
         {
@@ -217,7 +231,7 @@ namespace VibeModel.Services.Claude
             {
                 case "stacked":
                     return o.Severity + "  " + o.A.Name + " and " + o.B.Name + " lie " + Mm.F1(o.H) + " mm apart over " + Mm.F(o.W) +
-                           " mm (stacked: they read as one) — give one another row ('dimension … --offset')";
+                           " mm (stacked: they read as one) — delete one and place it again on another row ('dimension … --offset')";
                 case "line-through-text":
                     return o.Severity + "  " + o.A.Name + " runs through " + o.B.Name + " (" + Mm.F1(o.W) + "×" + Mm.F1(o.H) + " mm)";
                 default:
@@ -270,39 +284,19 @@ namespace VibeModel.Services.Claude
 
         // ------------------------------------------------------------------ placement helpers
 
-        /// <summary>
-        /// The first candidate box that collides with none of <paramref name="taken"/> (gap kept:
-        /// <paramref name="clearMm"/>); -1 when all collide. <paramref name="blocker"/> = the index
-        /// of the taken box that blocked the first candidate (for "up-right taken by spot …").
-        /// </summary>
-        public static int FirstFree(IList<MmRect> candidates, IList<MmRect> taken, out int blocker, double clearMm = 0.5)
-        {
-            blocker = -1;
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                var c = new MmRect(candidates[i].X0 - clearMm, candidates[i].Y0 - clearMm, candidates[i].X1 + clearMm, candidates[i].Y1 + clearMm);
-                int hit = -1;
-                for (int j = 0; j < taken.Count && hit < 0; j++)
-                    if (c.Overlaps(taken[j], 0.05)) hit = j;
-                if (hit < 0) return i;
-                if (i == 0) blocker = hit;
-            }
-            return -1;
-        }
-
         /// <summary>A candidate place for a new annotation: its text box and its leader strips (paper mm).</summary>
         internal sealed class Slot
         {
             public string Name;
             public MmRect Text;
             public List<MmRect> Leader = new List<MmRect>();
-            /// <summary>Spot slots: the shoulder's height over the point (paper mm, signed) and the leader's side (+1 right, -1 left).</summary>
-            public double Rise, Dir;
+            /// <summary>Spot slots: the shoulder's height over the point (paper mm, signed), the leader's side (+1 right, -1 left) and its horizontal run (paper mm).</summary>
+            public double Rise, Dir, Run;
         }
 
         /// <summary>
-        /// The slot for a new spot or tag: the first whose text clears every taken box and whose
-        /// leader runs through no other text. When none is free (<paramref name="free"/> false)
+        /// The slot for a new spot or tag: the first whose text clears every taken box (0.5 mm kept
+        /// free) and whose leader runs through no other text. When none is free (<paramref name="free"/> false)
         /// the least crowded one. <paramref name="firstBlocker"/> = what blocked the first slot.
         /// </summary>
         public static int PickSlot(IList<Slot> slots, IList<AnnoBox> taken, out AnnoBox firstBlocker, out bool free)
@@ -336,10 +330,10 @@ namespace VibeModel.Services.Claude
         /// <summary>
         /// The leader slots of a spot elevation at paper point (px, py), measured default first
         /// (shoulder 12 mm above — below for a bottom spot — text 12 mm to the right; the text is
-        /// centred 5 mm past the shoulder): up-right, up-left, then 24 and 36 mm high. Each slot's
-        /// <c>Name</c> is "up-right", "up-left 24", ….
+        /// centred 5 mm past the shoulder — measured for the right side, mirrored for the left):
+        /// up-right, up-left, then 24 and 36 mm high. Names: "up-right", "up-left 24 mm", ….
         /// </summary>
-        public static List<Slot> SpotSlots(double px, double py, bool top, double textW, double textH, double step = 12)
+        public static List<Slot> SpotSlots(double px, double py, bool top, double textW, double textH, double step = SpotLeaderMm)
         {
             var list = new List<Slot>();
             double s = top ? 1 : -1;
@@ -352,7 +346,7 @@ namespace VibeModel.Services.Claude
                         Name = (top ? "up-" : "down-") + (dir > 0 ? "right" : "left") + (rise > step ? " " + Mm.F(rise) + " mm" : ""),
                         Text = new MmRect(cx - textW / 2, sy, cx + textW / 2, sy + textH),
                         Leader = { Strip(px, py, px, sy), Strip(px, sy, ex, sy) },
-                        Rise = s * rise, Dir = dir
+                        Rise = s * rise, Dir = dir, Run = step
                     });
                 }
             return list;

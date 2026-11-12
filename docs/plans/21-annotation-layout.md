@@ -48,7 +48,9 @@ bounding box of a dimension covers the whole string plus its witness lines (91 �
 ### Extents — bounding box or estimate
 
 - **Text note:** the bounding box is good: `Width`/`Height` (23.5 × 9.5) plus ~2 mm border
-  each side (27.5 × 13.5). Use the box.
+  each side (27.5 × 13.5). Use the box — except for a note with leaders (the box may take the
+  leader in): there `Coord` (= the top-left corner for left/top alignment, measured (45,135) for
+  a box from x 45, y 135 down) with `Width`/`Height` by alignment, + 1 mm.
 - **Dimension text:** estimate per segment — centre `TextPosition`, width = characters × text
   size × width factor × 0.72 (NLCS-ISO: "Wapening K12-150" 16 chars at 2.5 mm = 27.4 mm → 0.685;
   "Wand hout 200" 13 → 23.5 → 0.72), height from `TextPosition.y` up 1.9 × text size (box top
@@ -63,8 +65,9 @@ bounding box of a dimension covers the whole string plus its witness lines (91 �
 
 `spot <x> <y>` failed in every section on a wall ("Error occurred when creating Spot Dimension!"):
 the snap took the wall's **cut face** (the hatch surface in the view plane, stable reference
-`…:-9999:SURFACE`), which a spot cannot use. Faces whose normal is parallel to the view direction
-are now skipped; `spot <id> top|bottom` was not affected.
+`…:-9999:SURFACE`), which a spot cannot use. A planar face whose normal runs along the view
+direction and that lies within 1 mm of the cut plane is now skipped; `spot <id> top|bottom` was
+not affected.
 
 ## Design
 
@@ -85,9 +88,11 @@ are now skipped; `spot <id> top|bottom` was not affected.
   on paper); a row is taken by a parallel dimension within 4 mm whose span overlaps. `--offset`
   still places exactly. The response says `Placed: row 2 …`.
 - `spot`: without `--leader` the text takes the first free slot (up-right, up-left, 24 mm
-  up-right, 24 mm up-left; mirrored for bottom), the response names it.
+  up-right, 24 mm up-left, 36 mm; mirrored for bottom), the response names it. The left slots
+  mirror the measured right-hand text position (centre 5 mm past the shoulder) — to confirm live.
 - `tag`: rebar and multi-category fallback, `--type`, `--elbow x y`, and a free head slot with
-  `--leader` without `--at`.
+  `--leader` without `--at` (the same slot choice as the spot, `AnnotationLayout.PickSlot`; the
+  head is taken as the label's centre — to confirm live).
 - `text --width <paper mm>`: wraps long notes.
 
 ### c. Prompt

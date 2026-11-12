@@ -99,10 +99,20 @@ namespace VibeModel.Services.Claude
             int id = e.Id.IntegerValue;
             if (e is TextNote tn)
             {
-                var bb = tn.get_BoundingBox(view);
                 var label = Short(tn.Text);
-                if (bb != null)
-                    list.Add(new AnnoBox { Id = id, Kind = AnnoKind.Text, Rect = f.Rect(bb), AngleDeg = f.Angle(tn.BaseDirection), Label = label });
+                double angle = f.Angle(tn.BaseDirection);
+                // The bounding box is tight (measured: Width × Height + ~2 mm border) — but it may take
+                // a leader in, so a horizontal note with leaders is boxed from its own Coord/Width/Height.
+                MmRect? rect = null;
+                if (Try(() => (double?)tn.LeaderCount) > 0 && Math.Abs(AnnotationLayout.Normalize(angle)) <= AnnotationLayout.RotatedDeg)
+                    rect = NoteRect(tn, f);
+                if (rect == null)
+                {
+                    var bb = tn.get_BoundingBox(view);
+                    if (bb != null) rect = f.Rect(bb);
+                }
+                if (rect != null)
+                    list.Add(new AnnoBox { Id = id, Kind = AnnoKind.Text, Rect = rect.Value, AngleDeg = angle, Label = label });
                 foreach (var leader in Leaders(tn))
                     AddPolyline(list, id, "text", f, leader);
                 return list;
@@ -167,11 +177,11 @@ namespace VibeModel.Services.Claude
             {
                 var head = Try(() => tag.TagHeadPosition);
                 string text = LongestLine(Try(() => tag.TagText));
+                TagHeadExtent(tag, out var w, out var h);
                 double angle = tag.TagOrientation == TagOrientation.Vertical ? 90
                              : tag.TagOrientation == TagOrientation.AnyModelDirection ? (Try(() => (double?)tag.RotationAngle) ?? 0) * 180 / Math.PI : 0;
                 int host = tag.GetTaggedLocalElementIds().Where(i => i != ElementId.InvalidElementId).Select(i => i.IntegerValue).FirstOrDefault();
                 MmRect rect;
-                AnnotationLayout.TextExtent(Math.Max(1, text.Length), DefaultSizeMm, 1, out var w, out var h);
                 var bb = tag.HasLeader ? null : tag.get_BoundingBox(view);
                 if (bb != null) rect = f.Rect(bb);
                 else if (head != null) rect = new MmRect(f.X(head) - w / 2, f.Y(head) - h / 2, f.X(head) + w / 2, f.Y(head) + h / 2);
@@ -191,18 +201,18 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
-        /// The boxes other annotations in the view already occupy — what a new spot or tag must
-        /// keep clear of. Texts, tags and dimension texts; lines and leaders too when asked.
+        /// Every box the view's annotations already occupy, with its owner — what a new spot, tag
+        /// or dimension row keeps clear of, and what "taken by spot 1730946" names.
         /// </summary>
-        public static List<MmRect> Occupied(Document doc, View view, bool withLines = true)
-        {
-            var boxes = Collect(doc, view, out _);
-            return boxes.Where(b => b.IsText || withLines && b.IsLine).Select(b => b.Rect).ToList();
-        }
-
-        /// <summary>The annotation boxes with their owners — for "taken by spot 1730946".</summary>
         public static List<AnnoBox> OccupiedBoxes(Document doc, View view)
             => Collect(doc, view, out _);
+
+        /// <summary>The estimated paper size of a tag's head: its longest text line at 2.5 mm (Revit reports no head box).</summary>
+        internal static void TagHeadExtent(IndependentTag tag, out double w, out double h)
+        {
+            string text = LongestLine(Try(() => tag.TagText));
+            AnnotationLayout.TextExtent(Math.Max(1, text.Length), DefaultSizeMm, 1, out w, out h);
+        }
 
         /// <summary>Spot elevation text as Revit prints it by default: signed metres, 3 decimals ("+2.500").</summary>
         public static string SpotText(SpotDimension sd, double valueMm)
@@ -248,8 +258,8 @@ namespace VibeModel.Services.Claude
                         continue;
                     }
                     var boxes = Collect(doc, view, out _, all);
-                    var ids = g.Select(e => e.Id.IntegerValue).ToList();
-                    var overlaps = AnnotationLayout.Overlaps(boxes).Where(o => o.IsWarn && ids.Any(o.Involves)).ToList();
+                    var ids = new HashSet<int>(g.Select(e => e.Id.IntegerValue));
+                    var overlaps = AnnotationLayout.Overlaps(boxes, ids).Where(o => o.IsWarn).ToList();
                     var line = AnnotationLayout.LayoutLine(ids, overlaps, view.Name);
                     if (line == null) continue;
                     lines.Add(line);
@@ -285,6 +295,23 @@ namespace VibeModel.Services.Claude
             }
         }
 
+        /// <summary>A horizontal note's box from its insertion point and paper Width/Height, by its alignment (+1 mm border).</summary>
+        private static MmRect? NoteRect(TextNote tn, PaperFrame f)
+        {
+            try
+            {
+                double w = RevitUnitHelper.FeetToMm(tn.Width), h = RevitUnitHelper.FeetToMm(tn.Height);   // paper space
+                if (w <= 0 || h <= 0) return null;
+                double x = f.X(tn.Coord), y = f.Y(tn.Coord);
+                double x0 = tn.HorizontalAlignment == HorizontalTextAlignment.Center ? x - w / 2
+                          : tn.HorizontalAlignment == HorizontalTextAlignment.Right ? x - w : x;
+                double y1 = tn.VerticalAlignment == VerticalTextAlignment.Middle ? y + h / 2
+                          : tn.VerticalAlignment == VerticalTextAlignment.Bottom ? y + h : y;
+                return new MmRect(x0 - 1, y1 - h - 1, x0 + w + 1, y1 + 1);
+            }
+            catch { return null; }
+        }
+
         private static void AddPolyline(List<AnnoBox> list, int id, string owner, PaperFrame f, XYZ[] pts)
         {
             for (int i = 0; i + 1 < pts.Length; i++)
@@ -318,7 +345,7 @@ namespace VibeModel.Services.Claude
             return p != null && p.HasValue && p.AsDouble() > 0 ? p.AsDouble() : 1;
         }
 
-        private static string LongestLine(string s)
+        internal static string LongestLine(string s)
             => (s ?? "").Replace("\r", "\n").Split('\n').OrderByDescending(l => l.Length).FirstOrDefault() ?? "";
 
         private static string Short(string s)

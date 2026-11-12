@@ -599,18 +599,20 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
 - **`annolayout [view|sheet]`** (plan 21, read-only; `docs/plans/21-annotation-layout.md`): per annotation its paper boxes
   in the view frame (x along the view's right direction, y up, mm from the view origin, ÷ scale) — a text note's bounding
-  box, a dimension's text per segment (estimated around `TextPosition`: characters × size × width factor × 0.72, 1.9 × size
+  box (with leaders: its Coord/Width/Height by alignment, since the box may take the leader in), a dimension's text per segment (estimated around `TextPosition`: characters × size × width factor × 0.72, 1.9 × size
   high — measured on NLCS-ISO) and its line as a thin strip, a spot's text (same estimate) and its leader, a tag's head
   (estimated around `TagHeadPosition` from `TagText`; the bounding box when it has no leader) — then CHECKS: two texts
   overlapping (`WARN`, a strip ≤ 1 mm `INFO`), a line or leader through another annotation's text (`WARN`), two parallel
-  dimension strings < 2 mm apart over a shared span (`WARN` stacked), text or tags off horizontal (rotated); `Verdict:`.
-  A sheet → every view on it. Pure part `AnnotationLayout.cs` (tested), Revit side `AnnotationExtents.cs` (cap 2000 per view).
+  dimension strings < 2 mm apart over a shared span (`WARN` stacked), skewed text or tags (`WARN`; exactly vertical `INFO`); `Verdict:`.
+  A sheet → every view on it. Pure part `AnnotationLayout.cs` (tested; a sweep over x, so thousands of boxes stay cheap),
+  Revit side `AnnotationExtents.cs` (cap 2000 annotations per view; JSON lists ≤ 500 boxes per view).
   **`-- layout:` line:** after every kept modifying command or batch that ADDED annotations (re-hosts are new elements too),
   only the WARN conflicts of the new ones against their neighbours, ≤ 3 named: `-- layout: 2 overlaps in 'AL test': spot
   1730946 ↔ spot 1730947 (5.4×4.8 mm); … → run 'annolayout AL test' for the boxes`, after the `-- annotations` line and
   before `-- changed:`; JSON additive `layout:{views:[{view,viewName,overlaps}]}`. Never after a preview or rollback.
-  API facts (measured): tag head/elbow/end, dimension and segment `TextPosition`, spot text/shoulder/end and text note
-  position/width are all settable; Revit reports no box for a tag head or a dimension text, and has no "arrange" call.
+  API facts: tag head/elbow/end, dimension and segment `TextPosition`, spot text/shoulder/end and text note position/width
+  are all settable (`apilookup`; dimension, spot and text positions also read back live — tags still to measure live);
+  Revit reports no box for a tag head or a dimension text, and has no "arrange" call.
 - **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
@@ -625,8 +627,8 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   the family symbol, and a dimension on those hangs on the symbol (outlives the pile, invisible to a
   scan for it). Revit's refusal message is returned verbatim with the usual cause.
   **Rows (plan 21):** without `--offset` an element string goes to the first free row beyond the elements — 8, 16, 24 … paper
-  mm — skipping a row a parallel string (within 1°, within 4 mm, overlapping span) or another annotation's text (5.75 mm
-  either side of the row) already holds: `Placed: row 2 (16 mm on paper from the elements; row 1 taken by dimension 1730940)`,
+  mm — skipping a row a parallel string (within 1°, within 4 mm, overlapping span) or the text of another annotation (not
+  of a parallel string; 5.75 mm either side of the row) already holds: `Placed: row 2 (16 mm on paper from the elements; row 1 taken by dimension 1730940)`,
   JSON `rowMm`. `--offset` still places exactly; `--points`/`--levels` are unchanged.
 - **`spot`** (peilmaat) needs the same ACTIVE plan/section/elevation/detail view. `spot <x> <y>` snaps
   (≤ 100 mm, in the view plane) to the nearest reference: a face the view CUTS (system families), else
@@ -983,8 +985,9 @@ model-bound history are unchanged. A new command gets its step label from `Statu
 BOTH maps — a test checks).
 
 **Annotation layout (RULES block, plan 21).** `AnnotationLayoutRule` (under *Complete and checkable*): annotate with the
-commands, never exec; run `annolayout` after annotating (and on every `-- layout:` line) and fix each WARN before reporting;
-text and tags horizontal; copy a hand-corrected example's spacing; annotations placed this turn may be moved without asking.
+commands, never exec; run `annolayout` after annotating (and on every `-- layout:` line) and fix each WARN before reporting —
+the commands always place a NEW annotation, so a fix is `delete <id>` and placing it again (there is no move command yet);
+text and tags horizontal; copy a hand-corrected example's spacing; annotations placed this turn may be replaced without asking.
 
 **Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
 assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).

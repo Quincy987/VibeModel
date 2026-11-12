@@ -21,6 +21,8 @@ namespace VibeModel.Services.Claude.Commands
         public string Usage => "annolayout [view name|view id|sheet number]";
 
         private const int ListMax = 60;
+        /// <summary>JSON carries at most this many boxes per view (the checks still cover all of them).</summary>
+        private const int JsonMax = 500;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
 
@@ -51,13 +53,22 @@ namespace VibeModel.Services.Claude.Commands
             string worst = null;
             foreach (var v in views)
             {
-                var boxes = AnnotationExtents.Collect(doc, v, out int total);
+                List<AnnoBox> boxes;
+                int total;
+                try { boxes = AnnotationExtents.Collect(doc, v, out total); }
+                catch (Exception ex)
+                {
+                    // One view Revit will not read (a legend, a broken view) does not sink the sheet's report.
+                    sb.AppendLine("ANNOTATION LAYOUT — '" + v.Name + "': not readable (" + ex.Message + ")");
+                    sb.AppendLine();
+                    continue;
+                }
                 if (total == 0 && views.Count > 1) continue;
                 annotationCount += total;
                 var overlaps = AnnotationLayout.Overlaps(boxes);
                 var rotated = AnnotationLayout.Rotated(boxes);
-                warns += overlaps.Count(o => o.IsWarn);
-                infos += overlaps.Count(o => !o.IsWarn);
+                warns += overlaps.Count(o => o.IsWarn) + rotated.Count(AnnotationLayout.IsSkewed);
+                infos += overlaps.Count(o => !o.IsWarn) + rotated.Count(r => !AnnotationLayout.IsSkewed(r));
                 rotatedCount += rotated.Count;
                 if (worst == null && overlaps.Any(o => o.IsWarn)) worst = AnnotationLayout.Line(overlaps.First(o => o.IsWarn)).Substring(6);
 
@@ -73,27 +84,26 @@ namespace VibeModel.Services.Claude.Commands
                 if (total > AnnotationExtents.Cap) sb.AppendLine("  " + Truncation.Line(AnnotationExtents.Cap, total, "only the first " + AnnotationExtents.Cap + " annotations were measured"));
                 sb.AppendLine("CHECKS");
                 foreach (var o in overlaps) sb.AppendLine("  " + AnnotationLayout.Line(o));
-                foreach (var r in rotated)
-                    sb.AppendLine("  " + (Math.Abs(Math.Abs(AnnotationLayout.Normalize(r.AngleDeg)) - 90) <= AnnotationLayout.RotatedDeg ? "INFO  " : "WARN  ") +
-                                  r.Name + " is rotated " + Mm.F1(AnnotationLayout.Normalize(r.AngleDeg)) + "° — keep text and tags horizontal" +
-                                  (r.Kind == AnnoKind.Tag ? " (re-tag it with 'tag <element> --at …': new tags are horizontal)" : ""));
+                foreach (var r in rotated) sb.AppendLine("  " + AnnotationLayout.RotatedLine(r));
+                if (worst == null && rotated.Any(AnnotationLayout.IsSkewed)) worst = AnnotationLayout.RotatedLine(rotated.First(AnnotationLayout.IsSkewed)).Substring(6);
                 if (overlaps.Count == 0 && rotated.Count == 0) sb.AppendLine("  OK    no overlapping annotations" + (total == 0 ? " (none in this view)" : ""));
                 sb.AppendLine();
 
                 data.Add(new Dictionary<string, object>
                 {
                     { "view", v.Id.IntegerValue }, { "viewName", v.Name }, { "scale", v is ViewSheet ? 1 : v.Scale }, { "count", total },
-                    { "annotations", boxes.Select(b => (object)new Dictionary<string, object>
+                    { "annotations", boxes.Take(JsonMax).Select(b => (object)new Dictionary<string, object>
                         { { "id", b.Id }, { "part", b.Kind.ToString() }, { "rectMm", b.Rect.ToJson() }, { "host", b.Host }, { "label", b.Label } }).ToList() },
+                    { "annotationsTruncated", boxes.Count > JsonMax },
                     { "overlaps", AnnotationLayout.OverlapsJson(overlaps) },
                     { "rotated", rotated.Select(r => (object)r.Id).Distinct().ToList() }
                 });
             }
 
             string verdict = warns > 0
-                ? warns + " conflict(s) to fix" + (worst != null ? " — first: " + worst : "") + ". Move a tag head ('tag … --at/--elbow'), give a spot another leader ('spot … --leader x y'), or a dimension another row ('--offset'), then run annolayout again."
+                ? warns + " conflict(s) to fix" + (worst != null ? " — first: " + worst : "") + ". Replace the misplaced annotation: 'delete <id>', then place it again ('tag … --at/--elbow', 'spot … --leader x y', 'dimension … --offset', 'text' for skewed text), then run annolayout again."
                 : annotationCount == 0 ? "no annotations here yet."
-                : "readable: no annotations overlap" + (infos > 0 ? " (" + infos + " touching strip(s))" : "") + (rotatedCount > 0 ? "; " + rotatedCount + " rotated" : "") + ".";
+                : "readable: no annotations overlap" + (infos > 0 ? " (" + infos + " INFO: touching strips or vertical text)" : "") + ".";
             sb.AppendLine("Verdict: " + verdict);
 
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>

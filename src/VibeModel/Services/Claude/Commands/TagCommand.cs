@@ -191,9 +191,9 @@ namespace VibeModel.Services.Claude.Commands
 
         /// <summary>
         /// Plan 21: a head position next to the element that keeps clear of every other annotation
-        /// in the view — right-above, left-above, right-below, left-below the element's box at
-        /// 8 paper mm, then right-above / left-above twice as far. Null (Revit's own spot stays)
-        /// when all are taken.
+        /// in the view — right above, left above, right below, left below the element's paper box
+        /// at 8 mm, then right / left above at 16 mm (the same slot choice as a spot's leader).
+        /// Null (Revit's own spot stays) when none is clear.
         /// </summary>
         private static XYZ FreeSlot(Document doc, View view, Element element, IndependentTag tag, out string note)
         {
@@ -202,28 +202,30 @@ namespace VibeModel.Services.Claude.Commands
             var bb = element.get_BoundingBox(view) ?? element.get_BoundingBox(null);
             if (bb == null) return null;
             var eb = frame.Rect(bb);
-            string text = "";
-            try { text = (tag.TagText ?? "").Replace("\r", "\n").Split('\n').OrderByDescending(l => l.Length).FirstOrDefault() ?? ""; } catch { }
-            AnnotationLayout.TextExtent(Math.Max(1, text.Length), 2.5, 1, out var w, out var h);
-
+            AnnotationExtents.TagHeadExtent(tag, out var w, out var h);
             var others = AnnotationExtents.OccupiedBoxes(doc, view).Where(b => b.Id != tag.Id.IntegerValue).ToList();
-            var names = new[] { "right above", "left above", "right below", "left below", "right above (further out)", "left above (further out)" };
-            var cand = new List<MmRect>();
+
             double g1 = SlotGapMm, g2 = 2 * SlotGapMm;
-            cand.Add(new MmRect(eb.X1 + g1, eb.Y1 + g1 / 2, eb.X1 + g1 + w, eb.Y1 + g1 / 2 + h));
-            cand.Add(new MmRect(eb.X0 - g1 - w, eb.Y1 + g1 / 2, eb.X0 - g1, eb.Y1 + g1 / 2 + h));
-            cand.Add(new MmRect(eb.X1 + g1, eb.Y0 - g1 / 2 - h, eb.X1 + g1 + w, eb.Y0 - g1 / 2));
-            cand.Add(new MmRect(eb.X0 - g1 - w, eb.Y0 - g1 / 2 - h, eb.X0 - g1, eb.Y0 - g1 / 2));
-            cand.Add(new MmRect(eb.X1 + g2, eb.Y1 + g2 / 2, eb.X1 + g2 + w, eb.Y1 + g2 / 2 + h));
-            cand.Add(new MmRect(eb.X0 - g2 - w, eb.Y1 + g2 / 2, eb.X0 - g2, eb.Y1 + g2 / 2 + h));
-            int i = AnnotationLayout.FirstFree(cand, others.Select(o => o.Rect).ToList(), out int blocker);
-            if (i < 0) { note = "Revit's spot next to the element (every free spot around it is taken — check 'annolayout')"; return null; }
-            var c = cand[i];
-            note = "free spot " + names[i] + " the element" + (i > 0 && blocker >= 0 ? " (" + names[0] + " taken by " + others[blocker].Word + " " + others[blocker].Id + ")" : "");
-            // Paper centre → model point at the tag's own depth.
+            var slots = new List<AnnotationLayout.Slot>
+            {
+                Slot("right above", eb.X1 + g1, eb.Y1 + g1 / 2, w, h),
+                Slot("left above", eb.X0 - g1 - w, eb.Y1 + g1 / 2, w, h),
+                Slot("right below", eb.X1 + g1, eb.Y0 - g1 / 2 - h, w, h),
+                Slot("left below", eb.X0 - g1 - w, eb.Y0 - g1 / 2 - h, w, h),
+                Slot("right above (further out)", eb.X1 + g2, eb.Y1 + g2 / 2, w, h),
+                Slot("left above (further out)", eb.X0 - g2 - w, eb.Y1 + g2 / 2, w, h),
+            };
+            int i = AnnotationLayout.PickSlot(slots, others, out var blocker, out bool free);
+            if (!free) { note = "Revit's spot next to the element (every free spot around it is taken — check 'annolayout')"; return null; }
+            var c = slots[i].Text;
+            note = "free spot " + slots[i].Name + " the element" + (i > 0 && blocker != null ? " (" + slots[0].Name + " taken by " + blocker.Word + " " + blocker.Id + ")" : "");
+            // Paper centre → model point at the tag's own depth (the head is taken as the label's centre).
             var cur = tag.TagHeadPosition;
             double dx = frame.Feet(c.Cx - frame.X(cur)), dy = frame.Feet(c.Cy - frame.Y(cur));
             return cur + frame.R * dx + frame.U * dy;
         }
+
+        private static AnnotationLayout.Slot Slot(string name, double x0, double y0, double w, double h)
+            => new AnnotationLayout.Slot { Name = name, Text = new MmRect(x0, y0, x0 + w, y0 + h) };
     }
 }
