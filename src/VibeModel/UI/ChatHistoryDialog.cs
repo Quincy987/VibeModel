@@ -17,8 +17,8 @@ namespace VibeModel.UI
     /// </summary>
     public class ChatHistoryDialog : Window
     {
-        // Same dark palette as SettingsDialog / ChatPane
-        private static SolidColorBrush BgDark => Palette.BgDark;
+        // The shared theme palette (UI.Palette), like SettingsDialog / ChatPane
+        private static SolidColorBrush BgWindow => Palette.BgWindow;
         private static SolidColorBrush BgPanel => Palette.BgPanel;
         private static SolidColorBrush BgInput => Palette.BgInput;
         private static SolidColorBrush BgRowHover => Palette.RowHover;
@@ -44,7 +44,7 @@ namespace VibeModel.UI
             MinWidth = 420;
             MinHeight = 320;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Background = BgDark;
+            Background = BgWindow;
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -71,7 +71,7 @@ namespace VibeModel.UI
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Background = BgDark,
+                Background = BgWindow,
                 Content = _listPanel,
                 Margin = new Thickness(0, 8, 0, 0)
             };

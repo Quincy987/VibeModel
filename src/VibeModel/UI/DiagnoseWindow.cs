@@ -35,7 +35,7 @@ namespace VibeModel.UI
             Title = Strings.Get(Strings.DiagnoseTitle);
             Width = 760;
             Height = 620;
-            Background = BgDark;
+            Background = BgWindow;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             AutomationProperties.SetAutomationId(this, "DiagnoseWindow");
 

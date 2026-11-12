@@ -73,7 +73,7 @@ namespace VibeModel.UI
             MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 80);
             ResizeMode = ResizeMode.NoResize;
             ShowInTaskbar = false;
-            Background = BgDark;
+            Background = BgWindow;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             // In front once, even when another application has the focus; then a normal window.
             Topmost = true;

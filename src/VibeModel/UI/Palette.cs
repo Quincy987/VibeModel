@@ -55,7 +55,7 @@ namespace VibeModel.UI
                 set = _local = new BrushSet();
                 lock (Lock)
                 {
-                    Sets.RemoveAll(w => !w.TryGetTarget(out _));
+                    Sets.RemoveAll(IsGone);
                     Sets.Add(new WeakReference<BrushSet>(set));
                 }
             }
@@ -77,9 +77,10 @@ namespace VibeModel.UI
 
         private static void OnThemeChanged()
         {
-            List<BrushSet> live = new List<BrushSet>();
+            var live = new List<BrushSet>();
             lock (Lock)
             {
+                Sets.RemoveAll(IsGone);
                 foreach (var w in Sets)
                     if (w.TryGetTarget(out var s)) live.Add(s);
             }
@@ -91,14 +92,18 @@ namespace VibeModel.UI
             }
         }
 
+        // A set whose brushes were collected, or whose UI thread has ended (a finished test thread):
+        // nothing can show its brushes any more, and a queued recolour would never run.
+        private static bool IsGone(WeakReference<BrushSet> w) =>
+            !w.TryGetTarget(out var s) || !s.Dispatcher.Thread.IsAlive;
+
         // --- Roles ---------------------------------------------------------------------------
 
-        public static SolidColorBrush BgDark => Get(ThemeRole.WindowBg);
+        public static SolidColorBrush BgWindow => Get(ThemeRole.WindowBg);
         public static SolidColorBrush BgPanel => Get(ThemeRole.PanelBg);
         public static SolidColorBrush BgInput => Get(ThemeRole.InputBg);
         public static SolidColorBrush RowHover => Get(ThemeRole.RowHover);
         public static SolidColorBrush ChipOutline => Get(ThemeRole.ChipOutline);
-        public static SolidColorBrush Outline => Get(ThemeRole.Border);
         public static SolidColorBrush BorderColor => Get(ThemeRole.Border);
 
         public static SolidColorBrush FgPrimary => Get(ThemeRole.FgPrimary);

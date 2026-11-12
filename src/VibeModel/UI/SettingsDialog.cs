@@ -16,7 +16,7 @@ namespace VibeModel.UI
 {
     public class SettingsDialog : Window
     {
-        private static SolidColorBrush BgDark => Palette.BgDark;
+        private static SolidColorBrush BgWindow => Palette.BgWindow;
         private static SolidColorBrush BgInput => Palette.BgInput;
         private static SolidColorBrush BgPanel => Palette.BgPanel;
         private static SolidColorBrush FgPrimary => Palette.FgPrimary;
@@ -108,7 +108,7 @@ namespace VibeModel.UI
             Height = Math.Min(700, SystemParameters.WorkArea.Height - 40);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode = ResizeMode.NoResize;
-            Background = BgDark;
+            Background = BgWindow;
 
             _selectedBackend = SettingsManager.GetPreferredBackend();
             _originalBackend = _selectedBackend == "direct" ? "anthropic-api" : _selectedBackend;

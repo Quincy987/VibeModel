@@ -118,7 +118,7 @@ namespace VibeModel.UI
 
         // Theme colours: the shared Palette brushes (one per role), recoloured in place when the
         // theme switches, so the pane, its messages and the chips repaint without a rebuild.
-        private static SolidColorBrush BgDark => Palette.BgDark;
+        private static SolidColorBrush BgWindow => Palette.BgWindow;
         private static SolidColorBrush BgPanel => Palette.BgPanel;
         private static SolidColorBrush BgInput => Palette.BgInput;
         private static SolidColorBrush BgUserMsg => Palette.BgUserMsg;
@@ -139,7 +139,7 @@ namespace VibeModel.UI
 
         public ChatPane()
         {
-            Background = BgDark;
+            Background = BgWindow;
 
             var mainGrid = new Grid();
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -168,7 +168,7 @@ namespace VibeModel.UI
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Background = BgDark,
+                Background = BgWindow,
                 Padding = new Thickness(8)
             };
             _scrollViewer.Content = _messagePanel;
@@ -1783,7 +1783,7 @@ namespace VibeModel.UI
             };
             return new Border
             {
-                Background = BgDark,
+                Background = BgWindow,
                 Padding = new Thickness(8, 4, 8, 0),
                 Visibility = Visibility.Collapsed,
                 RenderTransform = new TranslateTransform(),

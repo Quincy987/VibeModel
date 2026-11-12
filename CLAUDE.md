@@ -832,7 +832,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
 - **Theme** (`UI/ThemeColors.cs` pure, `UI/ThemeManager.cs`, `UI/Palette.cs`): Settings → *Thema* (`Theme` in settings.json;
   managed.json `Theme` locks it): `revit` (default) = light on Revit 2023, and on Revit 2024+ Revit's own UI theme
   (`UIThemeManager.CurrentTheme` at startup, `UIControlledApplication.ThemeChanged` live — `#if` off for 2022/2023); `light`;
-  `dark` = the original look, value for value. Light follows Revit's Properties/Project Browser look (F5F5F5 / EBEBEB / white
+  `dark` = the original look (only text on blue buttons is now white everywhere). Light follows Revit's Properties/Project Browser look (F5F5F5 / EBEBEB / white
   inputs, 1B1B1B text, Autodesk blue 0696D7 for lines; accent text 0067A6 and buttons 0A6EB4 so every text pair reaches
   WCAG AA — `ThemeTests` checks the pairs of both themes). Every colour is a `ThemeRole`; `Palette.Get(role)` hands out ONE
   shared, unfrozen `SolidColorBrush` per role per UI thread (`[ThreadStatic]` — in Revit the main thread; tests render on fresh

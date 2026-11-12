@@ -13,7 +13,7 @@ namespace VibeModel.UI
     public static class ThemeManager
     {
         private static readonly object Lock = new object();
-        private static bool _loaded;
+        private static volatile bool _loaded;
         private static ThemeChoice _choice = ThemeChoice.Revit;
         private static bool _revitIsDark;
         private static ThemeKind _current = ThemeKind.Light;
@@ -26,8 +26,6 @@ namespace VibeModel.UI
         public static int Version { get { EnsureLoaded(); return _version; } }
 
         public static ThemeChoice Choice { get { EnsureLoaded(); return _choice; } }
-
-        public static bool RevitIsDark { get { lock (Lock) return _revitIsDark; } }
 
         public static ThemeKind Current { get { EnsureLoaded(); return _current; } }
 

@@ -180,7 +180,10 @@ namespace VibeModel.UI
             [ThemeRole.MenuRowHover] = 0xE5F1FB,
         });
 
-        /// <summary>The original VibeModel look, value for value (it was spread over the UI files).</summary>
+        /// <summary>
+        /// The original VibeModel look (its values were spread over the UI files). One difference: text on a
+        /// blue primary button is white everywhere now (two buttons drew it E0E0E0).
+        /// </summary>
         public static readonly ThemeColors Dark = new ThemeColors(ThemeKind.Dark, new Dictionary<ThemeRole, uint>
         {
             [ThemeRole.WindowBg] = 0x1E1E1E,
@@ -253,8 +256,8 @@ namespace VibeModel.UI
         {
             switch ((value ?? "").Trim().ToLowerInvariant())
             {
-                case ChoiceLight: case "licht": case "day": case "dag": return ThemeChoice.Light;
-                case ChoiceDark: case "donker": case "night": return ThemeChoice.Dark;
+                case ChoiceLight: case "licht": return ThemeChoice.Light;
+                case ChoiceDark: case "donker": return ThemeChoice.Dark;
                 default: return ThemeChoice.Revit;
             }
         }

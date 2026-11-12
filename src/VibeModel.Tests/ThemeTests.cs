@@ -38,6 +38,8 @@ namespace VibeModel.Tests
             (ThemeRole.FgSecondary, ThemeRole.MenuBg),
             (ThemeRole.FgMuted, ThemeRole.WindowBg),
             (ThemeRole.FgDone, ThemeRole.WindowBg),
+            (ThemeRole.FgPrimary, ThemeRole.RunningStepBg),
+            (ThemeRole.FgSecondary, ThemeRole.RunningStepBg),
             (ThemeRole.Accent, ThemeRole.WindowBg),
             (ThemeRole.Accent, ThemeRole.PanelBg),
             (ThemeRole.Accent, ThemeRole.AssistantMsgBg),
@@ -84,8 +86,12 @@ namespace VibeModel.Tests
             (ThemeRole.FgError, ThemeRole.PanelBg),          // 4.2
         };
 
-        private static double Ratio(ThemeColors t, ThemeRole fg, ThemeRole bg) =>
-            ThemeColors.Contrast(ThemeColors.Over(t[fg], t[bg]), t[bg]);
+        // A translucent surface (the running step's tint) is seen over the window background.
+        private static double Ratio(ThemeColors t, ThemeRole fg, ThemeRole bg)
+        {
+            var surface = (t[bg] >> 24) == 0xFF ? t[bg] : ThemeColors.Over(t[bg], t[ThemeRole.WindowBg]);
+            return ThemeColors.Contrast(ThemeColors.Over(t[fg], surface), surface);
+        }
 
         [Fact]
         public void LightTheme_EveryTextPair_ReachesAA()
@@ -195,14 +201,14 @@ namespace VibeModel.Tests
                 MarkdownTableRenderingTests.Sta(() =>
                 {
                     ThemeManager.SetChoice(ThemeChoice.Light);
-                    var bg = Palette.BgDark;
+                    var bg = Palette.BgWindow;
                     var text = MarkdownStyles.FgPrimary;   // the markdown renderer shares the palette
                     Assert.Same(Palette.FgPrimary, text);
                     Assert.False(bg.IsFrozen);
                     Assert.Equal(ColorOf(ThemeKind.Light, ThemeRole.WindowBg), bg.Color);
 
                     ThemeManager.SetChoice(ThemeChoice.Dark);
-                    Assert.Same(bg, Palette.BgDark);
+                    Assert.Same(bg, Palette.BgWindow);
                     Assert.Equal(ColorOf(ThemeKind.Dark, ThemeRole.WindowBg), bg.Color);
                     Assert.Equal(ColorOf(ThemeKind.Dark, ThemeRole.FgPrimary), text.Color);
 
