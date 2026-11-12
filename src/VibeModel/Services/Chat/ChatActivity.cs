@@ -141,9 +141,9 @@ namespace VibeModel.Services.Chat
                 {
                     var cmd = match.Groups["cmd"].Value.ToLowerInvariant();
                     string detail;
-                    // Full: the decoded ?args= when the command is one curl that carries them, else
-                    // the whole shell command (an exec sent with --data-urlencode or from a heredoc
-                    // file, or several curls chained in one call).
+                    // Full: the decoded ?args= when the command is just that one curl, else the
+                    // whole shell command (an exec sent with --data-urlencode or from a heredoc file,
+                    // several curls, a pipe or a loop — live: `for c in walls floors … args=$c` kept "$c").
                     string full;
                     if (cmd == "batch")
                     {
@@ -156,8 +156,7 @@ namespace VibeModel.Services.Chat
                     {
                         var queryArgs = QueryArgs(match.Groups["query"].Value);
                         detail = Shorten(queryArgs);
-                        var oneCurl = command.IndexOf('\n') < 0 && CurlUrl.Matches(command).Count == 1;
-                        full = Full(queryArgs.Length > 0 && oneCurl ? queryArgs : command);
+                        full = Full(queryArgs.Length > 0 && IsPlainCurl(command, match, queryArgs) ? queryArgs : command);
                     }
                     return new ToolCallInfo(cmd, detail, full);
                 }
@@ -262,6 +261,18 @@ namespace VibeModel.Services.Chat
             if (string.IsNullOrWhiteSpace(text)) return "";
             var one = Regex.Replace(text, @"\s+", " ").Trim();
             return one.Length <= max ? one : one.Substring(0, max - 1).TrimEnd() + "…";
+        }
+
+        /// <summary>
+        /// One curl and nothing around it: one line, one server URL, no shell variable in the args and
+        /// no <c>; | &amp; `</c> outside the URL (a pipe, a chain, a loop). Then its decoded args say it all.
+        /// </summary>
+        private static bool IsPlainCurl(string command, Match url, string queryArgs)
+        {
+            if (command.IndexOf('\n') >= 0 || queryArgs.IndexOf('$') >= 0) return false;
+            if (CurlUrl.Matches(command).Count != 1) return false;
+            var rest = command.Remove(url.Index, url.Length);
+            return rest.IndexOfAny(new[] { ';', '|', '&', '`' }) < 0;
         }
 
         /// <summary>

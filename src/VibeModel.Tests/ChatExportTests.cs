@@ -104,6 +104,18 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void CliCurl_InALoopOrPipe_KeepsTheWholeCommand()
+        {
+            // Live: the stored args of this call were just "$c".
+            var loop = "for c in walls floors; do curl -s -H \"X-VibeModel-Token: $T\" \"http://127.0.0.1:18884/list?args=$c\"; done";
+            Assert.Equal(loop, ToolCallDescriber.ForCliTool("Bash", new Dictionary<string, object> { { "command", loop } }).FullArgs);
+            var pipe = "curl -s \"http://127.0.0.1:18884/list?args=walls\" | tail -5";
+            Assert.Equal(pipe, ToolCallDescriber.ForCliTool("Bash", new Dictionary<string, object> { { "command", pipe } }).FullArgs);
+            var preview = "curl -s \"http://127.0.0.1:18884/wall?args=0%200%205000%200&preview=1\"";   // & inside the URL is fine
+            Assert.Equal("0 0 5000 0", ToolCallDescriber.ForCliTool("Bash", new Dictionary<string, object> { { "command", preview } }).FullArgs);
+        }
+
+        [Fact]
         public void StepStillRunning_IsStoredAsNotFinished()
         {
             var turn = new TurnActivity(T0);
@@ -236,7 +248,7 @@ namespace VibeModel.Tests
             Assert.Equal(0, stats.Commands);                                  // exact and indicative never summed
             Assert.Equal(3, stats.LogCommands);
             Assert.Equal("~3", stats.CommandsText());
-            Assert.Contains("~3 commands", md);
+            Assert.Contains("commands: ~3", md);
             Assert.Equal(1, stats.ChatsFromLog);
             Assert.Equal(0, stats.ChatsWithoutRecord);
         }
@@ -395,13 +407,14 @@ namespace VibeModel.Tests
                 Elapsed = TimeSpan.FromMilliseconds(420)
             });
             Assert.Contains("Exported 12 chats (30 turns, 80 commands, 4 failed) to a zip in 420 ms:", text);
+            Assert.Contains("(1 turn, ", ChatLogCommand.Describe(new ChatExportResult { Path = "x", Stats = new ChatExportStats { Chats = 1, Turns = 1 } }));
             Assert.Contains(@"C:\x\chats-1.zip", text);
             Assert.Contains("2 older chats take their commands from the debug log", text);
             Assert.Contains("9 chats have no commands recorded", text);
             Assert.Contains("No server token or API key", text);
             Assert.StartsWith("ERROR: chat export failed: boom", ChatLogCommand.Describe(new ChatExportResult { Error = "boom" }));
             Assert.Equal("none", ChatLogCommand.Describe(new ChatExportResult { Error = "none", NothingToExport = true }));
-            Assert.Contains("(1 turns, 4 + ~7 commands,", ChatLogCommand.Describe(new ChatExportResult
+            Assert.Contains("(1 turn, 4 + ~7 commands,", ChatLogCommand.Describe(new ChatExportResult
             {
                 Path = "x", Stats = new ChatExportStats { Chats = 2, Turns = 1, Commands = 4, LogCommands = 7 }
             }));

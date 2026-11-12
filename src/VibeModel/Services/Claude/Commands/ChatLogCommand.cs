@@ -70,7 +70,7 @@ namespace VibeModel.Services.Claude.Commands
             var st = result.Stats;
             var sb = new StringBuilder();
             sb.Append("Exported ").Append(st.Chats).Append(st.Chats == 1 ? " chat" : " chats")
-              .Append(" (").Append(st.Turns).Append(" turns, ").Append(st.CommandsText()).Append(" commands, ")
+              .Append(" (").Append(st.Turns).Append(st.Turns == 1 ? " turn, " : " turns, ").Append(st.CommandsText()).Append(" commands, ")
               .Append(st.Failed).Append(" failed) to ").Append(result.IsZip ? "a zip" : "one markdown file")
               .Append(" in ").Append(((int)result.Elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)).AppendLine(" ms:");
             sb.AppendLine(result.Path);
