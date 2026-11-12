@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.18 — Leesbare annotaties (2026-11-12)
+
 ### Added — leesbare annotaties
 - `annolayout [view|sheet]` reads back where every text, tag, dimension text and line, witness line and spot sits on paper and
   names what collides, with ids (WARN for overlapping texts, lines through texts, stacked dimension strings and skewed text;
