@@ -711,7 +711,10 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   whole, or reads "not explained by phase or design option" when it has neither. Rows are the read-back rows (a grand-total row
   included), not elements: a group or a rebar set is one row. Linked rows are shown but not counted; key schedules, material takeoffs
   and multi-category schedules read `Scope: not computed (…)`; above 20 000 outside elements the reasons are skipped. Replaces the
-  old `Empty:` line. Not measured live yet.
+  old `Empty:` line. Measured (Revit 2023, demo model): `Scope: shows 1 of 3 elements of Walls (1 row); outside: 2 phase (schedule
+  phase '1. Bestaande situatie', filter '1.1 Bestaande Situatie').`; with `--filter "Length gt 12000"`: `shows 0 of 2 … 1 phase (…), 1 by the
+  schedule filter(s) — schedule filter(s): Length > 12000 mm.`; a rebar schedule lists area reinforcement's `RebarInSystem` next to the
+  loose bars (4 + 4 → `shows all 8 elements of Structural Rebar (8 rows)`).
 - **`-- schedules:` / `-- views:`** (`DerivedCoverage.Check`, independent of an office pack): after a modifying command or batch that
   ADDED model elements, `-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why)` for every
   schedule of that category that leaves them out (≤ 20 schedules checked: the ones VibeModel made this session first, then by name; key/takeoff/multi-category skipped; an area
@@ -730,6 +733,16 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
   logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
   (respecting *Ask first* for sheets) or to say what is missing where — never to report the overview as complete.
+  Measured (Revit 2023, demo model, 2026-11-12): a wall on the office default phase (Bouwfase) → `-- schedules: 1 new Walls not in
+  'VM_bench_A' (schedule 1731211 --rows for why); …` for each of three wall schedules on the existing phase, `--phase existing` → only the
+  one with a length filter, a batch of both → one line (`1 new … 'A'; 2 new … 'B'; 1 new … 'C'`). Rebar: a new bar is
+  `IsUnobscuredInView == true` by default in a section through its host and `false` in a plan; a plan's view-scoped collector lists
+  obscured bars too once its view range reaches them (and nothing below the range), so the state is read from the bar. A bar added while
+  every bar in the plan is obscured gives no line; with one bar set unobscured: `-- views: 1 new Structural Rebar hidden inside their host
+  in 'VM_rebar_plan' (sheet VM98 - VM rebar), where the other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)`; the four
+  `RebarInSystem` of an area reinforcement are reported the same way. Cost: `wall 0 0 5000 0 3000` ×10 averaged 41 ms on the
+  development build and 76 ms with the checks (11 schedules, 3 of the walls' category, 3 sheet views placed this session; no `> 200 ms`
+  log line). Design options: not measured — the API cannot create one.
 - **Quantities follow the model** (interview Ruben Wolbers, 2026-11-12: m² no field gave ended up as computed numbers in
   new parameters). `schedule --takeoff` makes a Material Takeoff (`ViewSchedule.CreateMaterialTakeoff`; default fields
   `Family and Type, Material: Name, Material: Area, Material: Volume`, else `--fields` from the takeoff's own list); every
