@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using VibeModel.Services.Chat;
 using VibeModel.Services.Claude;
+using VibeModel.Services.Helpers;
 using Xunit;
-using Kind = VibeModel.Services.Claude.CalculatedFieldHint.Kind;
+using Kind = VibeModel.Services.Helpers.QuantityKind;
 
 namespace VibeModel.Tests
 {
@@ -139,6 +140,7 @@ namespace VibeModel.Tests
         public void UnknownWords_SkipFieldsFunctionsAndUnits()
         {
             Assert.Empty(CalculatedFieldHint.UnknownWords("if(Length > 1000 mm, sqrt(Area), 0 m)", Fields));
+            Assert.Empty(CalculatedFieldHint.UnknownWords("Length + 1000mm + 2m", Fields));
             Assert.Equal(new[] { "Hoogte" }, CalculatedFieldHint.UnknownWords("Length * Hoogte", Fields));
         }
 

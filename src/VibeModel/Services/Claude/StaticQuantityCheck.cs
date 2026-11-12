@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using Autodesk.Revit.DB;
 using VibeModel.Infrastructure;
-using VibeModel.Services.Claude.Commands;
+using VibeModel.Services.Helpers;
 using VibeModel.Services.Standards;
 
 namespace VibeModel.Services.Claude
@@ -71,15 +71,12 @@ namespace VibeModel.Services.Claude
             }
         }
 
+        /// <summary>"Length" / "Area" / "Volume" / "Number" (counts included), else null: not a quantity.</summary>
         private static string SpecLabel(Definition def)
         {
             ForgeTypeId spec;
             try { spec = def.GetDataType(); } catch { return null; }
-            if (ScheduleCommand.SameSpec(spec, SpecTypeId.Length)) return "Length";
-            if (ScheduleCommand.SameSpec(spec, SpecTypeId.Area)) return "Area";
-            if (ScheduleCommand.SameSpec(spec, SpecTypeId.Volume)) return "Volume";
-            if (ScheduleCommand.SameSpec(spec, SpecTypeId.Number) || ScheduleCommand.SameSpec(spec, SpecTypeId.Int.Integer)) return "Number";
-            return null;
+            return CalculatedFieldHint.TypeLabel(FormattingHelper.QuantityKindOf(spec, integerAsNumber: true));
         }
 
         private static bool HasFixedNumber(Parameter p)

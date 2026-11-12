@@ -54,7 +54,7 @@ namespace VibeModel.Services.Claude.Commands
             ViewSchedule vs = null;
             var notes = new List<string>();
             CommandResult refused = null;
-            CalculatedFieldHint.Kind? calcType = null;
+            QuantityKind? calcType = null;
             var error = TransactionHelper.Execute(doc, a.Takeoff ? "VibeModel: Create Material Takeoff" : "VibeModel: Create Schedule", () =>
             {
                 vs = a.Takeoff ? ViewSchedule.CreateMaterialTakeoff(doc, catId) : ViewSchedule.CreateSchedule(doc, catId);
@@ -144,7 +144,7 @@ namespace VibeModel.Services.Claude.Commands
             if (a.Takeoff) sb.AppendLine("Kind: Material Takeoff (Material: Area/Volume follow every model change)");
             foreach (var n in notes) sb.AppendLine("Note: " + n);
             var data = Rows(doc, vs, ScheduleArgs.PreviewRows, sb, out int total);
-            if (a.Takeoff && NoMaterials(data, total) && (total > 0 || !AnyMaterial(doc, catId)))
+            if (a.Takeoff && NoMaterials(doc, catId, data, total))
             {
                 sb.AppendLine("Note: " + NoMaterialsNote);
                 data["noMaterials"] = true;
@@ -173,10 +173,10 @@ namespace VibeModel.Services.Claude.Commands
         /// formula names (exact name, never a substring — the formula must name it exactly) that is not
         /// in the schedule yet is added as a hidden column. Returns the Type the field needs, from the fields' specs.
         /// </summary>
-        private static CalculatedFieldHint.Kind? PrepareCalc(ScheduleDefinition def, IList<SchedulableField> schedulable, IList<string> names,
+        private static QuantityKind? PrepareCalc(ScheduleDefinition def, IList<SchedulableField> schedulable, IList<string> names,
             ScheduleArgs a, string catName, List<string> notes)
         {
-            var kinds = new Dictionary<string, CalculatedFieldHint.Kind>(StringComparer.OrdinalIgnoreCase);
+            var kinds = new Dictionary<string, QuantityKind>(StringComparer.OrdinalIgnoreCase);
             foreach (var used in CalculatedFieldHint.FieldsIn(a.CalcFormula, names))
             {
                 // Already a column (--fields, or the hidden --filter column)?
@@ -189,7 +189,7 @@ namespace VibeModel.Services.Claude.Commands
                     field.IsHidden = true;
                     notes.Add("field '" + names[i] + "' added as a hidden column (a calculated field can only use fields in the schedule)");
                 }
-                kinds[used] = KindOf(field);
+                kinds[used] = FormattingHelper.QuantityKindOf(SpecOf(field), integerAsNumber: true);
             }
             var unknown = CalculatedFieldHint.UnknownWords(a.CalcFormula, names);
             if (unknown.Count > 0)
@@ -198,47 +198,28 @@ namespace VibeModel.Services.Claude.Commands
             return CalculatedFieldHint.InferType(a.CalcFormula, kinds);
         }
 
-        private static CalculatedFieldHint.Kind KindOf(ScheduleField f)
-        {
-            var spec = SpecOf(f);
-            if (spec == null) return CalculatedFieldHint.Kind.Other;
-            if (SameSpec(spec, SpecTypeId.Length)) return CalculatedFieldHint.Kind.Length;
-            if (SameSpec(spec, SpecTypeId.Area)) return CalculatedFieldHint.Kind.Area;
-            if (SameSpec(spec, SpecTypeId.Volume)) return CalculatedFieldHint.Kind.Volume;
-            if (SameSpec(spec, SpecTypeId.Number) || SameSpec(spec, SpecTypeId.Int.Integer)) return CalculatedFieldHint.Kind.Number;
-            return CalculatedFieldHint.Kind.Other;
-        }
-
-        /// <summary>Same spec, ignoring the version suffix ("autodesk.spec.aec:length-2.0.0").</summary>
-        internal static bool SameSpec(ForgeTypeId a, ForgeTypeId b)
-        {
-            string Strip(string id) { int dash = (id ?? "").LastIndexOf('-'); return dash > 0 ? id.Substring(0, dash) : id ?? ""; }
-            return a != null && b != null && string.Equals(Strip(a.TypeId), Strip(b.TypeId), StringComparison.OrdinalIgnoreCase);
-        }
-
         /// <summary>
-        /// An empty takeoff can also be the schedule's phase or filter (its own "Empty:" line says so); the
-        /// "no materials" note is only given when no element of the category carries a material at all.
+        /// Whether the takeoff is empty for want of materials — said only when it is certain. Rows that were
+        /// all read and all lack a Material: Name; or no rows while the category has elements and none of
+        /// them carries a material. No rows while some element has one is the phase or the filter (the
+        /// "Empty:" line says so); a category without elements is not "without materials".
         /// </summary>
-        private static bool AnyMaterial(Document doc, ElementId catId)
+        private static bool NoMaterials(Document doc, ElementId catId, Dictionary<string, object> data, int total)
         {
+            if (total > 0)
+            {
+                if (!(data["columns"] is List<object> cols) || !(data["rows"] is List<object> rows) || rows.Count < total) return false;
+                int nameCol = cols.FindIndex(c => c is Dictionary<string, object> d && string.Equals(d["field"] as string, "Material: Name", StringComparison.OrdinalIgnoreCase));
+                if (nameCol < 0) return false;
+                return rows.All(r => r is List<object> cells && (nameCol >= cells.Count || string.IsNullOrWhiteSpace(cells[nameCol] as string)));
+            }
             int seen = 0;
             foreach (var e in new FilteredElementCollector(doc).OfCategoryId(catId).WhereElementIsNotElementType())
             {
-                if (e.GetMaterialIds(false).Count > 0) return true;
-                if (++seen >= 2000) return true; // unknown beyond this: do not claim "no materials"
+                if (e.GetMaterialIds(false).Count > 0) return false;
+                if (++seen >= 2000) return false; // not read further: do not claim it
             }
-            return false;
-        }
-
-        /// <summary>A takeoff with no rows, or with every Material: Name cell empty.</summary>
-        private static bool NoMaterials(Dictionary<string, object> data, int total)
-        {
-            if (total == 0) return true;
-            if (!(data["columns"] is List<object> cols) || !(data["rows"] is List<object> rows)) return false;
-            int nameCol = cols.FindIndex(c => c is Dictionary<string, object> d && string.Equals(d["field"] as string, "Material: Name", StringComparison.OrdinalIgnoreCase));
-            if (nameCol < 0) return false;
-            return rows.All(r => r is List<object> cells && (nameCol >= cells.Count || string.IsNullOrWhiteSpace(cells[nameCol] as string)));
+            return seen > 0;
         }
 
         /// <summary>Widen each visible column to its longest cell (paper mm, see ScheduleText.ColumnWidthMm).</summary>

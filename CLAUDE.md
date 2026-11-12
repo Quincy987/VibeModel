@@ -567,7 +567,7 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
 curl -s "http://localhost:18884/schedule?args=Palenstaat --rows"                                     # Read any schedule back (+ the sheets it is on)
-curl -s "http://localhost:18884/schedule?args=walls --takeoff --name Wandmaterialen"                 # Material Takeoff: Material: Name/Area/Volume follow the model
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --takeoff --name Wandmaterialen"   # Material Takeoff: Material: Name/Area/Volume follow the model
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count\" --calc \"Paaloppervlak=Length*Width\""  # Schedule + the clicks for the calculated field
 curl -s "http://localhost:18884/callout?args=Bovenaanzicht --box 100000 -5000 110000 5000 --name Detail A --scale 20"  # Plan callout ( --section: detail view)
 curl -s "http://localhost:18884/callout?args=101 --box 0 0 4000 3000 --reference Detail A"            # Reference callout to an existing view

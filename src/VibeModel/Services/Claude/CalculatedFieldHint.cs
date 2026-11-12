@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude
 {
@@ -15,11 +16,8 @@ namespace VibeModel.Services.Claude
     /// field can only use those), which Type the field needs (Revit refuses a mismatch with
     /// "Inconsistent units"), and the one-line manual step. Unit-tested.
     /// </summary>
-    public static class CalculatedFieldHint
+    internal static class CalculatedFieldHint
     {
-        /// <summary>What a field measures, as far as the Type of a calculated field cares.</summary>
-        public enum Kind { Other, Number, Length, Area, Volume }
-
         /// <summary>Revit formula functions and operators that are words, never field names.</summary>
         private static readonly HashSet<string> Functions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -60,6 +58,9 @@ namespace VibeModel.Services.Claude
                 if (!tok.Any(char.IsLetter)) continue;
                 if (double.TryParse(tok, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) continue;
                 if (Functions.Contains(tok) || Units.ContainsKey(tok)) continue;
+                // "2m", "1000mm": a number written against its unit.
+                var unitPart = tok.TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.');
+                if (unitPart.Length < tok.Length && Units.ContainsKey(unitPart)) continue;
                 if (!words.Contains(tok, StringComparer.OrdinalIgnoreCase)) words.Add(tok);
             }
             return words;
@@ -71,9 +72,9 @@ namespace VibeModel.Services.Claude
         /// field = Number. Null when the formula mixes dimensions or uses a field of another kind
         /// (the user then picks the Type that matches the result).
         /// </summary>
-        public static Kind? InferType(string formula, IDictionary<string, Kind> fieldKinds)
+        public static QuantityKind? InferType(string formula, IDictionary<string, QuantityKind> fieldKinds)
         {
-            var kinds = fieldKinds ?? new Dictionary<string, Kind>();
+            var kinds = fieldKinds ?? new Dictionary<string, QuantityKind>();
             var spans = FindSpans(formula ?? "", kinds.Keys);
             var masked = Mask(formula ?? "", spans, out var names);
             var dims = new List<int?>();
@@ -89,30 +90,31 @@ namespace VibeModel.Services.Claude
                 if (!p.AtEnd) return null;
                 switch (d)
                 {
-                    case 0: return Kind.Number;
-                    case 1: return Kind.Length;
-                    case 2: return Kind.Area;
-                    case 3: return Kind.Volume;
+                    case 0: return QuantityKind.Number;
+                    case 1: return QuantityKind.Length;
+                    case 2: return QuantityKind.Area;
+                    case 3: return QuantityKind.Volume;
                     default: return null;
                 }
             }
             catch (FormatException) { return null; }
         }
 
-        public static string TypeLabel(Kind? kind)
+        /// <summary>The Type name Revit's calculated-field dialog uses; null for anything it cannot be.</summary>
+        public static string TypeLabel(QuantityKind? kind)
         {
             switch (kind)
             {
-                case Kind.Length: return "Length";
-                case Kind.Area: return "Area";
-                case Kind.Volume: return "Volume";
-                case Kind.Number: return "Number";
+                case QuantityKind.Length: return "Length";
+                case QuantityKind.Area: return "Area";
+                case QuantityKind.Volume: return "Volume";
+                case QuantityKind.Number: return "Number";
                 default: return null;
             }
         }
 
         /// <summary>The one-line manual step (text mode). <paramref name="type"/> null = the user picks.</summary>
-        public static string ManualStep(string scheduleName, string name, string formula, Kind? type)
+        public static string ManualStep(string scheduleName, string name, string formula, QuantityKind? type)
         {
             var label = TypeLabel(type);
             var typePart = label != null
@@ -123,7 +125,7 @@ namespace VibeModel.Services.Claude
                    typePart + ", Formula: " + formula + " → OK. The column then follows every model change.";
         }
 
-        public static Dictionary<string, object> ManualStepJson(string scheduleName, string name, string formula, Kind? type)
+        public static Dictionary<string, object> ManualStepJson(string scheduleName, string name, string formula, QuantityKind? type)
             => new Dictionary<string, object>
             {
                 { "name", name },
@@ -182,14 +184,14 @@ namespace VibeModel.Services.Claude
             return sb.ToString();
         }
 
-        private static int? DimensionOf(Kind k)
+        private static int? DimensionOf(QuantityKind k)
         {
             switch (k)
             {
-                case Kind.Number: return 0;
-                case Kind.Length: return 1;
-                case Kind.Area: return 2;
-                case Kind.Volume: return 3;
+                case QuantityKind.Number: return 0;
+                case QuantityKind.Length: return 1;
+                case QuantityKind.Area: return 2;
+                case QuantityKind.Volume: return 3;
                 default: return null;
             }
         }
