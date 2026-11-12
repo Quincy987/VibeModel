@@ -984,6 +984,16 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   **Niet nu** (AutomationIds `NudgeNewChat`, `NudgeNewChatButton`, `NudgeNewChatDismiss`). The welcome
   card ends with the tip to start a new chat per task (`WelcomeTip`; not for a local model, which has no
   limit and reports no tokens). Pure part: `Services/Chat/ConversationLength.cs`.
+- **Settings window** (`UI/SettingsDialog.cs`, header button *Settings*): five tabs, each its own ScrollViewer — *Algemeen*
+  (taal, thema), *AI-verbinding* (sub-tabs Claude Code / Anthropic API / Lokaal model; model, API address and the local
+  model's name, tool use and timeout under a *Geavanceerd* toggle, open when something in it is set or managed), *Dit
+  project* (project folder + memory/journal), *Standaarden*, *Over* (version and updates) — with the status line and
+  *Opslaan* in a fixed footer. Every text is a `Strings` key (`Settings*`, nl/en) except product names and the bilingual
+  *Taal / Language* heading. Opens on *AI-verbinding* when the pane's backend is not available (`connectionNeeded`), else
+  on the tab last shown this session. AutomationIds `SettingsTabGeneral`, `SettingsTabConnection`, `SettingsTabProject`,
+  `SettingsTabStandards`, `SettingsTabAbout`, `SettingsBackendCli|Api|Local`, `SettingsApiAdvanced`, `SettingsLocalAdvanced`,
+  `SettingsSave`, `SettingsStatus`, `SettingsLanguage`, `SettingsTheme` (+ the update ids). No change-approval section:
+  the mode chip chooses and remembers it. `SettingsDialogTests` builds it in both languages.
 - **Diagnose** (header button → `UI/DiagnoseWindow.cs`; `diagnose` command): `Services/Diagnostics/
   DiagnoseReport.Build()` — version, add-in path, Authenticode (WinVerifyTrust, cache-only), Revit,
   port, backend + key source (masked), CLI search, managed.json, proxy, DNS + HTTPS to the API host and
