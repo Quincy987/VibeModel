@@ -104,6 +104,9 @@ namespace VibeModel.UI
 
         private static string S(string key, params object[] args) => Strings.Get(key, args);
 
+        private static void SetId(DependencyObject element, string id) =>
+            System.Windows.Automation.AutomationProperties.SetAutomationId(element, id);
+
         /// <param name="documentTitle">Active document title (the project key); null when unknown.</param>
         /// <param name="documentPath">Its Document.PathName — the default project folder is its directory.</param>
         /// <param name="connectionNeeded">No working chat backend yet: open on the AI connection tab.</param>
@@ -153,8 +156,8 @@ namespace VibeModel.UI
             AddPage(tabBar, host, TabGeneral, S(Strings.SettingsTabGeneral), "SettingsTabGeneral", CreateGeneralPage());
             AddPage(tabBar, host, TabConnection, S(Strings.SettingsTabConnection), "SettingsTabConnection", CreateConnectionPage());
             AddPage(tabBar, host, TabProject, S(Strings.SettingsTabProject), "SettingsTabProject", CreateProjectPage(documentTitle));
-            AddPage(tabBar, host, TabStandards, S(Strings.SettingsTabStandards), "SettingsTabStandards", CreateStandardsPage());
-            AddPage(tabBar, host, TabAbout, S(Strings.SettingsTabAbout), "SettingsTabAbout", CreateAboutPage());
+            AddPage(tabBar, host, TabStandards, S(Strings.SettingsTabStandards), "SettingsTabStandards", CreateStandardsPanel());
+            AddPage(tabBar, host, TabAbout, S(Strings.SettingsTabAbout), "SettingsTabAbout", CreateUpdatesPanel());
 
             root.Children.Add(tabBorder);
             root.Children.Add(host);
@@ -172,7 +175,7 @@ namespace VibeModel.UI
             var tab = CreateTabButton(label, () => ShowPage(key));
             tab.FontSize = 13;
             tab.Padding = new Thickness(12, 6, 12, 6);
-            System.Windows.Automation.AutomationProperties.SetAutomationId(tab, automationId);
+            SetId(tab, automationId);
             tabBar.Children.Add(tab);
 
             content.Margin = new Thickness(24, 12, 24, 16);
@@ -211,7 +214,7 @@ namespace VibeModel.UI
                 Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_statusText, "SettingsStatus");
+            SetId(_statusText, "SettingsStatus");
             panel.Children.Add(_statusText);
 
             var row = new Grid();
@@ -226,7 +229,7 @@ namespace VibeModel.UI
 
             _saveButton = CreateButton(S(Strings.SettingsSave));
             _saveButton.Click += OnSaveClick;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_saveButton, "SettingsSave");
+            SetId(_saveButton, "SettingsSave");
             Grid.SetColumn(_saveButton, 1);
             row.Children.Add(_saveButton);
             panel.Children.Add(row);
@@ -280,10 +283,6 @@ namespace VibeModel.UI
             return page;
         }
 
-        private StackPanel CreateStandardsPage() => CreateStandardsPanel();
-
-        private StackPanel CreateAboutPage() => CreateUpdatesPanel();
-
         // --- Backend sub-tabs ---
 
         private StackPanel CreateBackendTabBar()
@@ -313,8 +312,7 @@ namespace VibeModel.UI
                 _tabClicked = true;
                 UpdateTabVisuals();
             });
-            btn.Tag = backendKey;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(btn, automationId);
+            SetId(btn, automationId);
             return btn;
         }
 
@@ -401,7 +399,7 @@ namespace VibeModel.UI
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 4, 0, 4)
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_languageCombo, "SettingsLanguage");
+            SetId(_languageCombo, "SettingsLanguage");
             _languageCombo.Items.Add(new ComboBoxItem { Content = "Nederlands", Tag = Services.Chat.Strings.Dutch });
             _languageCombo.Items.Add(new ComboBoxItem { Content = "English", Tag = Services.Chat.Strings.English });
             _languageCombo.SelectedIndex = Services.Chat.Strings.IsEnglish(SettingsManager.GetLanguage()) ? 1 : 0;
@@ -429,7 +427,7 @@ namespace VibeModel.UI
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 4, 0, 4)
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_themeCombo, "SettingsTheme");
+            SetId(_themeCombo, "SettingsTheme");
             _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeFollowRevit), Tag = ThemeChoice.Revit });
             _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeLight), Tag = ThemeChoice.Light });
             _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeDark), Tag = ThemeChoice.Dark });
@@ -454,7 +452,7 @@ namespace VibeModel.UI
 
             _projectFolderBox = CreateTextBox("");
             _projectFolderBox.IsReadOnly = true;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_projectFolderBox, "SettingsProjectFolder");
+            SetId(_projectFolderBox, "SettingsProjectFolder");
 
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -520,9 +518,10 @@ namespace VibeModel.UI
                 FontSize = 12,
                 Margin = new Thickness(0, 14, 0, 2)
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_projectMemoryCheck, "SettingsProjectMemory");
+            SetId(_projectMemoryCheck, "SettingsProjectMemory");
             panel.Children.Add(_projectMemoryCheck);
-            var memoryHint = CreateLabel(S(Strings.SettingProjectMemoryHint));
+            // A global switch on a per-project page: say so.
+            var memoryHint = CreateLabel(S(Strings.SettingProjectMemoryHint) + " " + S(Strings.SettingsProjectMemoryAll));
             memoryHint.Margin = new Thickness(20, 0, 0, 4);
             panel.Children.Add(memoryHint);
             return panel;
@@ -560,7 +559,7 @@ namespace VibeModel.UI
                 FontSize = 12,
                 Margin = new Thickness(0, 8, 0, 12)
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_standardsEnabledCheck, "SettingsStandardsEnabled");
+            SetId(_standardsEnabledCheck, "SettingsStandardsEnabled");
             panel.Children.Add(_standardsEnabledCheck);
 
             var localCopy = System.IO.Path.Combine(
@@ -570,14 +569,14 @@ namespace VibeModel.UI
             panel.Children.Add(packLabel);
             _packPathBox = CreateTextBox(SettingsManager.GetStandardsPackPath());
             _packPathBox.ToolTip = packLabel.ToolTip;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_packPathBox, "SettingsStandardsPack");
+            SetId(_packPathBox, "SettingsStandardsPack");
             panel.Children.Add(CreateFolderRow(_packPathBox, "pack.json|pack.json|" + S(Strings.SettingsAllFiles) + "|*.*"));
 
             var docsLabel = CreateLabel(S(Strings.SettingsStandardsDocs));
             docsLabel.Margin = new Thickness(0, 12, 0, 4);
             panel.Children.Add(docsLabel);
             _standardsFolderBox = CreateTextBox(SettingsManager.GetStandardsFolder());
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_standardsFolderBox, "SettingsStandardsDocs");
+            SetId(_standardsFolderBox, "SettingsStandardsDocs");
             panel.Children.Add(CreateFolderRow(_standardsFolderBox,
                 S(Strings.SettingsDocumentsFilter) + "|*.pdf;*.txt;*.md|" + S(Strings.SettingsAllFiles) + "|*.*"));
             return panel;
@@ -609,13 +608,13 @@ namespace VibeModel.UI
                 FontSize = 12,
                 Margin = new Thickness(0, 10, 0, 4)
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckBox, "SettingsUpdateCheck");
+            SetId(_updateCheckBox, "SettingsUpdateCheck");
             panel.Children.Add(_updateCheckBox);
             if (disabled)
                 panel.Children.Add(CreateLabel(S(Strings.UpdateDisabled) + " (" + S(Strings.SettingManaged) + ")"));
 
             _updateStatusText = CreateLabel("");
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateStatusText, "SettingsUpdateStatus");
+            SetId(_updateStatusText, "SettingsUpdateStatus");
             panel.Children.Add(_updateStatusText);
             _updatePendingText = CreateLabel("");
             panel.Children.Add(_updatePendingText);
@@ -623,7 +622,7 @@ namespace VibeModel.UI
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
             _updateCheckNowButton = CreateButton(S(Strings.SettingsUpdateCheckNow));
             _updateCheckNowButton.IsEnabled = !disabled && !engine.InPlace;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckNowButton, "SettingsUpdateCheckNow");
+            SetId(_updateCheckNowButton, "SettingsUpdateCheckNow");
             _updateCheckNowButton.Click += async (s, e) =>
             {
                 _updateCheckNowButton.IsEnabled = false;
@@ -636,7 +635,7 @@ namespace VibeModel.UI
 
             _updateRollbackButton = CreateSecondaryButton("");
             _updateRollbackButton.Margin = new Thickness(8, 0, 0, 0);
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_updateRollbackButton, "SettingsUpdateRollback");
+            SetId(_updateRollbackButton, "SettingsUpdateRollback");
             _updateRollbackButton.Click += async (s, e) =>
             {
                 _updateRollbackButton.IsEnabled = false;
@@ -721,7 +720,7 @@ namespace VibeModel.UI
                 FontSize = 13,
                 MaxLength = 200
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_apiKeyBox, "SettingsApiKey");
+            SetId(_apiKeyBox, "SettingsApiKey");
 
             // Only the user's own key goes in the box. A key from IT (managed.json) or from the
             // ANTHROPIC_API_KEY variable is named, masked, and never copied into settings.json.
@@ -745,7 +744,7 @@ namespace VibeModel.UI
             _validateApiButton.Click += OnValidateApiClick;
             _validateApiButton.Margin = new Thickness(0, 8, 0, 0);
             _validateApiButton.HorizontalAlignment = HorizontalAlignment.Left;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_validateApiButton, "SettingsApiValidate");
+            SetId(_validateApiButton, "SettingsApiValidate");
             panel.Children.Add(_validateApiButton);
 
             // Advanced: model (empty = the default) and endpoint (a gateway that speaks the Messages API).
@@ -783,14 +782,14 @@ namespace VibeModel.UI
 
             panel.Children.Add(CreateLabel(S(Strings.SettingsLocalEndpoint)));
             _endpointBox = CreateTextBox(SettingsManager.GetLocalLlmEndpoint());
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_endpointBox, "SettingsLocalEndpoint");
+            SetId(_endpointBox, "SettingsLocalEndpoint");
             panel.Children.Add(_endpointBox);
 
             _testConnectionButton = CreateSecondaryButton(S(Strings.SettingsLocalTest));
             _testConnectionButton.Click += OnTestConnectionClick;
             _testConnectionButton.Margin = new Thickness(0, 4, 0, 0);
             _testConnectionButton.HorizontalAlignment = HorizontalAlignment.Left;
-            System.Windows.Automation.AutomationProperties.SetAutomationId(_testConnectionButton, "SettingsLocalTest");
+            SetId(_testConnectionButton, "SettingsLocalTest");
             panel.Children.Add(_testConnectionButton);
 
             var advanced = new StackPanel();
@@ -866,7 +865,7 @@ namespace VibeModel.UI
                 Cursor = Cursors.Hand,
                 HorizontalAlignment = HorizontalAlignment.Left
             };
-            System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, automationId);
+            SetId(toggle, automationId);
             System.Windows.Automation.AutomationProperties.SetName(toggle, label);
             content.Margin = new Thickness(14, 0, 0, 0);
             Action apply = () =>

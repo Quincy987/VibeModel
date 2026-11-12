@@ -211,6 +211,7 @@ namespace VibeModel.Services.Chat
         public const string SettingsProjectNoFolder = "SettingsProjectNoFolder";
         public const string SettingsProjectSourceModel = "SettingsProjectSourceModel";
         public const string SettingsProjectSourceConfigured = "SettingsProjectSourceConfigured";
+        public const string SettingsProjectMemoryAll = "SettingsProjectMemoryAll";
         public const string SettingsStandardsTitle = "SettingsStandardsTitle";
         public const string SettingsStandardsHint = "SettingsStandardsHint";
         public const string SettingsStandardsEnabled = "SettingsStandardsEnabled";
@@ -393,7 +394,7 @@ namespace VibeModel.Services.Chat
                 { WizardApiOk, "Works - model {0} is available." },
                 { WizardApiInvalid, "This key is not accepted (wrong, expired or revoked). Check it with your administrator." },
                 { WizardApiNoAccess, "The key is valid but has no access to the API. Ask your administrator." },
-                { WizardApiModelUnknown, "The key works, but model {0} is not available to it. Pick another model in Settings or ask your administrator." },
+                { WizardApiModelUnknown, "The key works, but model {0} is not available to it. Pick another model in Settings → AI connection → Advanced, or ask your administrator." },
                 { WizardApiNetwork, "Cannot reach {0}: {1}. The network or the office proxy blocks it - press Diagnose and send the report to IT." },
                 { WizardApiOther, "Unexpected answer (HTTP {0}): {1}" },
                 { WizardCliHeading, "2. Claude Code (your own Claude subscription)" },
@@ -430,7 +431,7 @@ namespace VibeModel.Services.Chat
                 { SettingsTabStandards, "Standards" },
                 { SettingsTabAbout, "About" },
                 { SettingsSave, "Save" },
-                { SettingsSaveHint, "Buttons inside a tab act at once; everything else is saved with Save." },
+                { SettingsSaveHint, "Changes count after Save; testing and updating act at once." },
                 { SettingsSaved, "Settings saved." },
                 { SettingsBrowse, "Browse…" },
                 { SettingsClear, "Clear" },
@@ -485,6 +486,7 @@ namespace VibeModel.Services.Chat
                 { SettingsProjectNoFolder, "no folder" },
                 { SettingsProjectSourceModel, "(the model's folder)" },
                 { SettingsProjectSourceConfigured, "(set here)" },
+                { SettingsProjectMemoryAll, "This switch applies to every project on this computer." },
                 { SettingsStandardsTitle, "Office standards" },
                 { SettingsStandardsHint, "A standards pack teaches the chat how your office models: phases, view templates, naming and checks. It is only used for models it fits." },
                 { SettingsStandardsEnabled, "Apply the office standards (rules in the chat, default phase, checks)" },
@@ -662,7 +664,7 @@ namespace VibeModel.Services.Chat
                 { WizardApiOk, "Werkt - model {0} is beschikbaar." },
                 { WizardApiInvalid, "Deze sleutel wordt niet geaccepteerd (onjuist, verlopen of ingetrokken). Controleer hem bij je beheerder." },
                 { WizardApiNoAccess, "De sleutel is geldig maar heeft geen toegang tot de API. Vraag het je beheerder." },
-                { WizardApiModelUnknown, "De sleutel werkt, maar model {0} is er niet voor beschikbaar. Kies een ander model in Settings of vraag het je beheerder." },
+                { WizardApiModelUnknown, "De sleutel werkt, maar model {0} is er niet voor beschikbaar. Kies een ander model in Settings → AI-verbinding → Geavanceerd, of vraag het je beheerder." },
                 { WizardApiNetwork, "{0} is niet bereikbaar: {1}. Het netwerk of de kantoorproxy houdt het tegen - klik op Diagnose en stuur het rapport naar IT." },
                 { WizardApiOther, "Onverwacht antwoord (HTTP {0}): {1}" },
                 { WizardCliHeading, "2. Claude Code (je eigen Claude-abonnement)" },
@@ -699,7 +701,7 @@ namespace VibeModel.Services.Chat
                 { SettingsTabStandards, "Standaarden" },
                 { SettingsTabAbout, "Over" },
                 { SettingsSave, "Opslaan" },
-                { SettingsSaveHint, "Knoppen in een tabblad werken meteen; de rest bij Opslaan." },
+                { SettingsSaveHint, "Wijzigingen gelden na Opslaan; testen en updaten werken meteen." },
                 { SettingsSaved, "Instellingen opgeslagen." },
                 { SettingsBrowse, "Bladeren…" },
                 { SettingsClear, "Wissen" },
@@ -754,6 +756,7 @@ namespace VibeModel.Services.Chat
                 { SettingsProjectNoFolder, "geen map" },
                 { SettingsProjectSourceModel, "(map van het model)" },
                 { SettingsProjectSourceConfigured, "(ingesteld)" },
+                { SettingsProjectMemoryAll, "Deze schakelaar geldt voor alle projecten op deze computer." },
                 { SettingsStandardsTitle, "Kantoorstandaard" },
                 { SettingsStandardsHint, "Een standaardenpakket leert de chat hoe jullie kantoor modelleert: fases, view templates, naamgeving en controles. Het wordt alleen gebruikt bij modellen waar het bij past." },
                 { SettingsStandardsEnabled, "Kantoorstandaard toepassen (regels in de chat, standaardfase, controles)" },

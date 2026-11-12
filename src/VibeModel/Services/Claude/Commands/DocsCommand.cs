@@ -77,7 +77,7 @@ namespace VibeModel.Services.Claude.Commands
             if (!folder.IsSet)
                 return CommandResult.Error("NO_PROJECT_FOLDER",
                     "No project folder: this model has no folder on disk (not saved yet, or a cloud model) and none is configured.",
-                    "Pick one in the chat pane → Settings → Dit project (This project) → Browse…");
+                    "Pick one in the chat pane → Settings → Dit project (This project) → Bladeren… (Browse…)");
             return null;
         }
     }

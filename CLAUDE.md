@@ -988,8 +988,9 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   (taal, thema), *AI-verbinding* (sub-tabs Claude Code / Anthropic API / Lokaal model; model, API address and the local
   model's name, tool use and timeout under a *Geavanceerd* toggle, open when something in it is set or managed), *Dit
   project* (project folder + memory/journal), *Standaarden*, *Over* (version and updates) — with the status line and
-  *Opslaan* in a fixed footer. Every text is a `Strings` key (`Settings*`, nl/en) except product names and the bilingual
-  *Taal / Language* heading. Opens on *AI-verbinding* when the pane's backend is not available (`connectionNeeded`), else
+  *Opslaan* in a fixed footer (hint: changes count after Save; the test and update buttons act at once — Browse/Clear only fill the box). Every text is a `Strings` key (`Settings*`, nl/en) except product names and the bilingual
+  *Taal / Language* heading. Opens on *AI-verbinding* when the pane's backend is not available (`connectionNeeded`; a chosen local model counts as
+  set up, since its `IsAvailable` probes the server for up to 3 s on Revit's thread), else
   on the tab last shown this session. AutomationIds `SettingsTabGeneral`, `SettingsTabConnection`, `SettingsTabProject`,
   `SettingsTabStandards`, `SettingsTabAbout`, `SettingsBackendCli|Api|Local`, `SettingsApiAdvanced`, `SettingsLocalAdvanced`,
   `SettingsSave`, `SettingsStatus`, `SettingsLanguage`, `SettingsTheme` (+ the update ids). No change-approval section:
