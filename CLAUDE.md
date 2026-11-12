@@ -204,6 +204,7 @@ curl -s "http://localhost:18884/hide?args=12345"                         # Hide 
 curl -s "http://localhost:18884/show?args=12345"
 curl -s "http://localhost:18884/colorsplash?args=walls Type"             # Colour by parameter value; 'colorsplash reset [category]'
 curl -s "http://localhost:18884/chatlog?args=10"                         # Recent messages of the chat pane
+curl -s "http://localhost:18884/chatlog?args=--export%20all"             # Export saved chats + commands per turn (md/zip)
 ```
 
 ### Source Data Commands (imported DWG + point clouds)
@@ -985,9 +986,41 @@ carries its own args (`/wall%200%200%205000%200`) still runs (`RevitHttpServer.T
 indicator with mm:ss, ✓/✗ per step, intermediate text muted) and collapse to "N stappen · 48 s".
 Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySink`,
 `ChatActivityEvent`); `TurnActivity` / `ToolCallDescriber` (`Services/Chat/ChatActivity.cs`) are the
-WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
-model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
-BOTH maps — a test checks).
+WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream and the model-bound history are
+unchanged; the stored chat JSON only gains the additive turn record (see Chat export). A new command
+gets its step label from `StatusVerbs` (add it to BOTH maps — a test checks).
+
+**Chat export** (Diagnose → *Exporteer chats…* `DiagnoseExportChats`, Settings → *Versie en updates* →
+*Exporteer chats…* `SettingsExportChats` / `SettingsExportChatsStatus`, or `chatlog --export [n|all]`,
+default the last 20): the saved chats as markdown in `%LOCALAPPDATA%\VibeModel\exports\` — up to 5 chats one
+`chats-<yyyyMMdd-HHmmss>.md` (README on top), more a `.zip` with `chats/<yyyyMMdd-HHmm> <slug>.md` per chat,
+`INDEX.md` (date, chat, project, turns, commands, failed, tokens) and `README.md` (what is in it, the
+upload-to-Claude tip). Per chat: title, dates, project, backend · model, id; per turn the question, the
+commands (table: command, args ≤ 200 chars, ✓/✗ + error, duration; multi-line or longer args in full
+below it, `csharp` for exec), the answer as stored (with the notes between steps) and the pane's token
+line (+ context, `≈ €`). The buttons export every chat and open Explorer on the file (`UI/ChatExportUi.cs`).
+- **Turn record** (additive, since the chat export): each answer in `chats\<id>.json` carries `steps:[{command, args,
+  ok, error, durationMs}]`, `usage:{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
+  contextTokens, costUsd}`, `model`, `durationMs` (`ChatSession.Append(role, content, steps, usage, model,
+  durationMs)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). `args` is the full call
+  (`ToolCallInfo.FullArgs`: the args string, a curl's decoded `?args=`, else the whole shell command — an
+  exec sent with `--data-urlencode` or a heredoc), capped at 4000 chars (`… (+N tekens)`); a message
+  without a record is written exactly as before, and older builds ignore the keys. Never sent to a model.
+- **Older chats**: no record → the debug log's `Executing: …` / `Executing batch: N commands` lines between
+  question and answer (`ChatExportLog`; local time, the day's `log_yyyy-MM-dd.txt`, shared read), marked
+  *indicative* — only with `VIBEMODEL_DEBUG=1`, and every client on the machine logs there — and counted
+  apart (`ChatExportStats.LogCommands`, shown as `~30` / `12 + ~30`, never summed with the exact count); no
+  log → "no commands recorded". `chatlog --export` with no saved chats answers a plain note, not an ERROR.
+- **Secrets** (`ChatExportRedaction.Scrub`, on storing args AND on export): the `X-VibeModel-Token`
+  header value, `VIBEMODEL_TOKEN=` / `ANTHROPIC_API_KEY=` assignments, a `"token":"…"` field, `sk-ant-…`
+  keys and the live `ServerAuth.Token` itself → `<token>` / `sk-ant-…`; a `$VIBEMODEL_TOKEN` reference
+  stays. Questions, answers, names and paths are NOT anonymised — the README says so and Explorer opens
+  on the file so the user can read it first.
+- Off Revit's main thread under a 10 s deadline (`ChatExportService` via `PathProbe.Run`, own thread);
+  the command waits for it (it returns the path, counts and how many chats had no record). Pure parts:
+  `Services/Chat/ChatExport.cs` (`ChatExportDocument`, `ChatExportLog`, `ChatExportRedaction`;
+  `ChatExportWriter` does the file I/O). `scripts/successcase.py` counts stored `steps` exactly and only
+  falls back to the log for older chats.
 
 **Annotation layout (RULES block, plan 21).** `AnnotationLayoutRule` (under *Complete and checkable*): annotate with the
 commands, never exec; run `annolayout` after annotating (and on every `-- layout:` line) and fix each WARN before reporting —
