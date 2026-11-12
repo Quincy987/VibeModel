@@ -55,6 +55,7 @@ namespace VibeModel.Services.Claude.Commands
             var notes = new List<string>();
             CommandResult refused = null;
             QuantityKind? calcType = null;
+            string calcFormula = a.CalcFormula;   // with the fields' exact names once the schedule knows them
             var error = TransactionHelper.Execute(doc, a.Takeoff ? "VibeModel: Create Material Takeoff" : "VibeModel: Create Schedule", () =>
             {
                 vs = a.Takeoff ? ViewSchedule.CreateMaterialTakeoff(doc, catId) : ViewSchedule.CreateSchedule(doc, catId);
@@ -100,7 +101,7 @@ namespace VibeModel.Services.Claude.Commands
                 }
 
                 // ---- calculated field: the API cannot add it; make sure every field it uses is there ----
-                if (a.CalcFormula != null) calcType = PrepareCalc(def, schedulable, names, a, catName, notes);
+                if (a.CalcFormula != null) calcType = PrepareCalc(def, schedulable, names, a, catName, notes, out calcFormula);
 
                 // ---- grouping / totals ----
                 if (a.Group != null)
@@ -153,8 +154,8 @@ namespace VibeModel.Services.Claude.Commands
             if (a.CalcFormula != null)
             {
                 sb.AppendLine("Calculated field '" + a.CalcName + "' was NOT added: the Revit API cannot add a calculated field (Known gap).");
-                sb.AppendLine(CalculatedFieldHint.ManualStep(vs.Name, a.CalcName, a.CalcFormula, calcType));
-                data["manualStep"] = CalculatedFieldHint.ManualStepJson(vs.Name, a.CalcName, a.CalcFormula, calcType);
+                sb.AppendLine(CalculatedFieldHint.ManualStep(vs.Name, a.CalcName, calcFormula, calcType));
+                data["manualStep"] = CalculatedFieldHint.ManualStepJson(vs.Name, a.CalcName, calcFormula, calcType);
             }
             data["takeoff"] = a.Takeoff;
             data["created"] = new List<object> { vs.Id.IntegerValue };
@@ -171,13 +172,17 @@ namespace VibeModel.Services.Claude.Commands
         /// <summary>
         /// `--calc`: a calculated field can only use fields that are in the schedule, so each field the
         /// formula names (exact name, never a substring — the formula must name it exactly) that is not
-        /// in the schedule yet is added as a hidden column. Returns the Type the field needs, from the fields' specs.
+        /// in the schedule yet is added as a hidden column. Returns the Type the field needs, from the fields' specs,
+        /// and the formula with the fields' exact names (Revit's formulas are case-sensitive).
         /// </summary>
         private static QuantityKind? PrepareCalc(ScheduleDefinition def, IList<SchedulableField> schedulable, IList<string> names,
-            ScheduleArgs a, string catName, List<string> notes)
+            ScheduleArgs a, string catName, List<string> notes, out string formula)
         {
+            formula = CalculatedFieldHint.WithExactNames(a.CalcFormula, names);
+            if (!string.Equals(formula, a.CalcFormula, StringComparison.Ordinal))
+                notes.Add("formula written with the exact field names (Revit's formulas are case-sensitive): " + formula);
             var kinds = new Dictionary<string, QuantityKind>(StringComparer.OrdinalIgnoreCase);
-            foreach (var used in CalculatedFieldHint.FieldsIn(a.CalcFormula, names))
+            foreach (var used in CalculatedFieldHint.FieldsIn(formula, names))
             {
                 // Already a column (--fields, or the hidden --filter column)?
                 var field = Enumerable.Range(0, def.GetFieldCount()).Select(i => def.GetField(i))
@@ -191,11 +196,11 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 kinds[used] = FormattingHelper.QuantityKindOf(SpecOf(field), integerAsNumber: true);
             }
-            var unknown = CalculatedFieldHint.UnknownWords(a.CalcFormula, names);
+            var unknown = CalculatedFieldHint.UnknownWords(formula, names);
             if (unknown.Count > 0)
                 notes.Add("not a field of " + catName + ": " + string.Join(", ", unknown.Select(u => "'" + u + "'")) +
                           " — Revit refuses a formula with unknown names; use the field names exactly as listed");
-            return CalculatedFieldHint.InferType(a.CalcFormula, kinds);
+            return CalculatedFieldHint.InferType(formula, kinds);
         }
 
         /// <summary>

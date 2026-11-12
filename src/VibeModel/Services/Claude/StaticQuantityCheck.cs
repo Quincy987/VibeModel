@@ -33,22 +33,23 @@ namespace VibeModel.Services.Claude
             try
             {
                 var sw = Stopwatch.StartNew();
-                var parameters = new List<(ParameterElement Element, Definition Definition, string Spec)>();
+                var parameters = new List<(Definition Definition, string Spec)>();
                 foreach (var id in changes.Added)
                 {
                     if (!(doc.GetElement(id) is ParameterElement pe) || pe is GlobalParameter) continue;
                     var def = pe.GetDefinition();
                     if (def == null || doc.ParameterBindings.get_Item(def) == null) continue;
                     var spec = SpecLabel(def);
-                    if (spec != null) parameters.Add((pe, def, spec));
+                    if (spec != null) parameters.Add((def, spec));
                 }
                 if (parameters.Count == 0) return null;
 
                 var counts = new int[parameters.Count];
                 int reads = 0;
+                bool capped = false;
                 foreach (var id in changes.Added.Concat(changes.Modified))
                 {
-                    if (reads >= MaxReads) break;
+                    if (reads >= MaxReads) { capped = true; break; }
                     var e = doc.GetElement(id);
                     if (e == null || e is ParameterElement) continue;
                     reads++;
@@ -61,7 +62,8 @@ namespace VibeModel.Services.Claude
                 var entries = new List<StaticQuantityReport.Entry>();
                 for (int i = 0; i < parameters.Count; i++)
                     if (counts[i] > 0)
-                        entries.Add(new StaticQuantityReport.Entry { Parameter = parameters[i].Definition.Name, Elements = counts[i], Spec = parameters[i].Spec });
+                        entries.Add(new StaticQuantityReport.Entry
+                            { Parameter = parameters[i].Definition.Name, Elements = counts[i], StoppedAfter = capped ? MaxReads : 0, Spec = parameters[i].Spec });
                 return entries.Count > 0 ? entries : null;
             }
             catch (Exception ex)

@@ -672,15 +672,17 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   `schedule --calc "<Name>=<formula>"`: measured in Revit 2023, the API cannot add a calculated field
   (`AddField(ScheduleFieldType.Formula)` → "fieldType is not a schedulable field type"; `IsCalculatedField` is read-only), so
   the command builds the rest, adds every field the formula names (exact names, never a substring) that is not in the
-  schedule as a hidden column, names unknown words, and ends with `Calculated field '…' was NOT added …` + one
+  schedule as a hidden column, writes those names in the formula as the schedule spells them (Revit's formulas are
+  case-sensitive), names unknown words, and ends with `Calculated field '…' was NOT added …` + one
   `Manual step (the API cannot add a calculated field): … fx … Type "Area" (another Type gives "Inconsistent units") …`
   (JSON `manualStep {name, formula, type, apiCannot, clicks}`). The Type comes from the formula's dimension
   (`CalculatedFieldHint`, pure: length × length = Area, three lengths = Volume, lengths summed = Length, no measured
   field = Number; mixed/unknown → the user picks). After every kept command or batch, a project parameter NEW in that
   run (bound in `ParameterBindings`, spec Length/Area/Volume/Number) that got non-zero values adds
   `-- quantities: parameter 'Oppervlak' (Area, new this run) was filled with fixed numbers on 12 elements; they do not
-  follow model changes — …` after `-- changed:` (JSON additive `quantities:[{parameter,newThisRun,elements,spec}]`;
-  `StaticQuantityReport` pure, `StaticQuantityCheck` Revit side, ≤ 5000 elements read). Only parameters new in the run
+  follow model changes — …` after `-- changed:` (JSON additive `quantities:[{parameter,newThisRun,elements,atLeast,spec}]`;
+  `StaticQuantityReport` pure, `StaticQuantityCheck` Revit side; reading stops at 5000 elements and then says
+  `at least 300 elements (stopped reading after 5000 changed elements)`). Only parameters new in the run
   (so every value was written by it); a parameter that already existed, a family's own shared parameter and a value
   tied to a global parameter are not flagged. Never after a preview, Discard, READ_ONLY or rolled-back batch.
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any

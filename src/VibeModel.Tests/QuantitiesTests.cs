@@ -137,6 +137,14 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void WithExactNames_WritesTheFieldsAsTheScheduleNamesThem()
+        {
+            Assert.Equal("Length * Width", CalculatedFieldHint.WithExactNames("length * WIDTH", Fields));
+            Assert.Equal("if(Length > 1000 mm, Base Offset, 0 mm)", CalculatedFieldHint.WithExactNames("if(LENGTH > 1000 mm, base offset, 0 mm)", Fields));
+            Assert.Equal("Len * Hoogte", CalculatedFieldHint.WithExactNames("Len * Hoogte", Fields));   // unknown words untouched
+        }
+
+        [Fact]
         public void UnknownWords_SkipFieldsFunctionsAndUnits()
         {
             Assert.Empty(CalculatedFieldHint.UnknownWords("if(Length > 1000 mm, sqrt(Area), 0 m)", Fields));
@@ -258,6 +266,14 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void QuantitiesLine_SaysWhenItStoppedReading()
+        {
+            var line = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
+                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 300, StoppedAfter = 5000, Spec = "Area" } });
+            Assert.Contains("on at least 300 elements (stopped reading after 5000 changed elements); ", line);
+        }
+
+        [Fact]
         public void QuantitiesLine_IsNull_WhenNothingWasFilled()
         {
             Assert.Null(StaticQuantityReport.Line(null));
@@ -274,6 +290,7 @@ namespace VibeModel.Tests
             Assert.Equal("Oppervlak", e["parameter"]);
             Assert.Equal(true, e["newThisRun"]);
             Assert.Equal(2, e["elements"]);
+            Assert.Equal(false, e["atLeast"]);
             Assert.Equal("Area", e["spec"]);
         }
     }

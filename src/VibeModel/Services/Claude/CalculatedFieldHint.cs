@@ -45,6 +45,24 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
+        /// The formula with every field written exactly as the schedule names it. Matching is
+        /// case-insensitive, but Revit's formulas are not: "length*width" would be refused in the
+        /// calculated-field dialog, "Length*Width" is what the user must type.
+        /// </summary>
+        public static string WithExactNames(string formula, IEnumerable<string> fieldNames)
+        {
+            var text = formula ?? "";
+            var sb = new StringBuilder();
+            int pos = 0;
+            foreach (var s in FindSpans(text, fieldNames).OrderBy(x => x.Start))
+            {
+                sb.Append(text, pos, s.Start - pos).Append(s.Name);
+                pos = s.Start + s.Length;
+            }
+            return sb.Append(text, pos, text.Length - pos).ToString();
+        }
+
+        /// <summary>
         /// Words in the formula that are neither a field of the category, a Revit function nor a unit —
         /// told to the user, since Revit would refuse them in the formula.
         /// </summary>

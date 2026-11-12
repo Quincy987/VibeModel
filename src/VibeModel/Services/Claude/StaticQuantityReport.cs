@@ -17,6 +17,9 @@ namespace VibeModel.Services.Claude
             public string Parameter;
             /// <summary>Elements (or types) that got a non-zero value in the run.</summary>
             public int Elements;
+            /// <summary>0 = every changed element was read; else the read cap it stopped at (there may be more).</summary>
+            public int StoppedAfter;
+            public bool AtLeast => StoppedAfter > 0;
             /// <summary>Length, Area, Volume or Number.</summary>
             public string Spec;
         }
@@ -31,9 +34,9 @@ namespace VibeModel.Services.Claude
             {
                 var e = entries[0];
                 return "-- quantities: parameter '" + e.Parameter + "' (" + Describe(e.Spec) + "new this run) was filled with fixed numbers on " +
-                       Count(e.Elements) + "; " + Advice;
+                       Count(e) + "; " + Advice;
             }
-            return "-- quantities: new parameters " + string.Join(", ", entries.Select(e => "'" + e.Parameter + "' (" + Describe(e.Spec) + Count(e.Elements) + ")")) +
+            return "-- quantities: new parameters " + string.Join(", ", entries.Select(e => "'" + e.Parameter + "' (" + Describe(e.Spec) + Count(e) + ")")) +
                    " were filled with fixed numbers this run; " + Advice;
         }
 
@@ -46,12 +49,15 @@ namespace VibeModel.Services.Claude
                 { "parameter", e.Parameter },
                 { "newThisRun", true },
                 { "elements", e.Elements },
+                { "atLeast", e.AtLeast },
                 { "spec", e.Spec },
             }).ToList();
         }
 
         private static string Describe(string spec) => string.IsNullOrEmpty(spec) ? "" : spec + ", ";
 
-        private static string Count(int n) => n + (n == 1 ? " element" : " elements");
+        private static string Count(Entry e)
+            => (e.AtLeast ? "at least " : "") + e.Elements + (e.Elements == 1 ? " element" : " elements") +
+               (e.AtLeast ? " (stopped reading after " + e.StoppedAfter + " changed elements)" : "");
     }
 }
