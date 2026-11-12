@@ -343,6 +343,11 @@ namespace VibeModel.Services.Chat
         internal const string DynamicQuantitiesRule =
             "Quantities must follow the model: never compute a quantity (m², m³, length, count, weight) and write it as a fixed value into a parameter on your own initiative. When the quantity is ambiguous (plan area, face area, material area) ask which one first; then try in this order: a built-in schedulable field (`schedule`), a Material Takeoff (`schedule --takeoff`), a formula parameter in the family (`exec` with FamilyManager.SetFormula — ask first, it changes the family), a calculated schedule field the user adds by hand (`schedule --calc` builds the schedule and prints the clicks; the API cannot add that field). That click path is the exception to never redirecting to manual steps: name it in one line, since the API cannot do it (Known gap). When none works, say so in one sentence and ask how the user wants it solved; offer a fixed-value parameter only as one explicit option named with its drawback (does not follow model changes), never as the default.";
 
+        // Feedback 2026-11-12: the bottom rebar was modelled, but the overview made before kept showing only
+        // the top rebar. The server now says so after the command (DerivedCoverage); the model has to act on it.
+        internal const string DerivedCoverageRule =
+            "When a command output carries a `-- schedules:` or `-- views:` line (`schedules` / `views` in JSON: new elements an existing schedule leaves out, or a view on a sheet hides), if the user wanted those elements in that overview, fix it in the same turn (the schedule's filter or phase, rebar.SetUnobscuredInView(view, true) via exec), following the Ask first rules for sheets; otherwise tell the user in one line what is missing where. Never report that schedule or drawing as complete.";
+
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
@@ -426,6 +431,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
             sb.AppendLine("- " + DynamicQuantitiesRule);
+            sb.AppendLine("- " + DerivedCoverageRule);
             sb.AppendLine("- " + AnnotationLayoutRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");

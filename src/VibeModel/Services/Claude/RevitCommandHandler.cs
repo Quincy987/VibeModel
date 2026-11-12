@@ -356,6 +356,9 @@ namespace VibeModel.Services.Claude
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
 
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
+            // New elements an existing schedule / a sheet view of this session leaves out. A rolled-back
+            // run (preview, Discard, READ_ONLY, ANNOTATION_ONLY) has no change set here, so never reports.
+            var coverage = cr.Success && changes != null ? DerivedCoverage.Check(doc, changes) : null;
             // Plan 21: the annotations this run added (re-hosted ones are new elements too), against their neighbours.
             var layout = kept != null && changes != null ? AnnotationExtents.ForAdded(doc, LayoutIds(changes, ShownAnnotations(annotations, runControl, run))) : null;
             if (cr.Success && changes != null)
@@ -371,7 +374,7 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage);
         }
 
         /// <summary>
@@ -413,7 +416,8 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
             List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
-            ChangeSetSummary changed = null, string forbidden = null, AnnotationExtents.LayoutReport layout = null, List<StaticQuantityReport.Entry> quantities = null)
+            ChangeSetSummary changed = null, string forbidden = null, AnnotationExtents.LayoutReport layout = null, List<StaticQuantityReport.Entry> quantities = null,
+            CoverageReport coverage = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -433,6 +437,7 @@ namespace VibeModel.Services.Claude
                 {
                     if (stamp != null) dict["meta"] = stamp.ToMeta();
                     if (checkLine != null) dict["check"] = CheckEnvelope(checkLine, findings);
+                    coverage?.AddJson(dict);
                     if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
                     run?.AddJson(dict);
                     AddAnnotationsJson(dict, annotations, run);
@@ -454,6 +459,7 @@ namespace VibeModel.Services.Claude
             if (cr.Success && revit != null)
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
+            if (coverage != null) foreach (var line in coverage.TextLines()) text = AppendLine(text, line);
             if (annotationLine != null) text = AppendLine(text, annotationLine);
             if (layout != null) text = AppendLine(text, layout.Line);
             if (changed != null) text = AppendLine(text, changed.ChangedLine());
@@ -924,6 +930,8 @@ namespace VibeModel.Services.Claude
 
             // Office rules over everything the batch created (nothing when rolled back).
             List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
+            // One coverage report for the whole batch (nothing when rolled back or nothing kept).
+            var coverage = anyModified && !rolledBack ? DerivedCoverage.Check(doc, changes) : null;
             // One line for the whole batch: the recorder holds one running change set.
             var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
             // Plan 21: one layout line for the whole batch.
@@ -936,6 +944,7 @@ namespace VibeModel.Services.Claude
                     forbiddenKept != null ? "forbidden " + forbiddenKept : null, recipes);
             var checkLine = findings != null ? CheckReport.SummaryLine(findings) : null;
             if (checkLine != null) sb.AppendLine(checkLine);
+            if (coverage != null) foreach (var line in coverage.TextLines()) sb.AppendLine(line);
             annotations = ShownAnnotations(annotations, runControl, run);
             var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
@@ -962,6 +971,7 @@ namespace VibeModel.Services.Claude
                     envelope["meta"] = stamp.ToMeta();
                 if (checkLine != null)
                     envelope["check"] = CheckEnvelope(checkLine, findings);
+                coverage?.AddJson(envelope);
                 run.AddJson(envelope);
                 AddAnnotationsJson(envelope, annotations, run);
                 if (layout != null) envelope["layout"] = layout.Json;

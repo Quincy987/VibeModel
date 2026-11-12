@@ -700,6 +700,49 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
   sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
   New schedules get their columns widened to the longest cell, so type names do not wrap on the sheet.
+  Create and `--rows` print a **`Scope:` line** (`DerivedCoverage.ComputeScope`, wording `ScheduleScope.cs`, pure):
+  `Scope: shows 14 of 22 elements of Structural Rebar (14 rows); outside: 5 phase (schedule phase 'Nieuw', filter 'Show Complete'),
+  2 design option (not primary), 1 by the schedule filter(s) — schedule filter(s): Partition = 'Boven'.` (JSON `data.scope`
+  `{inSchedule, rows, totalInCategory, areaScheme?, outside:{total, phase, designOption, rest, restCause}, filters, filteredBySheet,
+  includesLinks}`). In the schedule = Revit's view-scoped collector on the schedule; total = the category's instances in this
+  document (an area schedule: the areas of its own area scheme). Decided per element outside: the schedule's phase — a future or past
+  (demolished earlier) element always, otherwise its phase filter (`GetPhaseStatusPresentation`) — else a non-primary design option.
+  The rest (`restCause`) is put down to the schedule's filters (named, never re-evaluated by us) and/or "filter by sheet" (2023+) as a
+  whole, or reads "not explained by phase or design option" when it has neither. Rows are the read-back rows (a grand-total row
+  included), not elements: a group or a rebar set is one row. Linked rows are shown but not counted; key schedules, material takeoffs
+  and multi-category schedules read `Scope: not computed (…)`; above 20 000 outside elements the reasons are skipped. Replaces the
+  old `Empty:` line. Measured (Revit 2023, demo model): `Scope: shows 1 of 3 elements of Walls (1 row); outside: 2 phase (schedule
+  phase '1. Bestaande situatie', filter '1.1 Bestaande Situatie').`; with `--filter "Length gt 12000"`: `shows 0 of 2 … 1 phase (…), 1 by the
+  schedule filter(s) — schedule filter(s): Length > 12000 mm.`; a rebar schedule lists area reinforcement's `RebarInSystem` next to the
+  loose bars (4 + 4 → `shows all 8 elements of Structural Rebar (8 rows)`).
+- **`-- schedules:` / `-- views:`** (`DerivedCoverage.Check`, independent of an office pack): after a modifying command or batch that
+  ADDED model elements, `-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why)` for every
+  schedule of that category that leaves them out (≤ 20 schedules checked: the ones VibeModel made this session first, then by name; key/takeoff/multi-category skipped; an area
+  schedule only for areas of its scheme), and `-- views: …` for views VibeModel created or put on a sheet this session that already
+  draw that category (≤ 30 views, newest viewport first): `12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the
+  other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans, sections and
+  elevations until *View Unobscured* is on; decided from the bar itself, also when the view's element set does not list it; not checked
+  in 3D views, where rebar draws solid at Fine detail since 2023), or `… not visible in '…' — whyhidden <id> <view>`. An element the
+  view's element set does not list counts (for either line) only when it lies where the view already draws that category, compared in
+  the view's own plane (a plan ignores height, a section its depth; a 3D view all three axes, 10 mm touching tolerance), and in a plan
+  only on the plan's level when the element has one (a wall on the next level is not "missing" from this plan). Only added ids: a
+  modified element a filtered schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON
+  `schedules:[{schedule,id,category,missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`;
+  a cap (count, or 300 ms per part — view-scoped collectors cost time on a big model) that left some unchecked is never silent: `-- schedules: every checked schedule lists the new elements; 7 more schedules
+  of these categories not checked` (JSON `schedulesNotChecked` / `viewsNotChecked`).
+  Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
+  logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
+  (respecting *Ask first* for sheets) or to say what is missing where — never to report the overview as complete.
+  Measured (Revit 2023, demo model, 2026-11-12): a wall on the office default phase (Bouwfase) → `-- schedules: 1 new Walls not in
+  'VM_bench_A' (schedule 1731211 --rows for why); …` for each of three wall schedules on the existing phase, `--phase existing` → only the
+  one with a length filter, a batch of both → one line (`1 new … 'A'; 2 new … 'B'; 1 new … 'C'`). Rebar: a new bar is
+  `IsUnobscuredInView == true` by default in a section through its host and `false` in a plan; a plan's view-scoped collector lists
+  obscured bars too once its view range reaches them (and nothing below the range), so the state is read from the bar. A bar added while
+  every bar in the plan is obscured gives no line; with one bar set unobscured: `-- views: 1 new Structural Rebar hidden inside their host
+  in 'VM_rebar_plan' (sheet VM98 - VM rebar), where the other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)`; the four
+  `RebarInSystem` of an area reinforcement are reported the same way. Cost: `wall 0 0 5000 0 3000` ×10 averaged 41 ms on the
+  development build and 76 ms with the checks (11 schedules, 3 of the walls' category, 3 sheet views placed this session; no `> 200 ms`
+  log line). Design options: not measured — the API cannot create one.
 - **Quantities follow the model** (interview Ruben Wolbers, 2026-11-12: m² no field gave ended up as computed numbers in
   new parameters). `schedule --takeoff` makes a Material Takeoff (`ViewSchedule.CreateMaterialTakeoff`; default fields
   `Family and Type, Material: Name, Material: Area, Material: Volume`, else `--fields` from the takeoff's own list); every
@@ -787,7 +830,8 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
   `linkcad`/`linkrvt` name the criterion they placed by ("coordinates set up: base point N/S …").
 - **Post-command check.** After any modifying command or batch, the element-level rules run on
   exactly what it created; problems add one line: `-- check: 1 WARN (param-filled) → run 'check' for fixes`
-  (JSON: an additive `check` object).
+  (JSON: an additive `check` object). Schedules and sheet views that leave new elements out get their own
+  `-- schedules:` / `-- views:` lines, with or without a pack (see `schedule` under Sheet Assembly).
 - **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
 - **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
@@ -1059,6 +1103,7 @@ text and tags horizontal; copy a hand-corrected example's spacing; annotations p
 assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule),
 `DynamicQuantitiesRule` (never a computed quantity as a fixed parameter value; built-in field → `--takeoff` → family formula →
 `--calc`; else say so and ask). The ask-first list names project parameters and parameter bindings (also through exec).
+`DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 `AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values, or a choice weaker than asked (hand-typed quantities,
