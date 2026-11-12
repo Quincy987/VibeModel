@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.20 — Schema's, hoeveelheden en aannames (2026-11-12)
+
 ### Added — schedules and drawings say what they leave out
 - `schedule` (new and `--rows`) says how many elements of its category it shows and why the rest is outside: the schedule's phase,
   a design option, *filter by sheet* or its own filters, which it names. An empty schedule explains itself the same way.
