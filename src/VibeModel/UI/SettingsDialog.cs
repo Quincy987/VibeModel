@@ -965,6 +965,13 @@ namespace VibeModel.UI
                 else
                     btn.Foreground = FgSecondary;
             };
+            // WPF's template paints a disabled button near-white but keeps our white text, so it
+            // vanished (Nu controleren in a developer build, Bladeren/Wissen without a model).
+            btn.IsEnabledChanged += (s, e) =>
+            {
+                if (btn.Background != Brushes.Transparent)
+                    btn.Foreground = btn.IsEnabled ? Palette.FgButton : FgSecondary;
+            };
             return btn;
         }
 
