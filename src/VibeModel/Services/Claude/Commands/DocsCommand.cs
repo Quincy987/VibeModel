@@ -9,12 +9,12 @@ namespace VibeModel.Services.Claude.Commands
     /// <summary>
     /// Plan 10: lists the project folder — the reference documents (bestek, memo's,
     /// DO-tekening, inspection reports) that belong to this model. Default: the folder the
-    /// .rvt is in; Settings → Project folder overrides it per project. Read-only.
+    /// .rvt is in; Settings → Dit project (This project) overrides it per project. Read-only.
     /// </summary>
     public class DocsCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "docs";
-        public string Description => "Project folder: list this model's reference documents (default: the model's own folder; Settings → Project folder overrides). Read one with readdoc";
+        public string Description => "Project folder: list this model's reference documents (default: the model's own folder; Settings → Dit project overrides). Read one with readdoc";
         public string Usage => "docs [subfolder]";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -39,7 +39,7 @@ namespace VibeModel.Services.Claude.Commands
             if (listing == null)
                 return CommandResult.Error("FOLDER_UNAVAILABLE",
                     ProjectDocs.Header(folder) + (sub.Length > 0 ? " — subfolder " + sub : "") + ": " + listError,
-                    "Check the folder, or pick another one in the chat pane → Settings → Project folder.");
+                    "Check the folder, or pick another one in the chat pane → Settings → Dit project (This project).");
 
             var text = ProjectDocs.BuildManifest(folder, listing, ProjectDocs.MaxManifestEntries,
                 sub.Length > 0 ? sub : null) + "Use: readdoc <name>\n";
@@ -77,7 +77,7 @@ namespace VibeModel.Services.Claude.Commands
             if (!folder.IsSet)
                 return CommandResult.Error("NO_PROJECT_FOLDER",
                     "No project folder: this model has no folder on disk (not saved yet, or a cloud model) and none is configured.",
-                    "Pick one in the chat pane → Settings → Project folder (Browse…).");
+                    "Pick one in the chat pane → Settings → Dit project (This project) → Bladeren… (Browse…)");
             return null;
         }
     }

@@ -66,7 +66,7 @@ namespace VibeModel.Services.Claude.Commands
             doc = uiApp.ActiveUIDocument?.Document;
             if (!ProjectData.Enabled)
                 return CommandResult.Error("MEMORY_OFF", "Project memory and journal are switched off.",
-                    "Switch them on in the chat pane → Settings → \"" + Strings.Get(Strings.SettingProjectMemory) + "\".");
+                    "Switch them on in the chat pane → Settings → Dit project (This project) → \"" + Strings.Get(Strings.SettingProjectMemory) + "\".");
             if (doc == null)
                 return CommandResult.Error("NO_DOCUMENT", "No document is open.");
             location = ProjectData.LocateForDocument(doc.Title, doc.PathName);
@@ -77,6 +77,6 @@ namespace VibeModel.Services.Claude.Commands
 
         internal static CommandResult Unavailable(ProjectDataLocation loc, string why)
             => CommandResult.Error("FOLDER_UNAVAILABLE", loc.Label + ": " + why,
-                "Check the folder, or pick another one in the chat pane → Settings → Project folder.");
+                "Check the folder, or pick another one in the chat pane → Settings → Dit project (This project).");
     }
 }

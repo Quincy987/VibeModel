@@ -214,7 +214,7 @@ namespace VibeModel.Services.Claude.Commands
             var docs = DocumentIndexService.GetIndexed(pack);
             var sb = new StringBuilder();
             sb.AppendLine("SOURCE DOCUMENTS — pack " + pack.Id + " (" + DocumentIndexService.GetStatus(pack) + ")");
-            sb.AppendLine("Standards folder: " + (StandardsPackRegistry.ResolveStandardsFolder(pack) ?? "(not set — Settings → Standards folder)"));
+            sb.AppendLine("Standards folder: " + (StandardsPackRegistry.ResolveStandardsFolder(pack) ?? "(not set — Settings → Standaarden (Standards) → source documents folder)"));
             if (docs.Count == 0)
                 sb.AppendLine("No documents indexed yet. Run 'standards --index' (needs the standards folder to be reachable).");
             foreach (var d in docs)

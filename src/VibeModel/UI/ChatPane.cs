@@ -1564,9 +1564,12 @@ namespace VibeModel.UI
             var title = GetProjectIdentity(out var documentPath);
             // No open document: the project-folder row stays read-only.
             var hasDocument = !string.IsNullOrWhiteSpace(ActiveDocumentTracker.Title);
-            var dialog = new SettingsDialog(hasDocument ? title : null, documentPath);
+            // Not connected yet: open on the AI connection tab. A local model's IsAvailable probes its
+            // server (up to 3 s on this thread when it is down), so a chosen local model counts as set up.
+            var dialog = new SettingsDialog(hasDocument ? title : null, documentPath,
+                connectionNeeded: _backend == null || (!(_backend is LocalLlmBackend) && !_backend.IsAvailable));
             var result = dialog.ShowDialog();
-            // Language, project folder or the change-approval mode may have changed.
+            // Language, theme or project folder may have changed (and managed.json may lock the chip).
             RefreshWelcomeCard();
             RefreshModeChip();
 

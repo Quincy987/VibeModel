@@ -215,8 +215,43 @@ namespace VibeModel.Tests
             Assert.True(ChangeApprovalPolicy.DontAskThisSession);
             Assert.Equal(ChangeApprovalMode.Auto, ChangeApprovalPolicy.EffectiveMode);
 
-            ChangeApprovalPolicy.SessionOverride = null;                     // Settings → untick
+            ChangeApprovalPolicy.SessionOverride = null;                     // a new Revit session
             Assert.Equal(ChangeApprovalMode.ReadOnly, ChangeApprovalPolicy.EffectiveMode);
+        }
+
+        [Fact]
+        public void ChooseAndRemember_StoresTheChoice_ForTheNextRevitStart()
+        {
+            ChangeApprovalPolicy.ChooseAndRemember(ChangeApprovalMode.ReadOnly);
+            Assert.Equal(ChangeApprovalMode.ReadOnly, ChangeApprovalPolicy.Chosen(out var now));
+            Assert.Equal(ChangeApprovalSource.Session, now);
+            Assert.Contains("\"ChangeApproval\"", File.ReadAllText(Path.Combine(_dir, "settings.json")));
+
+            ChangeApprovalPolicy.SessionOverride = null;                     // the next Revit session
+            SettingsManager.ClearCache();
+            Assert.Equal(ChangeApprovalMode.ReadOnly, ChangeApprovalPolicy.EffectiveMode);
+            Assert.Equal(ChangeApprovalMode.ReadOnly, ChangeApprovalPolicy.Chosen(out var next));
+            Assert.Equal(ChangeApprovalSource.Settings, next);
+
+            // Back to Automatic removes the key: the default again, not a stored "auto".
+            ChangeApprovalPolicy.ChooseAndRemember(ChangeApprovalMode.Auto);
+            Assert.DoesNotContain("\"ChangeApproval\"", File.ReadAllText(Path.Combine(_dir, "settings.json")));
+            ChangeApprovalPolicy.SessionOverride = null;
+            SettingsManager.ClearCache();
+            Assert.Equal(ChangeApprovalMode.Auto, ChangeApprovalPolicy.Chosen(out var source));
+            Assert.Equal(ChangeApprovalSource.Default, source);
+        }
+
+        [Fact]
+        public void ChooseAndRemember_BeatsTheEnvironment_OnlyForThisSession()
+        {
+            ChangeApprovalPolicy.ChooseAndRemember(ChangeApprovalMode.Ask);
+            Environment.SetEnvironmentVariable(ChangeApprovalPolicy.EnvVar, "readonly");
+            Assert.Equal(ChangeApprovalMode.Ask, ChangeApprovalPolicy.EffectiveMode);   // what the user just chose
+
+            ChangeApprovalPolicy.SessionOverride = null;                     // next start under build.ps1 -Approval
+            Assert.Equal(ChangeApprovalMode.ReadOnly, ChangeApprovalPolicy.Chosen(out var source));
+            Assert.Equal(ChangeApprovalSource.Environment, source);
         }
 
         [Fact]
