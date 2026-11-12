@@ -143,9 +143,6 @@ namespace VibeModel.Services.Chat
             return result;
         }
 
-        /// <summary>The folder the sessions live in.</summary>
-        public string Folder => _dir;
-
         /// <summary>
         /// Full sessions, newest (UpdatedUtc) first; <paramref name="max"/> ≤ 0 = all. For the chat
         /// export — callers run it off Revit's main thread (it reads every file).
@@ -283,7 +280,7 @@ namespace VibeModel.Services.Chat
             }
         }
 
-        // The additive turn record (1.2.18+): only written when present, so a message without it
+        // The additive turn record (since the chat export): only written when present, so a message without it
         // is byte-for-byte what older builds wrote — and older builds ignore the extra keys.
         private static void AddTurnRecord(Dictionary<string, object> entry, ChatSessionMessage m)
         {

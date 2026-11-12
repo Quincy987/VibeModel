@@ -1259,12 +1259,12 @@ namespace VibeModel.UI
 
         // The stored message carries what the turn ran (steps, usage, model, duration) for the
         // chat export; the content — the only part a model or History ever reads — is unchanged.
-        private void AppendTurnRecord(ChatSession session, string role, string content, TurnActivity model)
+        private void AppendTurnRecord(ChatSession session, string role, string content, TurnActivity activity)
         {
-            var usage = model.Usage;
+            var usage = activity.Usage;
             var modelName = !string.IsNullOrWhiteSpace(usage?.Model) ? usage.Model : (_backend as ChatBackendBase)?.ModelName;
-            var elapsed = (long)model.Elapsed(DateTime.UtcNow).TotalMilliseconds;
-            session.Append(role, content, ChatSessionStep.FromTurn(model), ChatSessionUsage.From(usage), modelName, elapsed);
+            var elapsed = (long)activity.Elapsed(DateTime.UtcNow).TotalMilliseconds;
+            session.Append(role, content, ChatSessionStep.FromTurn(activity), ChatSessionUsage.From(usage), modelName, elapsed);
         }
 
         // The turn ended: collapse the activity block to its summary line (or drop it when the

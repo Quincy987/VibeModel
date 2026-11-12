@@ -141,8 +141,9 @@ namespace VibeModel.Services.Chat
                 {
                     var cmd = match.Groups["cmd"].Value.ToLowerInvariant();
                     string detail;
-                    // Full: the decoded ?args= when a one-line curl carries them, else the whole
-                    // shell command (an exec sent with --data-urlencode or from a heredoc file).
+                    // Full: the decoded ?args= when the command is one curl that carries them, else
+                    // the whole shell command (an exec sent with --data-urlencode or from a heredoc
+                    // file, or several curls chained in one call).
                     string full;
                     if (cmd == "batch")
                     {
@@ -155,7 +156,8 @@ namespace VibeModel.Services.Chat
                     {
                         var queryArgs = QueryArgs(match.Groups["query"].Value);
                         detail = Shorten(queryArgs);
-                        full = Full(queryArgs.Length > 0 && command.IndexOf('\n') < 0 ? queryArgs : command);
+                        var oneCurl = command.IndexOf('\n') < 0 && CurlUrl.Matches(command).Count == 1;
+                        full = Full(queryArgs.Length > 0 && oneCurl ? queryArgs : command);
                     }
                     return new ToolCallInfo(cmd, detail, full);
                 }

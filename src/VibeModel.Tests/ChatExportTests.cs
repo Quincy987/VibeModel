@@ -95,6 +95,26 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void CliCurl_SeveralCurlsInOneCall_KeepTheWholeCommand()
+        {
+            var cmd = "curl -s \"http://127.0.0.1:18884/info\" && curl -s \"http://127.0.0.1:18884/wall?args=0%200%205000%200\"";
+            var call = ToolCallDescriber.ForCliTool("Bash", new Dictionary<string, object> { { "command", cmd } });
+            Assert.Equal("info", call.Command);
+            Assert.Equal(cmd, call.FullArgs);
+        }
+
+        [Fact]
+        public void StepStillRunning_IsStoredAsNotFinished()
+        {
+            var turn = new TurnActivity(T0);
+            turn.Apply(ChatActivityEvent.Started("1", ToolCallDescriber.ForRevitTool("revit_info", "")), T0);
+            var steps = ChatSessionStep.FromTurn(turn);                      // an error arrived before the turn finished
+            Assert.False(steps[0].Ok);
+            Assert.Equal("not finished", steps[0].Error);
+            Assert.Null(steps[0].DurationMs);
+        }
+
+        [Fact]
         public void FullArgs_AreCapped()
         {
             var full = ToolCallDescriber.Full(new string('a', 5000));
@@ -117,6 +137,12 @@ namespace VibeModel.Tests
             Assert.Equal("// Doel: tel wanden\nsb.AppendLine(\"x\");", reply.Steps[2].Args);
             Assert.Equal(1500, reply.Steps[2].DurationMs);
             Assert.Equal(50000, reply.Usage.InputTokens);
+            Assert.Null(reply.Usage.CostUsd);
+
+            // A reported cost (the CLI's total_cost_usd) survives the JSON number round trip.
+            s.Messages[1].Usage.CostUsd = 0.0123;
+            store.SaveSession(s);
+            Assert.Equal(0.0123, store.LoadSession(s.Id).Messages[1].Usage.CostUsd.Value, 6);
             Assert.Equal("claude-sonnet-5-5", reply.Model);
             Assert.Equal(30000, reply.DurationMs);
             Assert.Null(loaded.Messages[0].Steps);                      // the question carries none
@@ -210,6 +236,19 @@ namespace VibeModel.Tests
             Assert.Equal(3, stats.Commands);
             Assert.Equal(1, stats.ChatsFromLog);
             Assert.Equal(0, stats.ChatsWithoutRecord);
+        }
+
+        [Fact]
+        public void Render_NoAnswer_LogWindowStopsAtTheNextQuestion()
+        {
+            var s = SessionWithSteps();
+            s.Messages.RemoveAt(1);                                           // turn 1 got no answer
+            s.Messages.Add(new ChatSessionMessage { Role = ChatSession.RoleUser, Content = "Tweede", TimestampUtc = T0.AddMinutes(2) });
+            var windows = new List<Tuple<DateTime, DateTime>>();
+            ChatExportStats stats;
+            ChatExportDocument.Render(s, (from, to) => { windows.Add(Tuple.Create(from, to)); return new LogLookup(); }, Strings.Dutch, out stats);
+            Assert.Equal(T0.AddMinutes(2), windows[0].Item2);                 // not into turn 2
+            Assert.Equal(T0.AddMinutes(32), windows[1].Item2);                // last turn: 30 min
         }
 
         [Fact]

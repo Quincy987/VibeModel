@@ -181,8 +181,9 @@ namespace VibeModel.Services.Chat
             var rows = new List<TurnRecord>();
             var anyRecord = false;
             var fromLog = false;
-            foreach (var t in turns)
+            for (var i = 0; i < turns.Count; i++)
             {
+                var t = turns[i];
                 var rec = new TurnRecord { Turn = t };
                 var reply = t.Reply;
                 if (reply?.Steps != null)
@@ -192,7 +193,10 @@ namespace VibeModel.Services.Chat
                 }
                 else if (logLookup != null)
                 {
-                    var end = reply != null && reply.TimestampUtc > t.QuestionUtc ? reply.TimestampUtc : t.QuestionUtc.AddMinutes(30);
+                    // Up to the answer; without one, up to the next question (else 30 min) — never into the next turn.
+                    var end = reply != null && reply.TimestampUtc > t.QuestionUtc ? reply.TimestampUtc
+                        : i + 1 < turns.Count && turns[i + 1].QuestionUtc > t.QuestionUtc ? turns[i + 1].QuestionUtc
+                        : t.QuestionUtc.AddMinutes(30);
                     rec.Log = logLookup(t.QuestionUtc, end) ?? new LogLookup();
                     if (rec.Log.Available) { anyRecord = true; fromLog = true; }
                 }
@@ -351,7 +355,8 @@ namespace VibeModel.Services.Chat
 
         private static string OneLine(string text) => Regex.Replace(text ?? "", @"\s+", " ").Trim();
 
-        private static string Cell(string text) =>
+        /// <summary>One markdown table cell: one line, pipes escaped.</summary>
+        internal static string Cell(string text) =>
             OneLine(text).Replace("|", "\\|");
 
         internal static string Local(DateTime utc) =>
@@ -373,8 +378,11 @@ namespace VibeModel.Services.Chat
         public bool IsZip { get; set; }
         public ChatExportStats Stats { get; set; } = new ChatExportStats();
         public TimeSpan Elapsed { get; set; }
-        /// <summary>Set when the export failed (no file written, or not finished in time).</summary>
+        /// <summary>Set when no file was written (failed, nothing to export, or not finished in time).</summary>
         public string Error { get; set; }
+
+        /// <summary>No saved chats: <see cref="Error"/> carries the note, it is not a failure.</summary>
+        public bool NothingToExport { get; set; }
     }
 
     /// <summary>
@@ -423,41 +431,55 @@ namespace VibeModel.Services.Chat
             else
             {
                 var path = UniquePath(System.IO.Path.Combine(outDir, "chats-" + stamp + ".zip"));
-                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var index = new StringBuilder();
-                index.Append("# ").AppendLine(Strings.For(language, Strings.ChatExportIndexTitle));
-                index.AppendLine();
-                index.AppendLine(Strings.For(language, Strings.ChatExportIndexHeader));
-                index.AppendLine("|---|---|---|---|---|---|---|");
+                // Written under a temporary name: a half-written zip never carries the final one.
                 var tmp = path + ".part";
-                using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write))
-                using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
+                try
                 {
-                    WriteEntry(zip, "README.md", Readme(language, result.Stats, nowLocal));
-                    for (var i = 0; i < docs.Count; i++)
-                    {
-                        var s = docs[i].Key;
-                        var name = EntryName(s, names);
-                        WriteEntry(zip, "chats/" + name, docs[i].Value);
-                        var st = perChat[i];
-                        index.Append("| ").Append(ChatExportDocument.Local(s.CreatedUtc))
-                             .Append(" | [").Append(Escape(ChatExportDocument.Clean(s.Title))).Append("](chats/").Append(Uri.EscapeDataString(name)).Append(')')
-                             .Append(" | ").Append(Escape(ChatExportDocument.Clean(s.Project)))
-                             .Append(" | ").Append(st.Turns)
-                             .Append(" | ").Append(st.ChatsWithoutRecord > 0 ? "–" : st.Commands.ToString(CultureInfo.InvariantCulture))
-                             .Append(" | ").Append(st.Failed)
-                             .Append(" | ").Append(st.Tokens > 0 ? ModelPricing.Tokens(st.Tokens) : "")
-                             .AppendLine(" |");
-                    }
-                    WriteEntry(zip, "INDEX.md", index.ToString());
+                    WriteZip(tmp, Readme(language, result.Stats, nowLocal), docs, perChat, language);
                 }
-                if (File.Exists(path)) File.Delete(path);
+                catch
+                {
+                    try { File.Delete(tmp); } catch { }
+                    throw;
+                }
                 File.Move(tmp, path);
                 result.Path = path;
                 result.IsZip = true;
             }
             result.Elapsed = DateTime.UtcNow - started;
             return result;
+        }
+
+        private static void WriteZip(string file, string readme, List<KeyValuePair<ChatSession, string>> docs,
+            List<ChatExportStats> perChat, string language)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var index = new StringBuilder();
+            index.Append("# ").AppendLine(Strings.For(language, Strings.ChatExportIndexTitle));
+            index.AppendLine();
+            index.AppendLine(Strings.For(language, Strings.ChatExportIndexHeader));
+            index.AppendLine("|---|---|---|---|---|---|---|");
+            using (var stream = new FileStream(file, FileMode.Create, FileAccess.Write))
+            using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                WriteEntry(zip, "README.md", readme);
+                for (var i = 0; i < docs.Count; i++)
+                {
+                    var s = docs[i].Key;
+                    var name = EntryName(s, names);
+                    WriteEntry(zip, "chats/" + name, docs[i].Value);
+                    var st = perChat[i];
+                    index.Append("| ").Append(ChatExportDocument.Local(s.CreatedUtc))
+                         .Append(" | [").Append(Escape(ChatExportDocument.Clean(s.Title))).Append("](chats/").Append(Uri.EscapeDataString(name)).Append(')')
+                         .Append(" | ").Append(Escape(ChatExportDocument.Clean(s.Project)))
+                         .Append(" | ").Append(st.Turns)
+                         .Append(" | ").Append(st.ChatsWithoutRecord > 0 ? "–" : st.Commands.ToString(CultureInfo.InvariantCulture))
+                         .Append(" | ").Append(st.Failed)
+                         .Append(" | ").Append(st.Tokens > 0 ? ModelPricing.Tokens(st.Tokens) : "")
+                         .AppendLine(" |");
+                }
+                WriteEntry(zip, "INDEX.md", index.ToString());
+            }
         }
 
         public static string Readme(string language, ChatExportStats stats, DateTime nowLocal)
@@ -498,7 +520,7 @@ namespace VibeModel.Services.Chat
             return slug.Length == 0 ? "chat" : slug;
         }
 
-        private static string Escape(string text) => Regex.Replace(text ?? "", @"\s+", " ").Trim().Replace("|", "\\|").Replace("]", "\\]");
+        private static string Escape(string text) => ChatExportDocument.Cell(text).Replace("]", "\\]");
 
         private static string UniquePath(string path)
         {
@@ -588,7 +610,7 @@ namespace VibeModel.Services.Chat
                 {
                     var sessions = ChatSessionStore.Default.LoadSessions(max);
                     if (sessions.Count == 0)
-                        return new ChatExportResult { Error = Strings.For(language, Strings.ExportChatsNone) };
+                        return new ChatExportResult { Error = Strings.For(language, Strings.ExportChatsNone), NothingToExport = true };
                     return ChatExportWriter.Export(sessions, Logger.LogDirectory, ExportFolder, language, DateTime.Now);
                 }
                 catch (Exception ex)

@@ -963,7 +963,7 @@ upload-to-Claude tip). Per chat: title, dates, project, backend · model, id; pe
 commands (table: command, args ≤ 200 chars, ✓/✗ + error, duration; multi-line or longer args in full
 below it, `csharp` for exec), the answer as stored (with the notes between steps) and the pane's token
 line (+ context, `≈ €`). The buttons export every chat and open Explorer on the file (`UI/ChatExportUi.cs`).
-- **Turn record** (1.2.18+, additive): each answer in `chats\<id>.json` carries `steps:[{command, args,
+- **Turn record** (additive, since the chat export): each answer in `chats\<id>.json` carries `steps:[{command, args,
   ok, error, durationMs}]`, `usage:{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
   contextTokens, costUsd}`, `model`, `durationMs` (`ChatSession.Append(role, content, steps, usage, model,
   durationMs)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). `args` is the full call

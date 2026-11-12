@@ -112,8 +112,8 @@ namespace VibeModel.Services.Chat
         public string Content { get; set; }
         public DateTime TimestampUtc { get; set; }
 
-        // Additive, assistant messages from 1.2.18 on (null in older chats and on other roles):
-        // what the turn ran, for the chat export. Never sent to a model.
+        // Additive, on the answer (or error) of a turn since the chat export exists; null in older
+        // chats and on questions: what the turn ran, for the export. Never sent to a model.
 
         /// <summary>The turn's tool calls in order; null = not recorded (an older chat).</summary>
         public List<ChatSessionStep> Steps { get; set; }
@@ -131,7 +131,7 @@ namespace VibeModel.Services.Chat
         public string Error { get; set; }
         public long? DurationMs { get; set; }
 
-        /// <summary>The steps of a finished turn as they are stored (a cancelled step is not ok).</summary>
+        /// <summary>The steps of a turn as they are stored (only a step that finished without error is ok).</summary>
         public static List<ChatSessionStep> FromTurn(TurnActivity turn)
         {
             var steps = new List<ChatSessionStep>();
@@ -144,7 +144,8 @@ namespace VibeModel.Services.Chat
                     Args = s.FullArgs ?? s.Detail ?? "",
                     Ok = s.State == TurnActivity.StepState.Done,
                     Error = s.State == TurnActivity.StepState.Failed ? s.ErrorLine
-                        : s.State == TurnActivity.StepState.Cancelled ? "cancelled" : null,
+                        : s.State == TurnActivity.StepState.Cancelled ? "cancelled"
+                        : s.State == TurnActivity.StepState.Running ? "not finished" : null,
                     DurationMs = s.DurationMs
                 });
             }

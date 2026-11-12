@@ -73,9 +73,11 @@ namespace VibeModel.Services.Claude.Commands
               .Append(" in ").Append(((int)result.Elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)).AppendLine(" ms:");
             sb.AppendLine(result.Path);
             if (st.ChatsFromLog > 0)
-                sb.Append(st.ChatsFromLog).AppendLine(" older chats take their commands from the debug log (indicative).");
+                sb.Append(st.ChatsFromLog).Append(st.ChatsFromLog == 1 ? " older chat takes its" : " older chats take their")
+                  .AppendLine(" commands from the debug log (indicative).");
             if (st.ChatsWithoutRecord > 0)
-                sb.Append(st.ChatsWithoutRecord).AppendLine(" chats have no commands recorded (from before 1.2.18, debug logging off).");
+                sb.Append(st.ChatsWithoutRecord).Append(st.ChatsWithoutRecord == 1 ? " chat has" : " chats have")
+                  .AppendLine(" no commands recorded (older than the per-turn record, and debug logging was off).");
             sb.Append("No server token or API key is in the export; questions, answers and paths are.");
             return sb.ToString();
         }

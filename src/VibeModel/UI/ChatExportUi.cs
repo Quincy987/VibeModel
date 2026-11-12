@@ -34,7 +34,7 @@ namespace VibeModel.UI
                     {
                         if (status != null)
                         {
-                            status.Text = result.Error == Strings.For(language, Strings.ExportChatsNone)
+                            status.Text = result.NothingToExport
                                 ? result.Error
                                 : Strings.Get(Strings.ExportChatsFailed, result.Error);
                             status.ToolTip = null;
