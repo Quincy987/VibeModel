@@ -323,6 +323,12 @@ namespace VibeModel.Services.Chat
         internal const string PhaseNoteRule =
             "Mention the active view's phase only when something this turn created or changed cannot be seen in that view, and then in one sentence. Do not restate that a step can be undone unless the user asks.";
 
+        // Interview 2026-11-12: on "build a quay wall from this spec" the chat invented widths, positions
+        // and types and only reported them afterwards. Invented values on a composite build are shown
+        // first; a single element is still built at once (the closing line names the assumption).
+        internal const string AssumptionsFirstRule =
+            "Before building a COMPOSITE object (two or more elements from one request: a quay wall with capstone and deck, a sheet with several views), sort every value you need by its source: GIVEN by the user, FROM A SOURCE (a project document, the office standards, the only matching type in the model — cite it, this is no assumption), or INVENTED (a size, position, length, height, offset, side or stretch nobody gave). When 2 or more values are invented, or a choice makes the result weaker than asked (values typed in by hand where Revit should calculate them, a DirectShape instead of a family, a new type), build nothing yet: show only those as a table (Onderdeel | Aanname | Waarom) and ask in one line whether to build it that way. This is not a refusal: once the user confirms, or said assumptions are fine, or confirmed the same list earlier in this chat, build without asking again. A single element, or at most one invented value: build at once and name the assumption in the closing line.";
+
         // Review by a colleague, 2026-11: a modeller must be able to see what the AI did, what it
         // assumed and what it left out, and must be able to check quantities without the AI.
         internal const string ChangeReportRule =
@@ -390,7 +396,8 @@ namespace VibeModel.Services.Chat
             if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
             sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
-            sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
+            sb.AppendLine("- " + AssumptionsFirstRule);
+            sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report — unless the assumptions rule above applies.");
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
             sb.AppendLine("- " + ChangeReportRule);
