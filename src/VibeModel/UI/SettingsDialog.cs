@@ -678,6 +678,20 @@ namespace VibeModel.UI
             row.Children.Add(_updateRollbackButton);
             panel.Children.Add(row);
 
+            // Chat export: every saved chat with the commands per turn, to send or upload to Claude.
+            var exportRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+            var exportChats = CreateButton(Strings.Get(Strings.ExportChats));
+            exportChats.ToolTip = Strings.Get(Strings.ExportChatsTip);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(exportChats, "SettingsExportChats");
+            var exportStatus = CreateLabel("");
+            exportStatus.VerticalAlignment = VerticalAlignment.Center;
+            exportStatus.Margin = new Thickness(8, 0, 0, 0);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(exportStatus, "SettingsExportChatsStatus");
+            exportChats.Click += (s, e) => ChatExportUi.Run(exportChats, exportStatus);
+            exportRow.Children.Add(exportChats);
+            exportRow.Children.Add(exportStatus);
+            panel.Children.Add(exportRow);
+
             ShowUpdateState(engine.Refresh());
             return panel;
         }

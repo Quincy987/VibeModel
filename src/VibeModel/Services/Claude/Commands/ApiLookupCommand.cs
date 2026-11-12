@@ -14,7 +14,7 @@ namespace VibeModel.Services.Claude.Commands
     public class ApiLookupCommand : IClaudeCommand, IStructuredCommand
     {
         public string Name => "apilookup";
-        public string Description => "Revit API signatures from THIS Revit (use before exec when unsure): a type's namespace, how to get one, properties, methods, enum values, [Obsolete]; or one member's overloads; also what this API cannot do (labels in annotation families, legends, design options, phases) and the workaround";
+        public string Description => "Revit API signatures from THIS Revit (use before exec when unsure): a type's namespace, how to get one, properties, methods, enum values, [Obsolete]; or one member's overloads; also what this API cannot do (labels in annotation families, legends, design options, phases, calculated schedule fields) and the workaround";
         public string Usage => "apilookup <Type>[.<Member>] [--filter <text>] [--all]";
 
         private static readonly Lazy<ApiLookup> Shared = new Lazy<ApiLookup>(() =>

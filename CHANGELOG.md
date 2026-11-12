@@ -10,6 +10,60 @@
   the other bars are drawn unobscured (`-- views: …`). The chat then fixes it or says what is missing, instead of calling the
   overview complete. (Feedback 12-11: the bottom reinforcement was modelled but did not appear in the overview.)
 
+### Added — hoeveelheden volgen het model
+- `schedule --takeoff`: a Material Takeoff whose Material: Area / Material: Volume follow every model change (default
+  columns Family and Type, Material: Name, Material: Area, Material: Volume; `--fields` from the takeoff's own list). An
+  empty takeoff says when the families have no material, and never assigns one.
+- `schedule --calc "<Name>=<formula>"`: the Revit API cannot add a calculated field (measured in Revit 2023), so the
+  command builds the rest — the fields the formula names as hidden columns, written as the schedule spells them — and
+  prints the clicks for the user with the Type the formula gives (Area for length × length; a mismatch gives Revit's
+  "Inconsistent units"). Also in `apilookup` as a Known gap (`ScheduleFieldType.Formula`, `IsCalculatedField`).
+- `-- quantities:` line after a change that created a project parameter and filled it with numbers: the values do not
+  follow the model (a plain number may be an identifier, so there the warning is conditional). JSON `quantities`.
+
+### Changed
+- Hoeveelheden nooit als vaste waarde: a computed quantity is never written into a parameter on the AI's own
+  initiative — a schedule field, a takeoff, a family formula or the user's calculated field come first; when none works
+  it says so and asks. Creating project parameters now asks first (interview 2026-11-12).
+- Aannames vooraf: before building something made of several elements (a quay wall with capstone and deck, a row of piles), the chat
+  sorts what it needs into given, read from a source, and invented. With two or more invented values, or a choice weaker than asked
+  (values typed in by hand where Revit should calculate them, a DirectShape instead of a family, a new type), it builds nothing yet:
+  it shows those as a table and asks whether to build it that way. A single element, or one invented value, is built at once and the
+  assumption is named in the closing line (interview 2026-11-12).
+
+## v1.2.19 — Chats exporteren (2026-11-12)
+
+### Added — chats exporteren
+- **Exporteer chats…** in Diagnose and in Settings → *Versie en updates*, and `chatlog --export [n|all]`: every saved chat
+  as markdown — per turn the question, the commands it ran (full arguments — a shell call with a pipe or loop as a whole —, ✓/✗ with the error, duration), the answer and the
+  token line — in `%LOCALAPPDATA%\VibeModel\exports\` (one `chats-<date>.md` for up to 5 chats, else a zip with a file per
+  chat, `INDEX.md` and `README.md`); the buttons open Explorer on it. Meant to send or upload to Claude to find patterns (retries after
+  an error, recurring failures). No server token or API key goes in; questions, answers and paths do.
+- Each answer in the stored chat now also records what its turn ran (`steps`, `usage`, `model`, `durationMs` — additive;
+  older chats stay readable and older builds ignore it). Chats from before this version take their commands from the
+  debug log when it was on (marked as indicative and counted apart with ~), else say none were recorded. `scripts/successcase.py` counts the
+  stored steps exactly.
+
+## v1.2.18 — Leesbare annotaties (2026-11-12)
+
+### Added — leesbare annotaties
+- `annolayout [view|sheet]` reads back where every text, tag, dimension text and line, witness line and spot sits on paper and
+  names what collides, with ids (WARN for overlapping texts, lines through texts, stacked dimension strings and skewed text;
+  INFO for touching strips, vertical text and witness lines). After any change that adds annotations, one `-- layout:` line
+  names the new collisions.
+- Dimensions without `--offset` go to the first free row (8, 16, 24 mm on paper), past strings already there and other texts,
+  instead of all on the same line.
+- Spot elevations pick a free corner for their text when the default one is taken, and say which.
+- `tag` tags rebar (through the bar's sub-element — Revit refuses the bar as a whole) and parts, falls back to a multi-category
+  tag, takes `--type` and `--elbow x y`, and with `--leader` puts the head in a free spot next to the element.
+- `text --width <paper mm>` wraps a long note.
+- The chat annotates with these commands, checks the layout and fixes every collision (delete and place again) before it
+  reports, keeps text horizontal and copies the spacing of a drawing the user corrected by hand.
+
+### Fixed
+- `spot <x> <y>` in a section failed on every wall: it snapped to the section's cut surface. It now takes the wall's real face.
+- A tag the annotation guard re-hangs after a replacement on a rebar works (same sub-element reference).
+
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)
 
 ### Added — licht thema

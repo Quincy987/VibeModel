@@ -323,6 +323,12 @@ namespace VibeModel.Services.Chat
         internal const string PhaseNoteRule =
             "Mention the active view's phase only when something this turn created or changed cannot be seen in that view, and then in one sentence. Do not restate that a step can be undone unless the user asks.";
 
+        // Interview 2026-11-12: on "build a quay wall from this spec" the chat invented widths, positions
+        // and types and only reported them afterwards. Invented values on a composite build are shown
+        // first; a single element is still built at once (the closing line names the assumption).
+        internal const string AssumptionsFirstRule =
+            "Before building a COMPOSITE object (two or more elements from one request: a quay wall with capstone and deck, a row of piles), first read what the request points to (a document, an underlay, the office standards), then sort every value you need by its source: GIVEN by the user, FROM A SOURCE (a project document, an underlay, the office standards, the only matching type in the model — cite it, this is no assumption), or INVENTED (a size, position, length, height, offset, side or stretch nobody gave). When 2 or more values are invented, or a choice makes the result weaker than asked (values typed in by hand where Revit should calculate them, a DirectShape instead of a family, a new type), build nothing yet: show only those as a table (Onderdeel | Aanname | Waarom, in the reply language) and ask in one line whether to build it that way. This is not a refusal: once the user confirms, or said assumptions are fine, or confirmed the same list earlier in this chat, build without asking again. A single element, or at most one invented value: build at once and name the assumption in the closing line.";
+
         // Review by a colleague, 2026-11: a modeller must be able to see what the AI did, what it
         // assumed and what it left out, and must be able to check quantities without the AI.
         internal const string ChangeReportRule =
@@ -331,6 +337,11 @@ namespace VibeModel.Services.Chat
             "When a command output says it is incomplete (showing N of M), tell the user the real total; never present a cut list as everything. Always name assumptions and omissions.";
         internal const string QuantitiesRule =
             "Quantities for an estimate or bill (hoeveelheden, begroting, palenstaat) are made as a Revit schedule with `schedule` by default, so anyone can check them in Revit; a list in the chat only when the user asks for one.";
+        // Interview Ruben Wolbers, 2026-11-12: asked for m² that no schedule field gives, the chat made project
+        // parameters and filled them with computed numbers ("filled by hand, does not follow changes"). Dynamic is
+        // always the wish; when it cannot be, say so and ask. Measured: the API cannot add a calculated schedule field.
+        internal const string DynamicQuantitiesRule =
+            "Quantities must follow the model: never compute a quantity (m², m³, length, count, weight) and write it as a fixed value into a parameter on your own initiative. When the quantity is ambiguous (plan area, face area, material area) ask which one first; then try in this order: a built-in schedulable field (`schedule`), a Material Takeoff (`schedule --takeoff`), a formula parameter in the family (`exec` with FamilyManager.SetFormula — ask first, it changes the family), a calculated schedule field the user adds by hand (`schedule --calc` builds the schedule and prints the clicks; the API cannot add that field). That click path is the exception to never redirecting to manual steps: name it in one line, since the API cannot do it (Known gap). When none works, say so in one sentence and ask how the user wants it solved; offer a fixed-value parameter only as one explicit option named with its drawback (does not follow model changes), never as the default.";
 
         // Feedback 2026-11-12: the bottom rebar was modelled, but the overview made before kept showing only
         // the top rebar. The server now says so after the command (DerivedCoverage); the model has to act on it.
@@ -354,6 +365,17 @@ namespace VibeModel.Services.Chat
             "Begin every exec snippet with `// Doel: <what it does, in the user's words>` and `// Aannames: <units, levels, types, phases you assumed>` on their OWN lines (real newlines: in a one-line --data-urlencode argument or a batch line a typed \\n is not a newline, so use `/* Doel: … */ /* Aannames: … */` there). They are saved with the script so a colleague can read, re-run or change it without the AI.";
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
+
+        // Plan 21 (interview Ruben Wolbers, 2026-11-12): sheets annotated from a specification came out
+        // "een rommeltje" — tags, dimensions and texts on top of each other; the chat saw the overlap but
+        // had no numbers to fix it with. `annolayout` and the `-- layout:` line give it those numbers.
+        internal const string AnnotationLayoutRule =
+            "Annotate with `tag`, `dimension`, `spot`, `text` and `region`, never with exec: `spot`, `dimension` and `tag --leader` keep clear of what is already in the view, and every one reports where it landed. " +
+            "After annotating a view, run `annolayout <view>` (and whenever a response has a `-- layout:` line) and fix every WARN before you report: " +
+            "these commands always place a NEW annotation, so replace the misplaced one — `delete <its id>`, then place it again with `tag … --at x y` / `--elbow x y`, " +
+            "`spot … --leader x y` or `dimension … --offset <model mm past the elements: paper mm × scale>` — and run `annolayout` again. Keep text and tags horizontal. " +
+            "When the user has corrected a drawing by hand, read its positions with `annolayout` and copy that spacing in the next one. " +
+            "Annotations you placed this turn you may delete and place again without asking first.";
 
         // Plan 20: the pane's "next message as preview" — the server previews every change of
         // this turn on its own, the model only has to report it as such.
@@ -394,8 +416,9 @@ namespace VibeModel.Services.Chat
             }
             if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
-            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
-            sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report.");
+            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, project parameters and parameter bindings (also through exec), phases, worksets — state in one sentence what will change and ask for confirmation first.");
+            sb.AppendLine("- " + AssumptionsFirstRule);
+            sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report — unless the assumptions rule above applies.");
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
             sb.AppendLine("- " + ChangeReportRule);
@@ -407,7 +430,9 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Complete and checkable");
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
+            sb.AppendLine("- " + DynamicQuantitiesRule);
             sb.AppendLine("- " + DerivedCoverageRule);
+            sb.AppendLine("- " + AnnotationLayoutRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");
             sb.AppendLine("- " + ForbiddenRule);

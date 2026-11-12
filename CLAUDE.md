@@ -204,6 +204,7 @@ curl -s "http://localhost:18884/hide?args=12345"                         # Hide 
 curl -s "http://localhost:18884/show?args=12345"
 curl -s "http://localhost:18884/colorsplash?args=walls Type"             # Colour by parameter value; 'colorsplash reset [category]'
 curl -s "http://localhost:18884/chatlog?args=10"                         # Recent messages of the chat pane
+curl -s "http://localhost:18884/chatlog?args=--export%20all"             # Export saved chats + commands per turn (md/zip)
 ```
 
 ### Source Data Commands (imported DWG + point clouds)
@@ -516,7 +517,9 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   something Revit's API cannot do — labels in tag / generic-annotation / title-block families
   (`Label`, `NewLabel`, `FamilyItemFactory.NewLabel`, `TAG_TAG`, `TextElement`, `LabelType`), legend
   views (`Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend`), creating phases and design
-  options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`) — the answer carries a
+  options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`), calculated schedule fields
+  (`ScheduleFieldType.Formula`, `IsCalculatedField`, `AddCalculatedField` — never `AddField`/`ScheduleField`,
+  which work) — the answer carries a
   `Known gap:` block (cannot / what works, measured / the user's manual step; ≤ 12 lines; JSON
   additive `data.knownGap`): right after the first line when nothing was found, at the end of a found
   type or member. Matched on what the lookup resolved, on whole names (never a substring): a found
@@ -527,7 +530,7 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   nothing; an edited family goes back with `fd.LoadFamily(doc, new
   VibeModel.Services.Helpers.KeepValuesLoadOptions())` (public for exec — without options Revit
   answers "Family loading failed."); with the family open in the Family Editor, exec edits `doc` itself.
-  No prompt rule; `apilookup`'s description (in the tool list) names the four gaps.
+  No prompt rule of its own (`DynamicQuantitiesRule` points at `--takeoff`/`--calc`); `apilookup`'s description (in the tool list) names the gaps.
 - **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
   `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
   rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at
@@ -557,6 +560,8 @@ curl -s "http://localhost:18884/dimension?args=--points 0 0 5000 0"             
 curl -s "http://localhost:18884/dimension?args=--levels"                                             # Level string in the active section
 curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
+curl -s "http://localhost:18884/tag?args=1731002 --leader --type IB_Tag_Rebar_aantal-x-dia"           # Rebar too; head in a free spot, --elbow x y bends it
+curl -s "http://localhost:18884/annolayout?args=Doorsnede 1-1"                                        # Read-only: paper boxes of every annotation + overlaps
 curl -s "http://localhost:18884/spot?args=103000 2000"                                               # Spot elevation (peilmaat) at a point, active view
 curl -s "http://localhost:18884/spot?args=1730980 bottom"                                            # ...on an element's top|bottom (a pile's tip)
 curl -s "http://localhost:18884/spot?args=101000 2000 --fixed --leader 104000 3500"                  # ...on a short detail line: never moves
@@ -565,6 +570,8 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
 curl -s "http://localhost:18884/schedule?args=Palenstaat --rows"                                     # Read any schedule back (+ the sheets it is on)
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --takeoff --name Wandmaterialen"   # Material Takeoff: Material: Name/Area/Volume follow the model
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count\" --calc \"Paaloppervlak=Length*Width\""  # Schedule + the clicks for the calculated field
 curl -s "http://localhost:18884/callout?args=Bovenaanzicht --box 100000 -5000 110000 5000 --name Detail A --scale 20"  # Plan callout ( --section: detail view)
 curl -s "http://localhost:18884/callout?args=101 --box 0 0 4000 3000 --reference Detail A"            # Reference callout to an existing view
 curl -s "http://localhost:18884/region?args=Bovenaanzicht --points 0,0 4000,0 4000,3000 0,3000 --type Beton"  # Filled region (view frame)
@@ -595,6 +602,25 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   viewport type without a title.
 - **`sheetinfo`** grades box overlaps: a thin strip (≤ 30 mm) is `INFO` (usually empty crop margin),
   anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
+- **`annolayout [view|sheet]`** (plan 21, read-only; `docs/plans/21-annotation-layout.md`): per annotation its paper boxes
+  in the view frame (x along the view's right direction, y up, mm from the view origin, ÷ scale) — a text note's bounding
+  box (with leaders: its Coord/Width/Height by alignment, since the box may take the leader in), a dimension's text per segment (estimated around `TextPosition`: characters × size × width factor × 0.72, 1.9 × size
+  high — measured on NLCS-ISO), its line and its witness lines (over the dimension's own box) as thin strips, a spot's text
+  (same estimate) and its leader, a tag's text (it stands ON `TagHeadPosition`, mid-width — measured; without a leader the
+  label frame's width, with one the `TagText` estimate) — then CHECKS: two texts
+  overlapping (`WARN`, a strip ≤ 1 mm `INFO`), a dimension line or leader through another annotation's text (`WARN`; more than
+  1 mm into it — grazing an edge does not count; a witness line `INFO`: on a narrow element no placement avoids it), two parallel
+  dimension strings < 2 mm apart over a shared span (`WARN` stacked), skewed text or tags (`WARN`; exactly vertical `INFO`); `Verdict:`.
+  A sheet → every view on it. Pure part `AnnotationLayout.cs` (tested; a sweep over x, so thousands of boxes stay cheap),
+  Revit side `AnnotationExtents.cs` (cap 2000 annotations per view; JSON lists ≤ 500 boxes per view).
+  **`-- layout:` line:** after every kept modifying command or batch that ADDED annotations (re-hosts are new elements too),
+  only the WARN conflicts of the new ones against their neighbours, ≤ 3 named: `-- layout: 2 overlaps in 'AL test': spot
+  1730946 ↔ spot 1730947 (5.4×4.8 mm); … → run 'annolayout AL test' for the boxes`, after the `-- annotations` line and
+  before `-- changed:`; JSON additive `layout:{views:[{view,viewName,overlaps}]}`. Never after a preview or rollback.
+  API facts (measured live): tag head, elbow, free end, orientation and `RotationAngle` (radians), dimension and segment
+  `TextPosition`, spot text/shoulder/end and text note position/width are all settable and read back; an attached tag leader
+  has no readable end (`GetLeaderEnd` throws), so it is not drawn; Revit reports no box for a tag's text or a dimension text
+  (a tag's box is its label frame, 36 × 16.5 mm for "1x ø6"), and has no "arrange" call.
 - **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
@@ -608,6 +634,10 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   instance's own (`<instance>:0:INSTANCE:<symbol ref>`): instance geometry hands out references to
   the family symbol, and a dimension on those hangs on the symbol (outlives the pile, invisible to a
   scan for it). Revit's refusal message is returned verbatim with the usual cause.
+  **Rows (plan 21):** without `--offset` an element string goes to the first free row beyond the elements — 8, 16, 24 … paper
+  mm — skipping a row a parallel string (within 1°, within 4 mm, overlapping span) or the text of another annotation (not
+  of a parallel string; 5.75 mm either side of the row) already holds: `Placed: row 2 (16 mm on paper from the elements; row 1 taken by dimension 1730940)`,
+  JSON `rowMm`. `--offset` still places exactly; `--points`/`--levels` are unchanged.
 - **`spot`** (peilmaat) needs the same ACTIVE plan/section/elevation/detail view. `spot <x> <y>` snaps
   (≤ 100 mm, in the view plane) to the nearest reference: a face the view CUTS (system families), else
   the edge the view shows beyond the cut, and always an edge for family instances — measured: Revit
@@ -616,8 +646,11 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   square), then the element nearest the viewer. In a plan: the highest upward face at that x,y.
   `spot <id> top|bottom`: the highest/lowest horizontal face (system; its near edge when not cut) or the
   extreme level edge (instance), at the element's middle moved onto the cut plane. Default leader:
-  shoulder 12 paper mm above (top) / below (bottom), text 12 mm to the right; `--leader x y` moves the
-  text (view frame, the shoulder stays vertical over the point). `--fixed` hangs it on a 200 mm detail
+  shoulder 12 paper mm above (top) / below (bottom), text 12 mm to the right; when another annotation's box is there
+  (plan 21) the first free slot of up-left, then 24 / 36 mm high right/left — `Leader: text up-left (up-right taken by spot
+  1730946)`, JSON `leader`; none clear → the least crowded, said so. `--leader x y` moves the
+  text (view frame, the shoulder stays vertical over the point). A section's cut surface (the face lying in the view plane,
+  reference `…:-9999:SURFACE`) is never snapped to — a spot cannot use it (measured: every `spot x y` on a wall failed). `--fixed` hangs it on a 200 mm detail
   line through the point (sections only — in a plan a detail line has the level's height): it never
   moves or breaks, and never follows the model. `--type` = a spot elevation type (exact, else unique
   substring; default: the document's). The response gives the value, `Attached to: floor 1730959
@@ -653,6 +686,14 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   allowed inside a group), so there it is its own undo step. A rolled-back atomic batch is not
   reconciled. Nothing is touched when no recorded annotation changed. Pure parts (wording, tolerances,
   scope): `AnnotationReport.cs`; Revit side: `AnnotationGuard.cs`.
+- **`tag`** (plan 21): the category's own tag family, else a multi-category tag (`Type: … — multi-category tag (no Walls tag
+  loaded)`); rebar (`OST_RebarTags`) and parts are tagged too — a rebar through its sub-element reference
+  (`AnnotationGeometry.TagReference`; measured: the element itself and its centre-line curve are refused with "The reference
+  can not be tagged"; the annotation guard re-tags through the same helper). `--type <name>` (`Family : Type`, the type or the family name;
+  exact, else one unique substring; else the candidates). `--leader` without `--at` puts the head in a free spot: right
+  above, left above, right below, left below the element's paper box at 8 mm, then right/left above at 16 mm — the response
+  says which and what took the first. `--elbow x y` (view frame; implies `--leader`) bends the leader there
+  (`SetLeaderElbow`). The response shows the tag's text. **`text --width <paper mm>`** wraps the note.
 - **`schedule`** matches fields by the names Revit lists (exact, else a unique substring; unknown →
   the schedulable fields of that category). `--filter` numbers are in the project's display unit;
   a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per
@@ -689,6 +730,30 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
   logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
   (respecting *Ask first* for sheets) or to say what is missing where — never to report the overview as complete.
+- **Quantities follow the model** (interview Ruben Wolbers, 2026-11-12: m² no field gave ended up as computed numbers in
+  new parameters). `schedule --takeoff` makes a Material Takeoff (`ViewSchedule.CreateMaterialTakeoff`; default fields
+  `Family and Type, Material: Name, Material: Area, Material: Volume`, else `--fields` from the takeoff's own list); every
+  row read and none with a Material: Name, or no rows while the category has elements and none carries a material →
+  `Note: no materials on these elements …` (JSON `noMaterials`; no rows with materials present is the phase/filter, said by
+  the `Empty:` line; a category without elements gets no note) — it never assigns materials. Measured on the demo model: walls 16 m² / 4.80 m³ (Beton_300); piles empty, no materials.
+  `schedule --calc "<Name>=<formula>"`: measured in Revit 2023, the API cannot add a calculated field
+  (`AddField(ScheduleFieldType.Formula)` → "fieldType is not a schedulable field type"; `IsCalculatedField` is read-only), so
+  the command builds the rest, adds every field the formula names (exact names, never a substring) that is not in the
+  schedule as a hidden column, writes those names in the formula as the schedule spells them (Revit's formulas are
+  case-sensitive), names unknown words, and ends with `Calculated field '…' was NOT added …` + one
+  `Manual step (the API cannot add a calculated field): … fx … Type "Area" (another Type gives "Inconsistent units") …`
+  (JSON `manualStep {name, formula, type, apiCannot, clicks}`). The Type comes from the formula's dimension
+  (`CalculatedFieldHint`, pure: length × length = Area, three lengths = Volume, lengths summed = Length, no measured
+  field = Number; mixed/unknown → the user picks). After every kept command or batch, a project parameter NEW in that
+  run (bound in `ParameterBindings`, spec Length/Area/Volume/Number) that got non-zero values adds
+  `-- quantities: parameter 'Oppervlak' (Area, new this run) was filled with fixed numbers on 12 elements; they do not
+  follow model changes — …` after `-- changed:` (JSON additive `quantities:[{parameter,newThisRun,elements,atLeast,spec}]`;
+  `StaticQuantityReport` pure, `StaticQuantityCheck` Revit side; reading stops at 5000 elements and then says
+  `at least 300 elements (stopped reading after 5000 changed elements)`). Only parameters new in the run
+  (so every value was written by it); a parameter that already existed, a family's own shared parameter and a value
+  tied to a global parameter are not flagged. When every flagged parameter is a plain Number/Integer (often an identifier
+  such as a pile number) the advice reads `if they are quantities, they do not follow …`. Never after a preview, Discard, READ_ONLY or rolled-back batch;
+  under `ask` it is in the response after Keep, not in the approval window (the check runs on what was kept).
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
@@ -980,14 +1045,57 @@ carries its own args (`/wall%200%200%205000%200`) still runs (`RevitHttpServer.T
 indicator with mm:ss, ✓/✗ per step, intermediate text muted) and collapse to "N stappen · 48 s".
 Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySink`,
 `ChatActivityEvent`); `TurnActivity` / `ToolCallDescriber` (`Services/Chat/ChatActivity.cs`) are the
-WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
-model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
-BOTH maps — a test checks).
+WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream and the model-bound history are
+unchanged; the stored chat JSON only gains the additive turn record (see Chat export). A new command
+gets its step label from `StatusVerbs` (add it to BOTH maps — a test checks).
+
+**Chat export** (Diagnose → *Exporteer chats…* `DiagnoseExportChats`, Settings → *Versie en updates* →
+*Exporteer chats…* `SettingsExportChats` / `SettingsExportChatsStatus`, or `chatlog --export [n|all]`,
+default the last 20): the saved chats as markdown in `%LOCALAPPDATA%\VibeModel\exports\` — up to 5 chats one
+`chats-<yyyyMMdd-HHmmss>.md` (README on top), more a `.zip` with `chats/<yyyyMMdd-HHmm> <slug>.md` per chat,
+`INDEX.md` (date, chat, project, turns, commands, failed, tokens) and `README.md` (what is in it, the
+upload-to-Claude tip). Per chat: title, dates, project, backend · model, id; per turn the question, the
+commands (table: command, args ≤ 200 chars, ✓/✗ + error, duration; multi-line or longer args in full
+below it, `csharp` for exec), the answer as stored (with the notes between steps) and the pane's token
+line (+ context, `≈ €`). The buttons export every chat and open Explorer on the file (`UI/ChatExportUi.cs`).
+- **Turn record** (additive, since the chat export): each answer in `chats\<id>.json` carries `steps:[{command, args,
+  ok, error, durationMs}]`, `usage:{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
+  contextTokens, costUsd}`, `model`, `durationMs` (`ChatSession.Append(role, content, steps, usage, model,
+  durationMs)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). `args` is the full call
+  (`ToolCallInfo.FullArgs`: the args string, a curl's decoded `?args=`, else the whole shell command — an
+  exec sent with `--data-urlencode` or a heredoc), capped at 4000 chars (`… (+N tekens)`); a message
+  without a record is written exactly as before, and older builds ignore the keys. Never sent to a model.
+- **Older chats**: no record → the debug log's `Executing: …` / `Executing batch: N commands` lines between
+  question and answer (`ChatExportLog`; local time, the day's `log_yyyy-MM-dd.txt`, shared read), marked
+  *indicative* — only with `VIBEMODEL_DEBUG=1`, and every client on the machine logs there — and counted
+  apart (`ChatExportStats.LogCommands`, shown as `~30` / `12 + ~30`, never summed with the exact count); no
+  log → "no commands recorded". `chatlog --export` with no saved chats answers a plain note, not an ERROR.
+- **Secrets** (`ChatExportRedaction.Scrub`, on storing args AND on export): the `X-VibeModel-Token`
+  header value, `VIBEMODEL_TOKEN=` / `ANTHROPIC_API_KEY=` assignments, a `"token":"…"` field, `sk-ant-…`
+  keys and the live `ServerAuth.Token` itself → `<token>` / `sk-ant-…`; a `$VIBEMODEL_TOKEN` reference
+  stays. Questions, answers, names and paths are NOT anonymised — the README says so and Explorer opens
+  on the file so the user can read it first.
+- Off Revit's main thread under a 10 s deadline (`ChatExportService` via `PathProbe.Run`, own thread);
+  the command waits for it (it returns the path, counts and how many chats had no record). Pure parts:
+  `Services/Chat/ChatExport.cs` (`ChatExportDocument`, `ChatExportLog`, `ChatExportRedaction`;
+  `ChatExportWriter` does the file I/O). `scripts/successcase.py` counts stored `steps` exactly and only
+  falls back to the log for older chats.
+
+**Annotation layout (RULES block, plan 21).** `AnnotationLayoutRule` (under *Complete and checkable*): annotate with the
+commands, never exec; run `annolayout` after annotating (and on every `-- layout:` line) and fix each WARN before reporting —
+the commands always place a NEW annotation, so a fix is `delete <id>` and placing it again (there is no move command yet);
+text and tags horizontal; copy a hand-corrected example's spacing; annotations placed this turn may be replaced without asking.
 
 **Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
-assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule), `DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
+assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule),
+`DynamicQuantitiesRule` (never a computed quantity as a fixed parameter value; built-in field → `--takeoff` → family formula →
+`--calc`; else say so and ask). The ask-first list names project parameters and parameter bindings (also through exec).
+`DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
+`AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values, or a choice weaker than asked (hand-typed quantities,
+DirectShape, new type), the chat shows an assumptions table and asks first; one element or one invented value is built at once and
+reported in the closing line (interview 2026-11-12).
 
 **Tables, units, sources (RULES block).** The rules end with three more sections, each a constant
 in `ChatBackendBase` (`TableRule`, `UnitsRule`/`UnitsConversionRule`, `SourcesRule`/`SourceFormsRule`):

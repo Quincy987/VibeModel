@@ -95,6 +95,25 @@ namespace VibeModel.Services.Claude
                 },
                 Manual = "the user adds phases in Manage -> Phases and design options in Manage -> Design Options; ask before assuming one exists."
             },
+            new Gap
+            {
+                // Interview Ruben Wolbers 2026-11-12: m² nobody could schedule ended up as fixed numbers in parameters.
+                // Measured 2026-11-12. No type keys: ScheduleField / ScheduleDefinition / AddField are used normally.
+                Name = "calculated-fields",
+                TypeKeys = new string[0],
+                MemberKeys = new[] { "ScheduleFieldType.Formula", "IsCalculatedField", "ScheduleField.IsCalculatedField", "AddCalculatedField", "ScheduleDefinition.AddCalculatedField" },
+                Title = "calculated (formula) schedule fields",
+                Cannot = "the Revit API cannot create a calculated schedule field: AddField(ScheduleFieldType.Formula) throws \"fieldType is not a schedulable field type\" and ScheduleField.IsCalculatedField is read-only; no member sets a formula. Do not fall back to computing the quantity into a parameter: a fixed number does not follow model changes.",
+                Works = new[]
+                {
+                    "schedule <category> --takeoff: a Material Takeoff whose Material: Area / Material: Volume follow the model (empty when the families have no material)",
+                    "a formula parameter in a loadable family: fd.FamilyManager.SetFormula(param, \"Length * Width\"), then fd.LoadFamily(doc, new VibeModel.Services.Helpers.KeepValuesLoadOptions()) - ask first, it changes the family; not for system or in-place families",
+                    "schedule <category> --fields ... --calc \"Name=formula\": builds the schedule, adds the fields the formula uses as hidden columns and prints the clicks",
+                },
+                Manual = "the user opens the schedule → " + CalculatedFieldHint.ClickPath + " → name, Discipline Common, the Type the formula gives " +
+                         "(Area for length × length; " + CalculatedFieldHint.TypeMismatch + "), the formula with the field names exactly as listed → OK. " +
+                         "schedule --calc prints this with the Type filled in."
+            },
         };
 
         private static readonly Dictionary<string, Gap> ByType = Index(g => g.TypeKeys);

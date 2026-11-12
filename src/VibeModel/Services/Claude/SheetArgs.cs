@@ -368,15 +368,17 @@ namespace VibeModel.Services.Claude
         public double? Size;
         public double[] Leader;
         public string Type;
+        /// <summary>Plan 21: wrap width on paper (mm); null = Revit's own (one line per line break).</summary>
+        public double? Width;
         public string Error;
 
-        public const string Usage = "text <x> <y> <text...> [--size <paper mm>] [--leader <x> <y>] [--type <text type name>]";
+        public const string Usage = "text <x> <y> <text...> [--size <paper mm>] [--width <paper mm>] [--leader <x> <y>] [--type <text type name>]";
 
         public static TextArgs Parse(string args)
         {
             var r = new TextArgs();
             var f = FlagArgs.Parse(args);
-            r.Error = f.Unknown("size", "leader", "type");
+            r.Error = f.Unknown("size", "leader", "type", "width");
             if (r.Error != null) return r;
             if (f.Positional.Count < 3 || !FlagArgs.TryNum(f.Positional[0], out r.X) || !FlagArgs.TryNum(f.Positional[1], out r.Y))
             { r.Error = "Usage: " + Usage; return r; }
@@ -389,31 +391,54 @@ namespace VibeModel.Services.Claude
                 r.Size = s;
             }
             if (f.Has("leader") && !f.TryNums("leader", 2, out r.Leader, out r.Error)) return r;
+            if (f.Has("width"))
+            {
+                if (!f.TryNum("width", out double w, out r.Error)) return r;
+                if (w < 2 || w > 1000) { r.Error = "--width is the wrap width on paper in mm (e.g. 40)."; return r; }
+                r.Width = w;
+            }
             r.Type = f.Text("type");
             if (r.Type != null && r.Size.HasValue) { r.Error = "Use --type or --size, not both (a type has its own size)."; return r; }
             return r;
         }
     }
 
-    /// <summary>`tag id [--leader] [--at x y]` — no flags parses exactly as the old `tag id`.</summary>
+    /// <summary>
+    /// `tag id [--leader] [--at x y] [--elbow x y] [--type name]` — no flags parses exactly as the
+    /// old `tag id`. `--elbow` implies `--leader` (plan 21).
+    /// </summary>
     internal sealed class TagArgs
     {
         public int Id;
         public bool Leader;
         public double[] At;
+        public double[] Elbow;
+        public string Type;
         public string Error;
+
+        public const string Usage = "tag <elementId> [--leader] [--at <x> <y>] [--elbow <x> <y>] [--type <tag type>]";
 
         public static TagArgs Parse(string args)
         {
             var r = new TagArgs();
             var f = FlagArgs.Parse(args);
-            r.Error = f.Unknown("leader", "at");
+            r.Error = f.Unknown("leader", "at", "elbow", "type");
             if (r.Error != null) return r;
             if (f.Positional.Count != 1 || !int.TryParse(f.Positional[0], out r.Id))
-            { r.Error = "Usage: tag <elementId> [--leader] [--at <x> <y>]"; return r; }
+            { r.Error = "Usage: " + Usage; return r; }
             r.Leader = f.Has("leader");
             if (r.Leader && f.Values("leader").Count > 0) { r.Error = "--leader takes no value (put --at <x> <y> for the tag position)."; return r; }
             if (f.Has("at") && !f.TryNums("at", 2, out r.At, out r.Error)) return r;
+            if (f.Has("elbow"))
+            {
+                if (!f.TryNums("elbow", 2, out r.Elbow, out r.Error)) return r;
+                r.Leader = true;
+            }
+            if (f.Has("type"))
+            {
+                r.Type = f.Text("type");
+                if (string.IsNullOrWhiteSpace(r.Type)) { r.Error = "--type needs a tag type name (family or type, e.g. --type IB_Tag_Rebar_aantal-x-dia)."; return r; }
+            }
             return r;
         }
     }
