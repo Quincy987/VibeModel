@@ -241,6 +241,29 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void ALeaderGrazingATextsEdge_DoesNotCount()
+        {
+            var text = new MmRect(39.6, 212, 50.4, 216.75);
+            Assert.True(AnnotationLayout.Crosses(AnnotationLayout.Strip(45, 200, 45, 230), false, text));    // through the middle
+            Assert.False(AnnotationLayout.Crosses(AnnotationLayout.Strip(50, 200, 50, 230), false, text));   // 0.55 mm inside the edge
+            Assert.False(AnnotationLayout.Crosses(AnnotationLayout.Strip(45, 200, 45, 212.5), false, text)); // ends 0.5 mm into it
+            Assert.True(AnnotationLayout.Crosses(AnnotationLayout.Strip(30, 214, 60, 214), true, text));     // horizontal, through it
+        }
+
+        [Fact]
+        public void SpotsTenMmApart_TheSecondGoesHigher()
+        {
+            // The first spot's text (default up-right, centred 5 mm past its point at 40): 39.6..50.4.
+            // The second, 10 mm on, would print into it; 24 mm up its leader only grazes the first text.
+            var first = new AnnoBox { Id = 1, Kind = AnnoKind.SpotText, Rect = AnnotationLayout.TextBox(45, 212, "+0.000", 2.5, 1) };
+            var slots = AnnotationLayout.SpotSlots(50, 200, true, 10.8, 4.75);
+            int i = AnnotationLayout.PickSlot(slots, new[] { first }, out var blocker, out bool free);
+            Assert.True(free);
+            Assert.Equal("up-right 24 mm", slots[i].Name);
+            Assert.Equal(1, blocker.Id);
+        }
+
+        [Fact]
         public void TagSlots_UseTheSamePicker()
         {
             // A tag head 10×5 mm: right above is taken by a text, left above is clear.

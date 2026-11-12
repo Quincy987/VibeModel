@@ -196,11 +196,23 @@ namespace VibeModel.Services.Claude
             // A line or leader through a text.
             var line = a.IsLine ? a : b;
             var text = a.IsLine ? b : a;
-            if (!line.Rect.Overlaps(text.Rect, 0.05)) return null;
+            if (!Crosses(line.Rect, line.AlongX, text.Rect)) return null;
             line.Rect.OverlapSize(text.Rect, out var lw, out var lh);
-            double len = line.AlongX ? lw : lh;
-            if (len <= ThinMm) return null;   // only clips a corner
             return new AnnoOverlap { A = line, B = text, Kind = "line-through-text", W = lw, H = lh, Severity = "WARN" };
+        }
+
+        /// <summary>
+        /// A line strip really runs through a text: more than 1 mm of it lies on the text, and it
+        /// lies more than 1 mm inside the text's edge. A line that clips a corner or grazes an edge
+        /// does not count — the extents are estimates to about that much.
+        /// </summary>
+        public static bool Crosses(MmRect line, bool alongX, MmRect text)
+        {
+            if (!line.Overlaps(text, 0.05)) return false;
+            line.OverlapSize(text, out var w, out var h);
+            double along = alongX ? w : h;
+            double depth = alongX ? Math.Min(line.Y1 - text.Y0, text.Y1 - line.Y0) : Math.Min(line.X1 - text.X0, text.X1 - line.X0);
+            return along > ThinMm && depth > ThinMm;
         }
 
         /// <summary>Texts and tags that are not horizontal (more than 0.5° off the view's right direction).</summary>
@@ -313,12 +325,7 @@ namespace VibeModel.Services.Claude
                 {
                     if (t.Overlaps(b.Rect, 0.05)) { hits.Add(b); continue; }
                     if (!b.IsText) continue;
-                    foreach (var l in s.Leader)
-                    {
-                        if (!l.Overlaps(b.Rect, 0.05)) continue;
-                        l.OverlapSize(b.Rect, out var w, out var h);
-                        if (Math.Max(w, h) > ThinMm) { hits.Add(b); break; }
-                    }
+                    if (s.Leader.Any(l => Crosses(l, l.W >= l.H, b.Rect))) hits.Add(b);
                 }
                 if (i == 0 && hits.Count > 0) firstBlocker = hits[0];
                 if (hits.Count == 0) { free = true; return i; }
