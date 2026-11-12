@@ -119,3 +119,23 @@ Annotation (`MultiReferenceAnnotation.Create`, needs a configured type).
 Read-only check and one prompt constant: low. Defaults that move (a dimension row, a spot slot)
 only change when a neighbour is there. Estimates can be off for other fonts: thin overlaps are
 graded `INFO`.
+
+## Verify (live, Revit 2023.1, 12 Nov 2026 16:20–16:27, build 03ae979)
+
+Fresh copy of the test model, section **AL na** at 1:20, the same three walls and floor as the
+before picture (`.verify/annotation-layout/before.png` → `after.png`, gitignored):
+
+| Step | Result |
+|---|---|
+| `spot 300000 2500` (and the two other wall tops) | placed on the wall's top face — the cut-face fix (before: every `spot x y` on a wall failed) |
+| `spot 300250 0`, `spot 300450 0` (10 mm on paper) | second: `Leader: text up-right 24 mm (up-right taken by spot …)`, no `-- layout:` line |
+| `dimension w1 w2 w3`, `dimension w1 w3` | `Placed: row 3 (24 mm …; row 1/2 taken by spot … text)`, then row 4 (row 3 taken by the first string) — no longer on one line |
+| two overlapping `text` notes | `-- layout: 1 overlap in 'AL na': text … ↔ text … (20×8.8 mm)`; `annolayout` WARN + verdict |
+| fix: `delete` + `text … --width 25` at a crowded spot | caught again (`text ↔ spot`, `spot leader through text`); on a free spot: `annolayout` → `Verdict: readable` |
+| `tag <wall> --leader` (no wall tag loaded) | multi-category tag, `Head: free spot right above the element` |
+| rebar tag | `new Reference(rebar)` refused → fixed through the sub-element reference (measured with exec; the `tag` run with that fix was overwritten, see below) |
+
+Not run live with the last build (2508657 — rebar sub-element reference, witness lines, tag text
+on its head): another session deployed its own build into the shared add-ins folder one second
+after this one (16:28:33) and kept using Revit. Those three are covered by unit tests and the exec
+measurements above; a live `tag <rebar> --leader --type …` and a look at witness INFO lines remain.
