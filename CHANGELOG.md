@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added — chats exporteren
+- **Exporteer chats…** in Diagnose and in Settings → *Versie en updates*, and `chatlog --export [n|all]`: every saved chat
+  as markdown — per turn the question, the commands it ran (arguments, ✓/✗ with the error, duration), the answer and the
+  token line — in `%LOCALAPPDATA%\VibeModel\exports\` (one `chats-<date>.md` for up to 5 chats, else a zip with a file per
+  chat, `INDEX.md` and `README.md`); Explorer opens on it. Meant to send or upload to Claude to find patterns (retries after
+  an error, recurring failures). No server token or API key goes in; questions, answers and paths do.
+- Each answer in the stored chat now also records what its turn ran (`steps`, `usage`, `model`, `durationMs` — additive;
+  older chats stay readable and older builds ignore it). Chats from before this version take their commands from the
+  debug log when it was on (marked as indicative), else say none were recorded. `scripts/successcase.py` counts the
+  stored steps exactly.
+
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)
 
 ### Added — licht thema

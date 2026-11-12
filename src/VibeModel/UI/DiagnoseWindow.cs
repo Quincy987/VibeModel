@@ -80,11 +80,15 @@ namespace VibeModel.UI
                     _status.Text = ex.Message;
                 }
             };
+            var exportChats = MakeButton(Strings.Get(Strings.ExportChats), "DiagnoseExportChats", primary: false);
+            exportChats.ToolTip = Strings.Get(Strings.ExportChatsTip);
+            exportChats.Click += (s, e) => ChatExportUi.Run(exportChats, _status);
             var close = MakeButton(Strings.Get(Strings.DiagnoseClose), "DiagnoseClose", primary: false);
             close.Click += (s, e) => Close();
             _copy.IsEnabled = _save.IsEnabled = false;
             buttons.Children.Add(_copy);
             buttons.Children.Add(_save);
+            buttons.Children.Add(exportChats);
             buttons.Children.Add(close);
             _status = new TextBlock { Foreground = FgSecondary, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
             AutomationProperties.SetAutomationId(_status, "DiagnoseStatus");

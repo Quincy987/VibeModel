@@ -216,6 +216,32 @@ namespace VibeModel.Services.Chat
         public const string SettingsUpdateRollback = "SettingsUpdateRollback";   // {0} = version
         public const string SettingsUpdatePending = "SettingsUpdatePending";     // {0} = version
 
+        // Chat export (Diagnose / Settings → Exporteer chats…, chatlog --export).
+        public const string ExportChats = "ExportChats";
+        public const string ExportChatsTip = "ExportChatsTip";
+        public const string ExportChatsBusy = "ExportChatsBusy";
+        public const string ExportChatsDone = "ExportChatsDone";               // {0} = chats, {1} = path
+        public const string ExportChatsNone = "ExportChatsNone";
+        public const string ExportChatsTimeout = "ExportChatsTimeout";         // {0} = seconds
+        public const string ExportChatsFailed = "ExportChatsFailed";           // {0} = reason
+        public const string ChatExportDate = "ChatExportDate";                 // {0} = created, {1} = updated
+        public const string ChatExportSummary = "ChatExportSummary";           // {0} = id, {1} = turns, {2} = commands, {3} = failed
+        public const string ChatExportTurn = "ChatExportTurn";                 // {0} = number, {1} = time
+        public const string ChatExportQuestion = "ChatExportQuestion";
+        public const string ChatExportAnswer = "ChatExportAnswer";
+        public const string ChatExportNoAnswer = "ChatExportNoAnswer";
+        public const string ChatExportFailedCount = "ChatExportFailedCount";   // {0} = failed
+        public const string ChatExportNoSteps = "ChatExportNoSteps";
+        public const string ChatExportResult = "ChatExportResult";
+        public const string ChatExportDuration = "ChatExportDuration";
+        public const string ChatExportFullArgs = "ChatExportFullArgs";         // {0} = step, {1} = command
+        public const string ChatExportFromLog = "ChatExportFromLog";
+        public const string ChatExportNoLogLines = "ChatExportNoLogLines";
+        public const string ChatExportNotRecorded = "ChatExportNotRecorded";
+        public const string ChatExportIndexTitle = "ChatExportIndexTitle";
+        public const string ChatExportIndexHeader = "ChatExportIndexHeader";
+        public const string ChatExportReadme = "ChatExportReadme";             // {0} = date, {1} = chats, {2} = turns, {3} = commands, {4} = without record, {5} = from log
+
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -402,6 +428,30 @@ namespace VibeModel.Services.Chat
                 { SettingsUpdateCheckNow, "Check now" },
                 { SettingsUpdateRollback, "Back to {0}" },
                 { SettingsUpdatePending, "Next Revit start: VibeModel {0}" },
+                { ExportChats, "Export chats…" },
+                { ExportChatsTip, "Writes every saved chat (questions, answers, the commands each turn ran, tokens) to one file you can send or upload to Claude. No token or API key goes in; questions, answers and paths do." },
+                { ExportChatsBusy, "Exporting chats…" },
+                { ExportChatsDone, "{0} chats exported: {1}" },
+                { ExportChatsNone, "There are no saved chats to export." },
+                { ExportChatsTimeout, "The export took longer than {0} s and was stopped." },
+                { ExportChatsFailed, "Export failed: {0}" },
+                { ChatExportDate, "Date: {0} – {1}" },
+                { ChatExportSummary, "Chat: {0} · {1} turns · {2} commands ({3} failed)" },
+                { ChatExportTurn, "Turn {0} — {1}" },
+                { ChatExportQuestion, "Question" },
+                { ChatExportAnswer, "Answer" },
+                { ChatExportNoAnswer, "no answer (cancelled or still running)" },
+                { ChatExportFailedCount, "{0} failed" },
+                { ChatExportNoSteps, "this turn ran no commands" },
+                { ChatExportResult, "result" },
+                { ChatExportDuration, "time" },
+                { ChatExportFullArgs, "Full arguments of step {0} ({1}):" },
+                { ChatExportFromLog, "from the debug log — indicative: every client on this computer logs into it" },
+                { ChatExportNoLogLines, "no commands in the debug log between question and answer" },
+                { ChatExportNotRecorded, "no commands recorded — a chat from before this version, and debug logging was off" },
+                { ChatExportIndexTitle, "VibeModel chats" },
+                { ChatExportIndexHeader, "| date | chat | project | turns | commands | failed | tokens |" },
+                { ChatExportReadme, "# VibeModel chat export\n\nExported {0} · {1} chats · {2} turns · {3} commands.\n\nPer chat: the questions, the answers (as stored, including the notes between steps), the commands each turn ran with their arguments, whether they failed, and the tokens. Commands are recorded per turn since VibeModel 1.2.18; {5} older chats take them from the debug log (indicative), {4} have none.\n\nNo server token and no API key is in this export. Questions, answers, project names and file paths are — read it through before you send it.\n\nTip: upload it to Claude and ask for patterns — commands retried after a failure, errors that keep coming back, questions that needed many steps, what the instructions should say differently.\n" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -590,6 +640,30 @@ namespace VibeModel.Services.Chat
                 { SettingsUpdateCheckNow, "Nu controleren" },
                 { SettingsUpdateRollback, "Terug naar {0}" },
                 { SettingsUpdatePending, "Bij de volgende start van Revit: VibeModel {0}" },
+                { ExportChats, "Exporteer chats…" },
+                { ExportChatsTip, "Schrijft alle opgeslagen chats (vragen, antwoorden, de commands per beurt, tokens) naar één bestand dat je kunt opsturen of in Claude kunt uploaden. Er gaat geen token of API-sleutel in mee; vragen, antwoorden en paden wel." },
+                { ExportChatsBusy, "Chats exporteren…" },
+                { ExportChatsDone, "{0} chats geëxporteerd: {1}" },
+                { ExportChatsNone, "Er zijn geen opgeslagen chats om te exporteren." },
+                { ExportChatsTimeout, "De export duurde langer dan {0} s en is gestopt." },
+                { ExportChatsFailed, "Exporteren mislukt: {0}" },
+                { ChatExportDate, "Datum: {0} – {1}" },
+                { ChatExportSummary, "Chat: {0} · {1} beurten · {2} commands ({3} mislukt)" },
+                { ChatExportTurn, "Beurt {0} — {1}" },
+                { ChatExportQuestion, "Vraag" },
+                { ChatExportAnswer, "Antwoord" },
+                { ChatExportNoAnswer, "geen antwoord (afgebroken of nog bezig)" },
+                { ChatExportFailedCount, "{0} mislukt" },
+                { ChatExportNoSteps, "deze beurt voerde geen commands uit" },
+                { ChatExportResult, "resultaat" },
+                { ChatExportDuration, "duur" },
+                { ChatExportFullArgs, "Volledige argumenten van stap {0} ({1}):" },
+                { ChatExportFromLog, "uit de debuglog — indicatief: elke client op deze pc logt hierin" },
+                { ChatExportNoLogLines, "geen commands in de debuglog tussen vraag en antwoord" },
+                { ChatExportNotRecorded, "geen commands vastgelegd — chat van vóór deze versie, debuglog stond uit" },
+                { ChatExportIndexTitle, "VibeModel-chats" },
+                { ChatExportIndexHeader, "| datum | chat | project | beurten | commands | mislukt | tokens |" },
+                { ChatExportReadme, "# VibeModel-chatexport\n\nGeëxporteerd {0} · {1} chats · {2} beurten · {3} commands.\n\nPer chat: de vragen, de antwoorden (zoals opgeslagen, met de notities tussen de stappen), de commands die elke beurt uitvoerde met hun argumenten, of ze mislukten, en de tokens. Commands worden per beurt vastgelegd sinds VibeModel 1.2.18; {5} oudere chats halen ze uit de debuglog (indicatief), {4} hebben er geen.\n\nEr staat geen servertoken en geen API-sleutel in deze export. Vragen, antwoorden, projectnamen en bestandspaden wel — lees hem door voordat je hem opstuurt.\n\nTip: upload hem in Claude en vraag naar patronen — commands die na een fout opnieuw werden geprobeerd, fouten die terugkomen, vragen die veel stappen nodig hadden, wat de instructies anders moeten zeggen.\n" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

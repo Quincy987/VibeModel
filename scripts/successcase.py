@@ -10,9 +10,12 @@ Usage (stdlib only, run isolated):
     python -I scripts/successcase.py --index-only
 
 A chat argument is a path, a glob, or a bare chat id (looked up in %LOCALAPPDATA%/VibeModel/chats).
-Commands per turn are not in the chat log; they are counted from the VibeModel debug log
-(%LOCALAPPDATA%/VibeModel/logs/log_<date>.txt, local time) between question and answer.
-Indicative only: every client on this machine that talks to Revit logs to the same file.
+Commands per turn: since VibeModel 1.2.18 the answer in the chat log carries them ("steps"), and
+those are counted exactly. Older chats fall back to the VibeModel debug log
+(%LOCALAPPDATA%/VibeModel/logs/log_<date>.txt, local time) between question and answer -
+indicative only: every client on this machine that talks to Revit logs to the same file.
+For a readable dump of the chats with every command, use Revit: Diagnose / Settings ->
+"Exporteer chats..." or `chatlog --export` (markdown/zip in %LOCALAPPDATA%/VibeModel/exports).
 """
 
 from __future__ import annotations
@@ -196,7 +199,12 @@ def build_chat_case(chat: dict, logs_dir: str = DEFAULT_LOGS) -> dict:
         secs = (a_at - q_at).total_seconds() if a_at else None
         if secs is not None:
             work += secs
-        cmds = count_commands(q_at, a_at, logs_dir, cache) if a_at else None
+        steps = t["answer"].get("steps") if t["answer"] else None
+        if isinstance(steps, list):
+            # Recorded per turn since 1.2.18: exact, not the shared debug log.
+            cmds = len(steps)
+        else:
+            cmds = count_commands(q_at, a_at, logs_dir, cache) if a_at else None
         rows.append({"nr": i, "at": local(q_at), "secs": secs, "commands": cmds,
                      "question": t["question"].get("content", "")})
     first_q = parse_utc(turns[0]["question"]["timestampUtc"])

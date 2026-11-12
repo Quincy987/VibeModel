@@ -61,12 +61,14 @@ namespace VibeModel.Services.Chat
                     var messages = new List<object>();
                     foreach (var m in session.Messages)
                     {
-                        messages.Add(new Dictionary<string, object>
+                        var entry = new Dictionary<string, object>
                         {
                             { "role", m.Role ?? "" },
                             { "content", m.Content ?? "" },
                             { "timestampUtc", ToIso(m.TimestampUtc) }
-                        });
+                        };
+                        AddTurnRecord(entry, m);
+                        messages.Add(entry);
                     }
 
                     var payload = new Dictionary<string, object>
@@ -138,6 +140,39 @@ namespace VibeModel.Services.Chat
                 }
             }
             result.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+            return result;
+        }
+
+        /// <summary>The folder the sessions live in.</summary>
+        public string Folder => _dir;
+
+        /// <summary>
+        /// Full sessions, newest (UpdatedUtc) first; <paramref name="max"/> ≤ 0 = all. For the chat
+        /// export — callers run it off Revit's main thread (it reads every file).
+        /// </summary>
+        public List<ChatSession> LoadSessions(int max)
+        {
+            var result = new List<ChatSession>();
+            lock (_lock)
+            {
+                try
+                {
+                    if (!Directory.Exists(_dir))
+                        return result;
+                    foreach (var file in Directory.GetFiles(_dir, "*.json"))
+                    {
+                        var s = LoadFile(file);
+                        if (s != null) result.Add(s);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("ChatSessionStore: failed to load sessions", ex);
+                }
+            }
+            result.Sort((a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+            if (max > 0 && result.Count > max)
+                result.RemoveRange(max, result.Count - max);
             return result;
         }
 
@@ -230,7 +265,11 @@ namespace VibeModel.Services.Chat
                         {
                             Role = m.role ?? "",
                             Content = m.content ?? "",
-                            TimestampUtc = ParseIso(m.timestampUtc)
+                            TimestampUtc = ParseIso(m.timestampUtc),
+                            Steps = StepsFrom(m.steps),
+                            Usage = UsageFrom(m.usage),
+                            Model = string.IsNullOrEmpty(m.model) ? null : m.model,
+                            DurationMs = m.durationMs
                         });
                     }
                 }
@@ -242,6 +281,78 @@ namespace VibeModel.Services.Chat
                     + Path.GetFileName(path) + " - " + ex.Message);
                 return null;
             }
+        }
+
+        // The additive turn record (1.2.18+): only written when present, so a message without it
+        // is byte-for-byte what older builds wrote — and older builds ignore the extra keys.
+        private static void AddTurnRecord(Dictionary<string, object> entry, ChatSessionMessage m)
+        {
+            if (m.Steps != null)
+            {
+                var steps = new List<object>();
+                foreach (var st in m.Steps)
+                {
+                    if (st == null) continue;
+                    var d = new Dictionary<string, object>
+                    {
+                        { "command", st.Command ?? "" },
+                        { "args", st.Args ?? "" },
+                        { "ok", st.Ok }
+                    };
+                    if (!string.IsNullOrEmpty(st.Error)) d["error"] = st.Error;
+                    if (st.DurationMs.HasValue) d["durationMs"] = st.DurationMs.Value;
+                    steps.Add(d);
+                }
+                entry["steps"] = steps;
+            }
+            if (m.Usage != null)
+            {
+                var u = new Dictionary<string, object>
+                {
+                    { "inputTokens", m.Usage.InputTokens },
+                    { "outputTokens", m.Usage.OutputTokens },
+                    { "cacheReadTokens", m.Usage.CacheReadTokens },
+                    { "cacheWriteTokens", m.Usage.CacheWriteTokens },
+                    { "contextTokens", m.Usage.ContextTokens }
+                };
+                if (m.Usage.CostUsd.HasValue) u["costUsd"] = m.Usage.CostUsd.Value;
+                entry["usage"] = u;
+            }
+            if (!string.IsNullOrEmpty(m.Model)) entry["model"] = m.Model;
+            if (m.DurationMs.HasValue) entry["durationMs"] = m.DurationMs.Value;
+        }
+
+        private static List<ChatSessionStep> StepsFrom(List<StepDto> dtos)
+        {
+            if (dtos == null) return null;
+            var steps = new List<ChatSessionStep>();
+            foreach (var d in dtos)
+            {
+                if (d == null) continue;
+                steps.Add(new ChatSessionStep
+                {
+                    Command = d.command ?? "",
+                    Args = d.args ?? "",
+                    Ok = d.ok ?? true,
+                    Error = d.error,
+                    DurationMs = d.durationMs
+                });
+            }
+            return steps;
+        }
+
+        private static ChatSessionUsage UsageFrom(UsageDto d)
+        {
+            if (d == null) return null;
+            return new ChatSessionUsage
+            {
+                InputTokens = d.inputTokens ?? 0,
+                OutputTokens = d.outputTokens ?? 0,
+                CacheReadTokens = d.cacheReadTokens ?? 0,
+                CacheWriteTokens = d.cacheWriteTokens ?? 0,
+                ContextTokens = d.contextTokens ?? 0,
+                CostUsd = d.costUsd
+            };
         }
 
         private static string ToIso(DateTime utc)
@@ -278,6 +389,29 @@ namespace VibeModel.Services.Chat
             public string role { get; set; }
             public string content { get; set; }
             public string timestampUtc { get; set; }
+            public List<StepDto> steps { get; set; }
+            public UsageDto usage { get; set; }
+            public string model { get; set; }
+            public long? durationMs { get; set; }
+        }
+
+        private class StepDto
+        {
+            public string command { get; set; }
+            public string args { get; set; }
+            public bool? ok { get; set; }
+            public string error { get; set; }
+            public long? durationMs { get; set; }
+        }
+
+        private class UsageDto
+        {
+            public long? inputTokens { get; set; }
+            public long? outputTokens { get; set; }
+            public long? cacheReadTokens { get; set; }
+            public long? cacheWriteTokens { get; set; }
+            public long? contextTokens { get; set; }
+            public double? costUsd { get; set; }
         }
     }
 }
