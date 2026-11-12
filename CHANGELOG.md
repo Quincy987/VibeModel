@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- Aannames vooraf: before building something made of several elements (a quay wall with capstone and deck, a row of piles), the chat
+  sorts what it needs into given, read from a source, and invented. With two or more invented values, or a choice weaker than asked
+  (values typed in by hand where Revit should calculate them, a DirectShape instead of a family, a new type), it builds nothing yet:
+  it shows those as a table and asks whether to build it that way. A single element, or one invented value, is built at once and the
+  assumption is named in the closing line (interview 2026-11-12).
+
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)
 
 ### Added — licht thema

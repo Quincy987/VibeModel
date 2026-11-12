@@ -153,6 +153,8 @@ namespace VibeModel.Tests
             Assert.Contains("new type", rule);
             Assert.Contains("A single element, or at most one invented value: build at once", rule);
             Assert.Contains("Onderdeel | Aanname | Waarom", rule);
+            Assert.Contains("in the reply language", rule);
+            Assert.Contains("first read what the request points to", rule);
             Assert.Contains("This is not a refusal", rule);
 
             var turn = ClaudeCodeBackend.BuildTurnPrompt(@"C:\x\p.txt", 18884, "CURRENT REVIT CONTEXT: x", "nl");
