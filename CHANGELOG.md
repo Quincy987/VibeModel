@@ -11,6 +11,8 @@
   het invoervak, en die keuze wordt onthouden voor de volgende keer dat je Revit start. Het dubbele blok in Instellingen
   is weg. Een vergrendeling door Revit-beheer (managed.json) werkt zoals voorheen.
 - *Exporteer chats…* staat alleen nog in Diagnose.
+- Kleine dingen in Instellingen: een uitgeschakelde knop (zoals *Nu controleren* in een ontwikkelversie) is weer
+  leesbaar, en bij *Projectgeheugen en journaal* staat dat die schakelaar voor alle projecten geldt.
 
 ## v1.2.20 — Schema's, hoeveelheden en aannames (2026-11-12)
 
