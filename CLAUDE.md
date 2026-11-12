@@ -516,7 +516,9 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   something Revit's API cannot do — labels in tag / generic-annotation / title-block families
   (`Label`, `NewLabel`, `FamilyItemFactory.NewLabel`, `TAG_TAG`, `TextElement`, `LabelType`), legend
   views (`Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend`), creating phases and design
-  options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`) — the answer carries a
+  options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`), calculated schedule fields
+  (`ScheduleFieldType.Formula`, `IsCalculatedField`, `AddCalculatedField` — never `AddField`/`ScheduleField`,
+  which work) — the answer carries a
   `Known gap:` block (cannot / what works, measured / the user's manual step; ≤ 12 lines; JSON
   additive `data.knownGap`): right after the first line when nothing was found, at the end of a found
   type or member. Matched on what the lookup resolved, on whole names (never a substring): a found
@@ -527,7 +529,7 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   nothing; an edited family goes back with `fd.LoadFamily(doc, new
   VibeModel.Services.Helpers.KeepValuesLoadOptions())` (public for exec — without options Revit
   answers "Family loading failed."); with the family open in the Family Editor, exec edits `doc` itself.
-  No prompt rule; `apilookup`'s description (in the tool list) names the four gaps.
+  No prompt rule of its own (`DynamicQuantitiesRule` points at `--takeoff`/`--calc`); `apilookup`'s description (in the tool list) names the gaps.
 - **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
   `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
   rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at
@@ -565,6 +567,8 @@ curl -s "http://localhost:18884/list?args=dimensions --view"                    
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count,Length\" --group Family and Type --total --name Palenstaat"
 curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=walls --fields \"Type,Length\" --filter \"Length gt 12000\""   # Filter (display units)
 curl -s "http://localhost:18884/schedule?args=Palenstaat --rows"                                     # Read any schedule back (+ the sheets it is on)
+curl -s "http://localhost:18884/schedule?args=walls --takeoff --name Wandmaterialen"                 # Material Takeoff: Material: Name/Area/Volume follow the model
+curl -G -s "http://localhost:18884/schedule" --data-urlencode "args=structural foundations --fields \"Family and Type,Count\" --calc \"Paaloppervlak=Length*Width\""  # Schedule + the clicks for the calculated field
 curl -s "http://localhost:18884/callout?args=Bovenaanzicht --box 100000 -5000 110000 5000 --name Detail A --scale 20"  # Plan callout ( --section: detail view)
 curl -s "http://localhost:18884/callout?args=101 --box 0 0 4000 3000 --reference Detail A"            # Reference callout to an existing view
 curl -s "http://localhost:18884/region?args=Bovenaanzicht --points 0,0 4000,0 4000,3000 0,3000 --type Beton"  # Filled region (view frame)
@@ -659,6 +663,24 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
   sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
   New schedules get their columns widened to the longest cell, so type names do not wrap on the sheet.
+- **Quantities follow the model** (interview Ruben Wolbers, 2026-11-12: m² no field gave ended up as computed numbers in
+  new parameters). `schedule --takeoff` makes a Material Takeoff (`ViewSchedule.CreateMaterialTakeoff`; default fields
+  `Family and Type, Material: Name, Material: Area, Material: Volume`, else `--fields` from the takeoff's own list); no rows
+  or every Material: Name empty → `Note: no materials on these elements …` (JSON `noMaterials`) — it never assigns materials.
+  `schedule --calc "<Name>=<formula>"`: measured in Revit 2023, the API cannot add a calculated field
+  (`AddField(ScheduleFieldType.Formula)` → "fieldType is not a schedulable field type"; `IsCalculatedField` is read-only), so
+  the command builds the rest, adds every field the formula names (exact names, never a substring) that is not in the
+  schedule as a hidden column, names unknown words, and ends with `Calculated field '…' was NOT added …` + one
+  `Manual step (the API cannot add a calculated field): … fx … Type "Area" (another Type gives "Inconsistent units") …`
+  (JSON `manualStep {name, formula, type, apiCannot, clicks}`). The Type comes from the formula's dimension
+  (`CalculatedFieldHint`, pure: length × length = Area, three lengths = Volume, lengths summed = Length, no measured
+  field = Number; mixed/unknown → the user picks). After every kept command or batch, a project parameter NEW in that
+  run (bound in `ParameterBindings`, spec Length/Area/Volume/Number) that got non-zero values adds
+  `-- quantities: parameter 'Oppervlak' (Area, new this run) was filled with fixed numbers on 12 elements; they do not
+  follow model changes — …` after `-- changed:` (JSON additive `quantities:[{parameter,newThisRun,elements,spec}]`;
+  `StaticQuantityReport` pure, `StaticQuantityCheck` Revit side, ≤ 5000 elements read). Only parameters new in the run
+  (so every value was written by it); a parameter that already existed, a family's own shared parameter and a value
+  tied to a global parameter are not flagged. Never after a preview, Discard, READ_ONLY or rolled-back batch.
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
@@ -954,7 +976,9 @@ model-bound history are unchanged. A new command gets its step label from `Statu
 BOTH maps — a test checks).
 
 **Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
-assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).
+assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule),
+`DynamicQuantitiesRule` (never a computed quantity as a fixed parameter value; built-in field → `--takeoff` → family formula →
+`--calc`; else say so and ask). The ask-first list names project parameters and parameter bindings (also through exec).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 

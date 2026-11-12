@@ -20,7 +20,9 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "schedule";
         public string Description => "Quantity schedule: 'schedule <category> --fields \"Family and Type,Count,Length\"' [--filter \"Length gt 12000\"] " +
-                                     "[--group <field>] [--total] [--name n]; prints the first rows with units. '<name|id> --rows' reads one back";
+                                     "[--group <field>] [--total] [--name n] [--takeoff: Material Takeoff, Material: Area/Volume follow the model] " +
+                                     "[--calc \"Name=formula\": the API cannot add a calculated field, so this builds the rest and prints the clicks]; " +
+                                     "prints the first rows with units. '<name|id> --rows' reads one back";
         public string Usage => ScheduleArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -43,6 +45,8 @@ namespace VibeModel.Services.Claude.Commands
             string catName = Category.GetCategory(doc, catId)?.Name ?? bic.Value.ToString();
             if (!ViewSchedule.IsValidCategoryForSchedule(catId))
                 return CommandResult.Error("BAD_ARGS", "Category '" + catName + "' cannot be scheduled.", "Pick a model category (walls, structural foundations, ...).");
+            if (a.Takeoff && !ViewSchedule.IsValidCategoryForMaterialTakeoff(catId))
+                return CommandResult.Error("BAD_ARGS", "Category '" + catName + "' has no material takeoff.", "Use a plain schedule (without --takeoff) for this category.");
             if (a.Name != null && new FilteredElementCollector(doc).OfClass(typeof(ViewSchedule)).Cast<View>()
                     .Any(v => v.Name.Equals(a.Name, StringComparison.OrdinalIgnoreCase)))
                 return CommandResult.Error("BAD_ARGS", "A schedule named '" + a.Name + "' already exists.", "Pick another --name, or read it with 'schedule \"" + a.Name + "\" --rows'.");
@@ -50,9 +54,10 @@ namespace VibeModel.Services.Claude.Commands
             ViewSchedule vs = null;
             var notes = new List<string>();
             CommandResult refused = null;
-            var error = TransactionHelper.Execute(doc, "VibeModel: Create Schedule", () =>
+            CalculatedFieldHint.Kind? calcType = null;
+            var error = TransactionHelper.Execute(doc, a.Takeoff ? "VibeModel: Create Material Takeoff" : "VibeModel: Create Schedule", () =>
             {
-                vs = ViewSchedule.CreateSchedule(doc, catId);
+                vs = a.Takeoff ? ViewSchedule.CreateMaterialTakeoff(doc, catId) : ViewSchedule.CreateSchedule(doc, catId);
                 if (a.Name != null) vs.Name = a.Name;
                 var def = vs.Definition;
                 var schedulable = def.GetSchedulableFields().ToList();
@@ -94,6 +99,9 @@ namespace VibeModel.Services.Claude.Commands
                     }
                 }
 
+                // ---- calculated field: the API cannot add it; make sure every field it uses is there ----
+                if (a.CalcFormula != null) calcType = PrepareCalc(def, schedulable, names, a, catName, notes);
+
                 // ---- grouping / totals ----
                 if (a.Group != null)
                 {
@@ -133,15 +141,89 @@ namespace VibeModel.Services.Claude.Commands
             if (a.Filter != null) sb.AppendLine("Filter: " + a.Filter);
             if (a.Group != null) sb.AppendLine("Grouped by: " + a.Group + " (one row per value; numeric columns summed)");
             if (a.Total) sb.AppendLine("Grand total: on");
+            if (a.Takeoff) sb.AppendLine("Kind: Material Takeoff (Material: Area/Volume follow every model change)");
             foreach (var n in notes) sb.AppendLine("Note: " + n);
             var data = Rows(doc, vs, ScheduleArgs.PreviewRows, sb, out int total);
+            if (a.Takeoff && NoMaterials(data, total))
+            {
+                sb.AppendLine("Note: " + NoMaterialsNote);
+                data["noMaterials"] = true;
+            }
             sb.AppendLine("Next: 'viewport <sheet> " + vs.Id.IntegerValue + "' to put it on a sheet; 'schedule " + vs.Id.IntegerValue + " --rows' for every row.");
+            if (a.CalcFormula != null)
+            {
+                sb.AppendLine("Calculated field '" + a.CalcName + "' was NOT added: the Revit API cannot add a calculated field (Known gap).");
+                sb.AppendLine(CalculatedFieldHint.ManualStep(vs.Name, a.CalcName, a.CalcFormula, calcType));
+                data["manualStep"] = CalculatedFieldHint.ManualStepJson(vs.Name, a.CalcName, a.CalcFormula, calcType);
+            }
+            data["takeoff"] = a.Takeoff;
             data["created"] = new List<object> { vs.Id.IntegerValue };
             data["category"] = catName;
             data["filter"] = a.Filter?.ToString();
             data["group"] = a.Group;
             data["grandTotal"] = a.Total;
             return CommandResult.Ok(sb.ToString(), data);
+        }
+
+        internal const string NoMaterialsNote =
+            "no materials on these elements — the takeoff stays empty until the families get a material (Edit Family → material parameter, or ask the user); VibeModel does not assign materials by itself";
+
+        /// <summary>
+        /// `--calc`: a calculated field can only use fields that are in the schedule, so each field the
+        /// formula names (exact name, never a substring — the formula must name it exactly) that is not
+        /// in the schedule yet is added as a hidden column. Returns the Type the field needs, from the fields' specs.
+        /// </summary>
+        private static CalculatedFieldHint.Kind? PrepareCalc(ScheduleDefinition def, IList<SchedulableField> schedulable, IList<string> names,
+            ScheduleArgs a, string catName, List<string> notes)
+        {
+            var kinds = new Dictionary<string, CalculatedFieldHint.Kind>(StringComparer.OrdinalIgnoreCase);
+            foreach (var used in CalculatedFieldHint.FieldsIn(a.CalcFormula, names))
+            {
+                // Already a column (--fields, or the hidden --filter column)?
+                var field = Enumerable.Range(0, def.GetFieldCount()).Select(i => def.GetField(i))
+                    .FirstOrDefault(x => x.GetName().Equals(used, StringComparison.OrdinalIgnoreCase));
+                if (field == null)
+                {
+                    int i = names.ToList().FindIndex(n => n.Equals(used, StringComparison.OrdinalIgnoreCase));
+                    field = def.AddField(schedulable[i]);
+                    field.IsHidden = true;
+                    notes.Add("field '" + names[i] + "' added as a hidden column (a calculated field can only use fields in the schedule)");
+                }
+                kinds[used] = KindOf(field);
+            }
+            var unknown = CalculatedFieldHint.UnknownWords(a.CalcFormula, names);
+            if (unknown.Count > 0)
+                notes.Add("not a field of " + catName + ": " + string.Join(", ", unknown.Select(u => "'" + u + "'")) +
+                          " — Revit refuses a formula with unknown names; use the field names exactly as listed");
+            return CalculatedFieldHint.InferType(a.CalcFormula, kinds);
+        }
+
+        private static CalculatedFieldHint.Kind KindOf(ScheduleField f)
+        {
+            var spec = SpecOf(f);
+            if (spec == null) return CalculatedFieldHint.Kind.Other;
+            if (SameSpec(spec, SpecTypeId.Length)) return CalculatedFieldHint.Kind.Length;
+            if (SameSpec(spec, SpecTypeId.Area)) return CalculatedFieldHint.Kind.Area;
+            if (SameSpec(spec, SpecTypeId.Volume)) return CalculatedFieldHint.Kind.Volume;
+            if (SameSpec(spec, SpecTypeId.Number) || SameSpec(spec, SpecTypeId.Int.Integer)) return CalculatedFieldHint.Kind.Number;
+            return CalculatedFieldHint.Kind.Other;
+        }
+
+        /// <summary>Same spec, ignoring the version suffix ("autodesk.spec.aec:length-2.0.0").</summary>
+        internal static bool SameSpec(ForgeTypeId a, ForgeTypeId b)
+        {
+            string Strip(string id) { int dash = (id ?? "").LastIndexOf('-'); return dash > 0 ? id.Substring(0, dash) : id ?? ""; }
+            return a != null && b != null && string.Equals(Strip(a.TypeId), Strip(b.TypeId), StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>A takeoff with no rows, or with every Material: Name cell empty.</summary>
+        private static bool NoMaterials(Dictionary<string, object> data, int total)
+        {
+            if (total == 0) return true;
+            if (!(data["columns"] is List<object> cols) || !(data["rows"] is List<object> rows)) return false;
+            int nameCol = cols.FindIndex(c => c is Dictionary<string, object> d && string.Equals(d["field"] as string, "Material: Name", StringComparison.OrdinalIgnoreCase));
+            if (nameCol < 0) return false;
+            return rows.All(r => r is List<object> cells && (nameCol >= cells.Count || string.IsNullOrWhiteSpace(cells[nameCol] as string)));
         }
 
         /// <summary>Widen each visible column to its longest cell (paper mm, see ScheduleText.ColumnWidthMm).</summary>

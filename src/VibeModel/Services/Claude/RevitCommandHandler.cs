@@ -349,6 +349,8 @@ namespace VibeModel.Services.Claude
             // A failed command undid its own work (a generated family rolls back a whole group after
             // child transactions were recorded); only a failed exec can have kept earlier transactions.
             var kept = cr.Success || IsExec(request.Command) ? KeptChanges(doc, changes, preRead, run) : null;
+            // A new project parameter filled with numbers in this run: a quantity that will not follow the model.
+            var quantities = kept != null ? StaticQuantityCheck.Find(doc, changes) : null;
             var recipes = kept != null && IsExec(request.Command) ? SaveRecipes(doc, new[] { request.Args }, kept, request.Turn) : null;
             var forbiddenKept = !rolledBack ? forbidden : null;
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
@@ -367,7 +369,7 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, quantities);
         }
 
         /// <summary>
@@ -397,7 +399,7 @@ namespace VibeModel.Services.Claude
         /// </summary>
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
             List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
-            ChangeSetSummary changed = null, string forbidden = null)
+            ChangeSetSummary changed = null, string forbidden = null, List<StaticQuantityReport.Entry> quantities = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -421,6 +423,8 @@ namespace VibeModel.Services.Claude
                     run?.AddJson(dict);
                     AddAnnotationsJson(dict, annotations, run);
                     if (changed != null) dict["changes"] = changed.ChangesJson();
+                    var quantitiesJson = StaticQuantityReport.Json(quantities);
+                    if (quantitiesJson != null) dict["quantities"] = quantitiesJson;
                     if (forbidden != null) dict["forbidden"] = forbidden;
                 }
                 return _json.Serialize(obj);
@@ -437,6 +441,8 @@ namespace VibeModel.Services.Claude
             if (checkLine != null) text = AppendLine(text, checkLine);
             if (annotationLine != null) text = AppendLine(text, annotationLine);
             if (changed != null) text = AppendLine(text, changed.ChangedLine());
+            var quantitiesLine = StaticQuantityReport.Line(quantities);
+            if (quantitiesLine != null) text = AppendLine(text, quantitiesLine);
             if (run?.Line != null) text = AppendLine(text, run.Line);
             if (forbidden != null) text = ForbiddenActions.KeptLine(forbidden) + "\n" + text;
             return stamp != null ? stamp.AppendToText(text) : text;
@@ -904,6 +910,7 @@ namespace VibeModel.Services.Claude
             List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
             // One line for the whole batch: the recorder holds one running change set.
             var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
+            var quantities = kept != null ? StaticQuantityCheck.Find(doc, changes) : null;
             var recipes = kept != null ? SaveRecipes(doc, batchExecs, kept, req.Turn) : null;
             var forbiddenKept = !rolledBack ? forbidden : null;
             if (anyModified && !rolledBack)
@@ -915,6 +922,8 @@ namespace VibeModel.Services.Claude
             var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
             if (kept != null) sb.AppendLine(kept.ChangedLine());
+            var quantitiesLine = StaticQuantityReport.Line(quantities);
+            if (quantitiesLine != null) sb.AppendLine(quantitiesLine);
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
             if (forbiddenKept != null) sb.Insert(0, ForbiddenActions.KeptLine(forbiddenKept) + "\n");
 
@@ -937,6 +946,8 @@ namespace VibeModel.Services.Claude
                 run.AddJson(envelope);
                 AddAnnotationsJson(envelope, annotations, run);
                 if (kept != null) envelope["changes"] = kept.ChangesJson();
+                var quantitiesJson = StaticQuantityReport.Json(quantities);
+                if (quantitiesJson != null) envelope["quantities"] = quantitiesJson;
                 if (forbiddenKept != null) envelope["forbidden"] = forbiddenKept;
                 // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
                 if (run.Replace != null && run.Replace.ToJsonObject() is Dictionary<string, object> replaced &&
