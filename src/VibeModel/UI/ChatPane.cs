@@ -116,29 +116,30 @@ namespace VibeModel.UI
         private Border _attachmentBar;
         private WrapPanel _attachmentChipPanel;
 
-        // Dark theme colors
-        private static readonly SolidColorBrush BgDark = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-        private static readonly SolidColorBrush BgPanel = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25));
-        private static readonly SolidColorBrush BgInput = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
-        private static readonly SolidColorBrush BgUserMsg = new SolidColorBrush(Color.FromRgb(0x2D, 0x4A, 0x7A));
-        private static readonly SolidColorBrush BgAssistantMsg = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x30));
-        private static readonly SolidColorBrush BgSystemMsg = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x2D));
-        private static readonly SolidColorBrush BgCode = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
-        private static readonly SolidColorBrush FgPrimary = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
-        private static readonly SolidColorBrush FgSecondary = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
-        private static readonly SolidColorBrush AccentBlue = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-        private static readonly SolidColorBrush BgButton = new SolidColorBrush(Color.FromRgb(0x0E, 0x63, 0x9C));
-        private static readonly SolidColorBrush BgButtonHover = new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xAC));
-        private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
-        private static readonly SolidColorBrush FgError = new SolidColorBrush(Color.FromRgb(0xF4, 0x43, 0x36));
+        // Theme colours: the shared Palette brushes (one per role), recoloured in place when the
+        // theme switches, so the pane, its messages and the chips repaint without a rebuild.
+        private static SolidColorBrush BgWindow => Palette.BgWindow;
+        private static SolidColorBrush BgPanel => Palette.BgPanel;
+        private static SolidColorBrush BgInput => Palette.BgInput;
+        private static SolidColorBrush BgUserMsg => Palette.BgUserMsg;
+        private static SolidColorBrush BgAssistantMsg => Palette.BgAssistantMsg;
+        private static SolidColorBrush BgSystemMsg => Palette.BgSystemMsg;
+        private static SolidColorBrush BgCode => Palette.BgCode;
+        private static SolidColorBrush FgPrimary => Palette.FgPrimary;
+        private static SolidColorBrush FgSecondary => Palette.FgSecondary;
+        private static SolidColorBrush AccentBlue => Palette.Accent;
+        private static SolidColorBrush BgButton => Palette.BgButton;
+        private static SolidColorBrush BgButtonHover => Palette.BgButtonHover;
+        private static SolidColorBrush BorderColor => Palette.BorderColor;
+        private static SolidColorBrush FgError => Palette.FgError;
         // The usage line's dot: a long / very long conversation (ConversationLength).
-        private static readonly SolidColorBrush DotLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x9A, 0x2E));
-        private static readonly SolidColorBrush DotVeryLong = new SolidColorBrush(Color.FromRgb(0xE0, 0x55, 0x45));
+        private static SolidColorBrush DotLong => Palette.DotLong;
+        private static SolidColorBrush DotVeryLong => Palette.DotVeryLong;
         private static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
         public ChatPane()
         {
-            Background = BgDark;
+            Background = BgWindow;
 
             var mainGrid = new Grid();
             mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -167,7 +168,7 @@ namespace VibeModel.UI
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Background = BgDark,
+                Background = BgWindow,
                 Padding = new Thickness(8)
             };
             _scrollViewer.Content = _messagePanel;
@@ -238,7 +239,7 @@ namespace VibeModel.UI
             // title simply fades out when it does not fit (it stays in the UI-automation tree).
             var titleWidth = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight, new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
-                title.FontSize, Brushes.White, 1.0).WidthIncludingTrailingWhitespace;
+                title.FontSize, Brushes.White, 1.0).WidthIncludingTrailingWhitespace; // measuring only: never drawn
             title.SizeChanged += (s, e) => title.Opacity = e.NewSize.Width + 0.5 < titleWidth ? 0 : 1;
 
             _statusText = new TextBlock
@@ -392,7 +393,7 @@ namespace VibeModel.UI
                     Text = "",
                     FontFamily = new FontFamily("Segoe MDL2 Assets"),
                     FontSize = 12,
-                    Foreground = Brushes.White,
+                    Foreground = Palette.FgButton,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center
                 },
@@ -671,7 +672,7 @@ namespace VibeModel.UI
             {
                 Template = _chipTemplate,
                 Background = BgInput,
-                BorderBrush = BgInput,
+                BorderBrush = Palette.ChipOutline,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 2, 8, 3),
                 Margin = new Thickness(0, 0, 6, 4),
@@ -687,8 +688,8 @@ namespace VibeModel.UI
                 }
             };
             System.Windows.Automation.AutomationProperties.SetName(chip, text);
-            chip.MouseEnter += (s, e) => chip.BorderBrush = AccentBlue;
-            chip.MouseLeave += (s, e) => chip.BorderBrush = BgInput;
+            chip.MouseEnter += (s, e) => chip.BorderBrush = Palette.AccentLine;
+            chip.MouseLeave += (s, e) => chip.BorderBrush = Palette.ChipOutline;
             return chip;
         }
 
@@ -799,7 +800,7 @@ namespace VibeModel.UI
                 bannerGrid.Children.Add(new TextBlock
                 {
                     Text = "Chat only — Revit commands require enabling tool use in Settings.",
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB7, 0x4D)),
+                    Foreground = Palette.FgWarning,
                     FontSize = 11,
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center
@@ -825,7 +826,7 @@ namespace VibeModel.UI
 
                 _infoBanner = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x33, 0x1E)),
+                    Background = Palette.BgWarning,
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(10, 6, 10, 6),
                     Margin = new Thickness(0, 4, 0, 4),
@@ -1334,6 +1335,7 @@ namespace VibeModel.UI
             var buttons = new StackPanel { Orientation = Orientation.Horizontal };
             var newChat = CreateChip(Strings.For(language, Strings.NudgeNewChatButton), null);
             newChat.Background = BgButton;
+            if (newChat.Content is TextBlock newChatText) newChatText.Foreground = Palette.FgButton;
             System.Windows.Automation.AutomationProperties.SetAutomationId(newChat, "NudgeNewChatButton");
             newChat.Click += (s, e) => OnNewChatClick(s, e);
             buttons.Children.Add(newChat);
@@ -1713,8 +1715,12 @@ namespace VibeModel.UI
             return new Border
             {
                 Background = bgBrush,
+                // The light theme outlines the white answer bubble; in the dark theme the
+                // outline has the bubble's own colour (no visible line, as before).
+                BorderBrush = message.Role == ChatRole.Assistant ? Palette.AssistantMsgBorder : bgBrush,
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(10, 8, 10, 8),
+                Padding = new Thickness(9, 7, 9, 7),
                 Margin = new Thickness(0, 4, 0, 4),
                 Child = contentPanel
             };
@@ -1777,7 +1783,7 @@ namespace VibeModel.UI
             };
             return new Border
             {
-                Background = BgDark,
+                Background = BgWindow,
                 Padding = new Thickness(8, 4, 8, 0),
                 Visibility = Visibility.Collapsed,
                 RenderTransform = new TranslateTransform(),
@@ -1963,7 +1969,7 @@ namespace VibeModel.UI
             var border = new Border
             {
                 Background = BgPanel,
-                BorderBrush = AccentBlue,
+                BorderBrush = Palette.AccentLine,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(10, 6, 10, 8),

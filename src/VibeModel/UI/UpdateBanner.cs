@@ -21,11 +21,11 @@ namespace VibeModel.UI
     /// </summary>
     public sealed class UpdateBanner : Border
     {
-        private static readonly SolidColorBrush Bg = new SolidColorBrush(Color.FromRgb(0x1F, 0x3A, 0x4D));
-        private static readonly SolidColorBrush Fg = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
-        private static readonly SolidColorBrush FgMuted = new SolidColorBrush(Color.FromRgb(0xB0, 0xC4, 0xD0));
-        private static readonly SolidColorBrush BtnBg = new SolidColorBrush(Color.FromRgb(0x0E, 0x63, 0x9C));
-        private static readonly SolidColorBrush Line = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46));
+        private static SolidColorBrush Bg => Palette.BannerBg;
+        private static SolidColorBrush Fg => Palette.BannerFg;
+        private static SolidColorBrush FgMuted => Palette.BannerMuted;
+        private static SolidColorBrush BtnBg => Palette.BgButton;
+        private static SolidColorBrush Line => Palette.BorderColor;
 
         // "Later" / "×" hide it for the rest of this Revit session (until an install starts).
         private static bool _dismissedThisSession;
@@ -182,7 +182,7 @@ namespace VibeModel.UI
         {
             var b = new Button
             {
-                Foreground = primary ? Brushes.White : FgMuted,
+                Foreground = primary ? Palette.FgButton : FgMuted,
                 Background = primary ? BtnBg : Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,

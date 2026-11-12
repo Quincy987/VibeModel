@@ -84,6 +84,11 @@ namespace VibeModel.Services.Chat
         public const string SettingProjectMemory = "SettingProjectMemory";
         public const string SettingProjectMemoryHint = "SettingProjectMemoryHint";
         public const string SettingManaged = "SettingManaged";
+        public const string SettingThemeTitle = "SettingThemeTitle";
+        public const string SettingThemeHint = "SettingThemeHint";
+        public const string ThemeFollowRevit = "ThemeFollowRevit";
+        public const string ThemeLight = "ThemeLight";
+        public const string ThemeDark = "ThemeDark";
         // Direct API backend.
         public const string ApiRefusal = "ApiRefusal";
         public const string ApiMaxTokens = "ApiMaxTokens";
@@ -274,6 +279,11 @@ namespace VibeModel.Services.Chat
                 { SettingProjectMemory, "Keep project memory and journal" },
                 { SettingProjectMemoryHint, "The chat remembers project decisions (memory.md) and logs every model change with the question behind it (journal.md), in the project folder's VibeModel subfolder." },
                 { SettingManaged, "managed by your Revit administrators" },
+                { SettingThemeTitle, "Theme" },
+                { SettingThemeHint, "Follow Revit: light like Revit 2023, and on Revit 2024 and newer the light or dark theme Revit itself uses. Changes at once, no restart." },
+                { ThemeFollowRevit, "Follow Revit" },
+                { ThemeLight, "Light" },
+                { ThemeDark, "Dark" },
                 { ApiRefusal, "Claude declined to answer this request. Rephrase it, or split it into smaller steps." },
                 { ApiMaxTokens, "[The answer was cut off at the length limit - ask \"continue\" for the rest.]" },
                 { ApiUnreachable, "Cannot reach {0}: {1}. Check the network or proxy, or press Diagnose and send the report to your administrator." },
@@ -457,6 +467,11 @@ namespace VibeModel.Services.Chat
                 { SettingProjectMemory, "Projectgeheugen en journaal bijhouden" },
                 { SettingProjectMemoryHint, "De chat onthoudt projectafspraken (memory.md) en legt elke modelwijziging met de vraag erachter vast (journal.md), in de submap VibeModel van de projectmap." },
                 { SettingManaged, "beheerd door Revit-beheer" },
+                { SettingThemeTitle, "Thema" },
+                { SettingThemeHint, "Revit volgen: licht zoals Revit 2023, en vanaf Revit 2024 het lichte of donkere thema dat Revit zelf gebruikt. Wisselt meteen, zonder herstart." },
+                { ThemeFollowRevit, "Revit volgen" },
+                { ThemeLight, "Licht" },
+                { ThemeDark, "Donker" },
                 { ApiRefusal, "Claude wil op deze vraag geen antwoord geven. Formuleer hem anders, of splits hem op in kleinere stappen." },
                 { ApiMaxTokens, "[Het antwoord is afgebroken op de maximale lengte - vraag \"ga door\" voor de rest.]" },
                 { ApiUnreachable, "{0} is niet bereikbaar: {1}. Controleer het netwerk of de proxy, of klik op Diagnose en stuur het rapport naar je beheerder." },

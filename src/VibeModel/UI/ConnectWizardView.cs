@@ -67,7 +67,7 @@ namespace VibeModel.UI
             {
                 Background = BgInput,
                 Foreground = FgPrimary,
-                BorderBrush = Outline,
+                BorderBrush = BorderColor,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(4, 3, 4, 3),
                 FontSize = 12,

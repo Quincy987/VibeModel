@@ -32,6 +32,7 @@ namespace VibeModel.Infrastructure
         public const string DisableClaudeCode = "DisableClaudeCode";
         public const string ClaudeCliPath = "ClaudeCliPath";
         public const string Language = "Language";
+        public const string Theme = "Theme";
         public const string OpenServer = "OpenServer";
         public const string ChangeApproval = "ChangeApproval";
         public const string DisableUpdates = "DisableUpdates";
@@ -41,7 +42,7 @@ namespace VibeModel.Infrastructure
         public static readonly string[] Keys =
         {
             PreferredBackend, Model, ApiBaseUrl, AnthropicApiKey, DisableClaudeCode, ClaudeCliPath, Language, OpenServer, ChangeApproval,
-            DisableUpdates, UpdateSource
+            DisableUpdates, UpdateSource, Theme
         };
 
         private static readonly object Lock = new object();

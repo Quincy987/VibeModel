@@ -185,6 +185,7 @@ create-rights; a folder created by Intune/SCCM as SYSTEM already has the right o
 | `DisableClaudeCode` | `true` hides the Claude Code option entirely |
 | `ClaudeCliPath` | Full path to `claude.exe` if it lives elsewhere; `none` switches discovery off |
 | `Language` | `nl` or `en`: the pane's texts and the fallback reply language |
+| `Theme` | `revit` (default: follow Revit — light on Revit 2023, Revit's own light/dark theme on 2024+), `light` or `dark`. Locked in Settings when set here. |
 | `OpenServer` | `true` runs the local HTTP server **without** a token, as before 1.2.11 (default `false`). Only for scripts that cannot read the token from `%LOCALAPPDATA%\VibeModel\servers\<port>.json`; a set `VIBEMODEL_TOKEN` still wins. |
 | `ChangeApproval` | What happens to the AI's deletions and edits: `auto` (default, nothing changes), `ask` (the user keeps or discards each one in a window in Revit), `annotate` (views, sheets and annotations only: a change to a model element is rolled back and refused), `readonly` (every change is refused — for people who only look at models). Locked in Settings when set here. |
 | `DisableUpdates` | `true` switches the in-app update off entirely (see *Updates*) |

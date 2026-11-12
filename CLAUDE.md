@@ -824,11 +824,21 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   (`MaskKey`: `sk-ant-…1234`). Settings never copies a managed/environment key into settings.json.
 - **managed.json** (`Infrastructure/ManagedSettings.cs`, read-only, `%ProgramData%\VibeModel\` then
   `%APPDATA%\VibeModel\`, re-read at most once a minute): `PreferredBackend`, `Model`, `ApiBaseUrl`,
-  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer`, `ChangeApproval` override settings.json and
+  `AnthropicApiKey`, `DisableClaudeCode`, `ClaudeCliPath`, `Language`, `OpenServer`, `ChangeApproval`, `Theme` override settings.json and
   are locked in Settings ("beheerd door Revit-beheer"). The `%ProgramData%` file is only trusted when `FileTrust`
   says it is IT's: file and folder owned by Administrators or SYSTEM, no Allow-write ACE for Users /
   Authenticated Users / Everyone / Interactive (ordinary users may create folders under ProgramData).
   Otherwise it is ignored, logged once as WARN and named by Diagnose (`ManagedSettings.UntrustedFile`).
+- **Theme** (`UI/ThemeColors.cs` pure, `UI/ThemeManager.cs`, `UI/Palette.cs`): Settings → *Thema* (`Theme` in settings.json;
+  managed.json `Theme` locks it): `revit` (default) = light on Revit 2023, and on Revit 2024+ Revit's own UI theme
+  (`UIThemeManager.CurrentTheme` at startup, `UIControlledApplication.ThemeChanged` live — `#if` off for 2022/2023); `light`;
+  `dark` = the original look (only text on blue buttons is now white everywhere). Light follows Revit's Properties/Project Browser look (F5F5F5 / EBEBEB / white
+  inputs, 1B1B1B text, Autodesk blue 0696D7 for lines; accent text 0067A6 and buttons 0A6EB4 so every text pair reaches
+  WCAG AA — `ThemeTests` checks the pairs of both themes). Every colour is a `ThemeRole`; `Palette.Get(role)` hands out ONE
+  shared, unfrozen `SolidColorBrush` per role per UI thread (`[ThreadStatic]` — in Revit the main thread; tests render on fresh
+  STA threads), and a theme change sets each brush's `Color` (`ThemeManager.Changed` → every live set, on its own dispatcher),
+  so open windows and rendered answers repaint in place without a rebuild. Never hand a palette brush to a worker thread, and
+  never write `Color.FromRgb` in `UI/` or `Markdown/` — add a role. Diagnose: `Theme: revit (follows Revit: light)`.
 - **HTTP**: every Anthropic call (chat, quick replies, distiller, key test) uses `AnthropicHttp`:
   `SettingsManager.MessagesUrl(GetApiBaseUrl())`, Windows proxy with the user's credentials for the
   proxy only, the Windows certificate store (validation never relaxed). TLS: Revit's process-wide

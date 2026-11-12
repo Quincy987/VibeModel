@@ -45,6 +45,10 @@ namespace VibeModel
                 var registry = new ClaudeCommandRegistry();
                 Registry = registry;
 
+                // Theme: the Settings choice, and on Revit 2024+ Revit's own light/dark UI — read
+                // before the pane is built, so it paints in the right colours from the start.
+                InitTheme(application);
+
                 // Register dockable chat pane (must happen before Revit UI is fully loaded)
                 _chatPane = new ChatPane();
                 application.RegisterDockablePane(ChatPane.PaneId, "VibeModel Chat", _chatPane);
@@ -126,6 +130,9 @@ namespace VibeModel
                 application.DialogBoxShowing -= OnDialogBoxShowing;
                 application.ControlledApplication.FailuresProcessing -= OnFailuresProcessing;
                 application.ViewActivated -= OnViewActivated;
+#if !REVIT2022 && !REVIT2023
+                application.ThemeChanged -= OnRevitThemeChanged;
+#endif
                 application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
                 application.Idling -= OnStandardsIdling;
                 application.ControlledApplication.DocumentOpened -= OnDocumentOpenedOrClosed;
@@ -251,6 +258,33 @@ namespace VibeModel
                 Logger.Error("Failed to switch backend", ex);
             }
         }
+
+        // Revit 2023 and older have one (light) UI theme and no theme API: "follow Revit" = light.
+        private void InitTheme(UIControlledApplication application)
+        {
+            ThemeManager.Refresh();
+#if !REVIT2022 && !REVIT2023
+            try
+            {
+                ThemeManager.SetRevitIsDark(UIThemeManager.CurrentTheme == UITheme.Dark);
+                application.ThemeChanged += OnRevitThemeChanged;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Revit theme not readable, following light: " + ex.Message);
+            }
+#endif
+            Logger.Info("Theme: " + ThemeManager.Describe());
+        }
+
+#if !REVIT2022 && !REVIT2023
+        // Revit's Options → User Interface → Theme changed while Revit runs (main thread).
+        private void OnRevitThemeChanged(object sender, ThemeChangedEventArgs e)
+        {
+            try { ThemeManager.SetRevitIsDark(UIThemeManager.CurrentTheme == UITheme.Dark); }
+            catch (Exception ex) { Logger.Warn("Revit theme change not handled: " + ex.Message); }
+        }
+#endif
 
         private void OnViewActivated(object sender, ViewActivatedEventArgs e)
         {

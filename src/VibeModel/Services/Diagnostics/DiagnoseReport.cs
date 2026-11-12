@@ -125,6 +125,7 @@ namespace VibeModel.Services.Diagnostics
             sb.AppendLine();
 
             sb.AppendLine("== Settings (" + SettingsManager.FilePath + ", secrets masked)");
+            sb.AppendLine("Theme: " + UI.ThemeManager.Describe() + Managed(ManagedSettings.Theme));
             foreach (var kv in SettingsManager.Load().OrderBy(k => k.Key))
                 sb.AppendLine(kv.Key + " = " + MaskIfSecret(kv.Key, kv.Value));
             return sb.ToString();
