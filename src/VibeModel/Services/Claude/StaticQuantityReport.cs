@@ -26,6 +26,11 @@ namespace VibeModel.Services.Claude
 
         private const string Advice = "they do not follow model changes — use a schedule field, a takeoff or a family formula for quantities that must stay current";
 
+        // A plain number (or count) is often an identifier (pile number, sequence) rather than a quantity: then the
+        // warning is conditional. Length, area and volume are always quantities.
+        private static string AdviceFor(IList<Entry> entries)
+            => entries.All(e => e.Spec == "Number") ? "if they are quantities, " + Advice : Advice;
+
         /// <summary>One line, or null when nothing was filled.</summary>
         public static string Line(IList<Entry> entries)
         {
@@ -34,10 +39,10 @@ namespace VibeModel.Services.Claude
             {
                 var e = entries[0];
                 return "-- quantities: parameter '" + e.Parameter + "' (" + Describe(e.Spec) + "new this run) was filled with fixed numbers on " +
-                       Count(e) + "; " + Advice;
+                       Count(e) + "; " + AdviceFor(entries);
             }
             return "-- quantities: new parameters " + string.Join(", ", entries.Select(e => "'" + e.Parameter + "' (" + Describe(e.Spec) + Count(e) + ")")) +
-                   " were filled with fixed numbers this run; " + Advice;
+                   " were filled with fixed numbers this run; " + AdviceFor(entries);
         }
 
         /// <summary>The additive JSON array (<c>quantities</c>), or null when nothing was filled.</summary>

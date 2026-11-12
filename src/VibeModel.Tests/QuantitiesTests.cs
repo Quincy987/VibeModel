@@ -266,6 +266,31 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void QuantitiesLine_IsConditional_ForPlainNumbers()
+        {
+            // A Number parameter may be a pile number or a sequence, not a quantity.
+            var number = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
+                { new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = "Number" } });
+            Assert.Contains("on 40 elements; if they are quantities, they do not follow model changes", number);
+            // Mixed with a real quantity: the warning is not softened.
+            var mixed = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
+            {
+                new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = "Number" },
+                new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 40, Spec = "Area" },
+            });
+            Assert.DoesNotContain("if they are quantities", mixed);
+        }
+
+        [Fact]
+        public void ClickPath_IsTheSameInTheGapAndInCalc()
+        {
+            var gap = KnownApiGaps.Describe(KnownApiGaps.Match("ScheduleFieldType.Formula"));
+            var calc = CalculatedFieldHint.ManualStep("S", "X", "Length*Width", Kind.Area);
+            Assert.Contains(CalculatedFieldHint.ClickPath, gap);
+            Assert.Contains(CalculatedFieldHint.ClickPath, calc);
+        }
+
+        [Fact]
         public void QuantitiesLine_SaysWhenItStoppedReading()
         {
             var line = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>

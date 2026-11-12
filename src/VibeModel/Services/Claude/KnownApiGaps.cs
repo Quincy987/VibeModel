@@ -111,7 +111,9 @@ namespace VibeModel.Services.Claude
                     "schedule <category> --fields ... --calc \"Name=formula\": builds the schedule, adds the fields the formula uses as hidden columns and prints the clicks",
                     "never compute the quantity and write it into a parameter as a fixed number: it does not follow model changes",
                 },
-                Manual = "the user opens the schedule -> Properties -> Fields: Edit... -> fx (Add calculated parameter) -> name, Discipline Common, Type matching the formula (Area for length x length, else Revit says \"Inconsistent units\"), the formula -> OK."
+                Manual = "the user opens the schedule → " + CalculatedFieldHint.ClickPath + " → name, Discipline Common, the Type the formula gives " +
+                         "(Area for length × length; " + CalculatedFieldHint.TypeMismatch + "), the formula with the field names exactly as listed → OK. " +
+                         "schedule --calc prints this with the Type filled in."
             },
         };
 

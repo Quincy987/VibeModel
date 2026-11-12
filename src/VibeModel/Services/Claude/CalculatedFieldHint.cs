@@ -33,6 +33,12 @@ namespace VibeModel.Services.Claude
 
         private const string Boundary = " \t+-*/^(),<>=";
 
+        /// <summary>Revit's clicks to a calculated field, from the open schedule (one wording for --calc and the Known gap).</summary>
+        internal const string ClickPath = "Properties → Fields: Edit… → fx (Add calculated parameter)";
+
+        /// <summary>Why the Type matters: Revit refuses a formula whose unit is not the field's Type.</summary>
+        internal const string TypeMismatch = "another Type gives \"Inconsistent units\"";
+
         /// <summary>
         /// The schedule field names the formula uses, in formula order, matched EXACTLY (case-insensitive)
         /// on operator/space boundaries, longest name first — never a substring ("Width" is not "Width 2",
@@ -136,10 +142,10 @@ namespace VibeModel.Services.Claude
         {
             var label = TypeLabel(type);
             var typePart = label != null
-                ? "Type \"" + label + "\" (another Type gives \"Inconsistent units\")"
-                : "Type = the unit of the result (Length, Area, Volume or Number; a mismatch gives \"Inconsistent units\")";
+                ? "Type \"" + label + "\" (" + TypeMismatch + ")"
+                : "Type = the unit of the result (Length, Area, Volume or Number; " + TypeMismatch + ")";
             return "Manual step (the API cannot add a calculated field): Project Browser → Schedules/Quantities → \"" + scheduleName +
-                   "\" → Properties → Fields: Edit… → fx (Add calculated parameter) → Name \"" + name + "\", Discipline Common, " +
+                   "\" → " + ClickPath + " → Name \"" + name + "\", Discipline Common, " +
                    typePart + ", Formula: " + formula + " → OK. The column then follows every model change.";
         }
 
