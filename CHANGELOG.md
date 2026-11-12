@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.17 — Licht thema zoals Revit (2026-11-12)
+
 ### Added — licht thema
 - Licht thema zoals Revit; donker blijft beschikbaar. The chat pane, Settings, History, Diagnose, the approval window and the
   update banner now default to Revit's own light look (light-grey surfaces, black text, Autodesk blue). Settings → *Thema*:
