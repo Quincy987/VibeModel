@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added — schedules and drawings say what they leave out
+- `schedule` (new and `--rows`) says how many elements of its category it shows and why the rest is outside: the schedule's phase,
+  a design option, *filter by sheet* or its own filters, which it names. An empty schedule explains itself the same way.
+- After a command that adds elements, a schedule of that category that leaves them out is named (`-- schedules: …`), and so is a
+  view the AI put on a sheet this session that does not show them — including reinforcement hidden inside its concrete host where
+  the other bars are drawn unobscured (`-- views: …`). The chat then fixes it or says what is missing, instead of calling the
+  overview complete. (Feedback 12-11: the bottom reinforcement was modelled but did not appear in the overview.)
+
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)
 
 ### Added — licht thema

@@ -380,17 +380,32 @@ namespace VibeModel.Markdown
     /// <summary>What the source popup shows: a command response without its trailing stamp lines, and where to scroll.</summary>
     public static class CitationSourceText
     {
-        /// <summary>Drops the model-state stamp ("-- model #47 | …") and post-command check lines.</summary>
+        /// <summary>
+        /// The lines a command response ends with after its own text: the model-state stamp and
+        /// every post-command line (`-- check:`, `-- changed:`, `-- schedules:` …), in any order.
+        /// </summary>
+        private static readonly string[] TrailingPrefixes =
+        {
+            "-- model #", "-- check:", "-- changed:", "-- annotations:", "-- revit ", "-- preview:",
+            "-- approval:", "-- schedules:", "-- views:", "-- forbidden:"
+        };
+
+        /// <summary>Drops the model-state stamp ("-- model #47 | …") and the post-command lines.</summary>
         public static string Clean(string response)
         {
             if (string.IsNullOrEmpty(response)) return "";
             var lines = response.Replace("\r\n", "\n").Split('\n');
             var end = lines.Length;
-            while (end > 0 && (lines[end - 1].Trim().Length == 0
-                               || lines[end - 1].StartsWith("-- model #", StringComparison.Ordinal)
-                               || lines[end - 1].StartsWith("-- check:", StringComparison.Ordinal)))
+            while (end > 0 && (lines[end - 1].Trim().Length == 0 || IsTrailingLine(lines[end - 1])))
                 end--;
             return string.Join("\n", lines, 0, end);
+        }
+
+        private static bool IsTrailingLine(string line)
+        {
+            foreach (var p in TrailingPrefixes)
+                if (line.StartsWith(p, StringComparison.Ordinal)) return true;
+            return false;
         }
 
         /// <summary>

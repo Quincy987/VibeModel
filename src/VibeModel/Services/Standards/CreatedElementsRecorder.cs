@@ -85,6 +85,14 @@ namespace VibeModel.Services.Standards
             var key = Services.Claude.ModelChangeTracker.DocKey(doc.PathName, doc.Title);
             return ByDoc.TryGetValue(key, out var set) && set.Contains(id.IntegerValue);
         }
+
+        /// <summary>Every id VibeModel created in this document this session (a copy; may include ids deleted since).</summary>
+        public static List<int> Ids(Document doc)
+        {
+            if (doc == null) return new List<int>();
+            var key = Services.Claude.ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+            return ByDoc.TryGetValue(key, out var set) ? set.Values.ToList() : new List<int>();
+        }
     }
 
     // Insertion-ordered set so the cap drops the oldest ids first. Each id remembers the sequence
@@ -105,6 +113,8 @@ namespace VibeModel.Services.Standards
         }
 
         public bool Contains(int v) => _live.ContainsKey(v);
+
+        public IEnumerable<int> Values => _live.Keys;
 
         public void Remove(int v) => _live.Remove(v);
 

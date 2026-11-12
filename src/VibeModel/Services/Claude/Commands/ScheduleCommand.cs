@@ -242,7 +242,7 @@ namespace VibeModel.Services.Claude.Commands
             return null;
         }
 
-        private static ForgeTypeId SpecOf(ScheduleField f)
+        internal static ForgeTypeId SpecOf(ScheduleField f)
         {
             try
             {
@@ -252,7 +252,7 @@ namespace VibeModel.Services.Claude.Commands
             catch { return null; }
         }
 
-        private static ForgeTypeId UnitOf(Document doc, ScheduleField f, ForgeTypeId spec)
+        internal static ForgeTypeId UnitOf(Document doc, ScheduleField f, ForgeTypeId spec)
         {
             try
             {
@@ -319,19 +319,15 @@ namespace VibeModel.Services.Claude.Commands
             }
             var rows = ScheduleText.DataRows(raw, headings);
             totalRows = rows.Count;
-            if (rows.Count == 0)
-            {
-                // An empty schedule is usually its filter or phase, not a missing category.
-                var phase = vs.get_Parameter(BuiltInParameter.VIEW_PHASE)?.AsValueString();
-                sb.AppendLine("Empty: " + def.GetFilterCount() + " filter(s)" + (phase != null ? ", phase '" + phase + "'" : "") +
-                              " — elements outside the phase or the filter are not listed.");
-            }
             sb.AppendLine("Columns: " + string.Join(", ", headers));
             sb.AppendLine("Rows: " + rows.Count + (rows.Count > maxRows ? " (" + Truncation.Line(maxRows, rows.Count) + ")" : ""));
+            // What the schedule shows of its category and why the rest is outside (also explains an empty one).
+            var scope = DerivedCoverage.ComputeScope(doc, vs, rows.Count);
+            if (scope != null) sb.AppendLine(scope.ScopeLine());
             sb.AppendLine();
             foreach (var l in ScheduleText.Table(headers, rows, maxRows, "'schedule " + vs.Id.IntegerValue + " --rows' for all")) sb.AppendLine(l);
             sb.AppendLine();
-            return new Dictionary<string, object>
+            var data = new Dictionary<string, object>
             {
                 { "id", vs.Id.IntegerValue },
                 { "name", vs.Name },
@@ -340,6 +336,8 @@ namespace VibeModel.Services.Claude.Commands
                 { "totalRows", rows.Count },
                 { "truncated", rows.Count > maxRows }
             };
+            if (scope != null) data["scope"] = scope.ToJson();
+            return data;
         }
     }
 }

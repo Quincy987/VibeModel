@@ -659,6 +659,27 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   value with summable columns totalled; `--total` adds the grand total. Without `--group` rows are
   sorted by the first field. The text table is cut at 20 rows (`--rows [n]` reads up to 200/n).
   New schedules get their columns widened to the longest cell, so type names do not wrap on the sheet.
+  Create and `--rows` print a **`Scope:` line** (`DerivedCoverage.ComputeScope`, wording `ScheduleScope.cs`, pure):
+  `Scope: shows 14 of 22 elements of Structural Rebar (14 rows); outside: 5 phase (schedule phase 'Nieuw', filter 'Show Complete'),
+  2 design option (not primary), 1 by the schedule filter(s) — schedule filter(s): Partition = 'Boven'.` (JSON `data.scope`
+  `{inSchedule, rows, totalInCategory, outside:{total,phase,designOption,sheet,unexplained}, filters, includesLinks}`). In the
+  schedule = Revit's view-scoped collector on the schedule; total = the category's instances in this document. Per element outside:
+  the schedule's phase + phase filter (`GetPhaseStatus` → `GetPhaseStatusPresentation`; a future element always), else a non-primary
+  design option, else "filtered by sheet" (2023+), else the schedule's filters — named, never re-evaluated by us. Rows differ from
+  elements when grouped (a rebar set is one element). Linked rows are shown but not counted; key schedules, material takeoffs and
+  multi-category schedules read `Scope: not computed (…)`; above 20 000 outside elements the reasons are skipped. Replaces the old
+  `Empty:` line. Not measured live yet.
+- **`-- schedules:` / `-- views:`** (`DerivedCoverage.Check`, independent of an office pack): after a modifying command or batch that
+  ADDED model elements, `-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why)` for every
+  schedule of that category that leaves them out (≤ 20 schedules checked, sorted by name; key/takeoff/multi-category skipped), and
+  `-- views: …` for views VibeModel created or put on a sheet this session that already draw that category: `12 new Structural Rebar
+  hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the other bars are unobscured — exec:
+  rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans/sections/elevations until *View Unobscured* is on;
+  3D views skipped) or `… not visible in '…' — whyhidden <id> <view>` (≤ 10 views). Only added ids: a modified element a filtered
+  schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON `schedules:[{schedule,id,category,
+  missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`. Never after a preview, Discard,
+  READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is logged. The RULES block's
+  `DerivedCoverageRule` tells the chat to fix it or say what is missing, never to report the overview as complete.
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
@@ -722,7 +743,8 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
   `linkcad`/`linkrvt` name the criterion they placed by ("coordinates set up: base point N/S …").
 - **Post-command check.** After any modifying command or batch, the element-level rules run on
   exactly what it created; problems add one line: `-- check: 1 WARN (param-filled) → run 'check' for fixes`
-  (JSON: an additive `check` object).
+  (JSON: an additive `check` object). Schedules and sheet views that leave new elements out get their own
+  `-- schedules:` / `-- views:` lines, with or without a pack (see `schedule` under Sheet Assembly).
 - **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
 - **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
@@ -954,7 +976,7 @@ model-bound history are unchanged. A new command gets its step label from `Statu
 BOTH maps — a test checks).
 
 **Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
-assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).
+assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule), `DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 

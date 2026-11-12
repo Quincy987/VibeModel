@@ -332,6 +332,11 @@ namespace VibeModel.Services.Chat
         internal const string QuantitiesRule =
             "Quantities for an estimate or bill (hoeveelheden, begroting, palenstaat) are made as a Revit schedule with `schedule` by default, so anyone can check them in Revit; a list in the chat only when the user asks for one.";
 
+        // Feedback 2026-11-12: the bottom rebar was modelled, but the overview made before kept showing only
+        // the top rebar. The server now says so after the command (DerivedCoverage); the model has to act on it.
+        internal const string DerivedCoverageRule =
+            "When a command output carries a `-- schedules:` or `-- views:` line (`schedules` / `views` in JSON: new elements an existing schedule leaves out, or a view on a sheet hides), fix it in the same turn when the user wants them in (the schedule's filter or phase, rebar.SetUnobscuredInView(view, true) via exec) or tell the user what is missing where; never report that schedule or drawing as complete.";
+
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
@@ -402,6 +407,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Complete and checkable");
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
+            sb.AppendLine("- " + DerivedCoverageRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");
             sb.AppendLine("- " + ForbiddenRule);
