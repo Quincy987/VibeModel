@@ -73,6 +73,22 @@ namespace VibeModel.Services.Chat
             UpdatedUtc = DateTime.UtcNow;
         }
 
+        /// <summary>
+        /// Append an assistant answer with what the turn ran: its steps, usage, model and duration
+        /// (all optional — null leaves the message exactly as <see cref="Append(string,string)"/> does).
+        /// Only <see cref="ChatSessionMessage.Content"/> ever goes back to a model or the History view.
+        /// </summary>
+        public void Append(string role, string content, List<ChatSessionStep> steps, ChatSessionUsage usage,
+            string model, long? durationMs)
+        {
+            Append(role, content);
+            var m = Messages[Messages.Count - 1];
+            m.Steps = steps;
+            m.Usage = usage;
+            m.Model = string.IsNullOrWhiteSpace(model) ? null : model;
+            m.DurationMs = durationMs;
+        }
+
         /// <summary>First-user-message title: single line, capped at 60 chars with ellipsis.</summary>
         public static string MakeTitle(string firstUserMessage)
         {
@@ -95,6 +111,83 @@ namespace VibeModel.Services.Chat
         public string Role { get; set; }
         public string Content { get; set; }
         public DateTime TimestampUtc { get; set; }
+
+        // Additive, on the answer (or error) of a turn since the chat export exists; null in older
+        // chats and on questions: what the turn ran, for the export. Never sent to a model.
+
+        /// <summary>The turn's tool calls in order; null = not recorded (an older chat).</summary>
+        public List<ChatSessionStep> Steps { get; set; }
+        public ChatSessionUsage Usage { get; set; }
+        public string Model { get; set; }
+        public long? DurationMs { get; set; }
+    }
+
+    /// <summary>One tool call of a turn as stored: command, full args (capped, scrubbed), outcome, duration.</summary>
+    public class ChatSessionStep
+    {
+        public string Command { get; set; }
+        public string Args { get; set; }
+        public bool Ok { get; set; }
+        public string Error { get; set; }
+        public long? DurationMs { get; set; }
+
+        /// <summary>The steps of a turn as they are stored (only a step that finished without error is ok).</summary>
+        public static List<ChatSessionStep> FromTurn(TurnActivity turn)
+        {
+            var steps = new List<ChatSessionStep>();
+            if (turn == null) return steps;
+            foreach (var s in turn.Steps)
+            {
+                steps.Add(new ChatSessionStep
+                {
+                    Command = s.Command ?? "",
+                    Args = s.FullArgs ?? s.Detail ?? "",
+                    Ok = s.State == TurnActivity.StepState.Done,
+                    Error = s.State == TurnActivity.StepState.Failed ? s.ErrorLine
+                        : s.State == TurnActivity.StepState.Cancelled ? "cancelled"
+                        : s.State == TurnActivity.StepState.Running ? "not finished" : null,
+                    DurationMs = s.DurationMs
+                });
+            }
+            return steps;
+        }
+    }
+
+    /// <summary>A turn's token counts as stored (the pane's cost line comes from these).</summary>
+    public class ChatSessionUsage
+    {
+        public long InputTokens { get; set; }
+        public long OutputTokens { get; set; }
+        public long CacheReadTokens { get; set; }
+        public long CacheWriteTokens { get; set; }
+        public long ContextTokens { get; set; }
+        public double? CostUsd { get; set; }
+
+        public static ChatSessionUsage From(TurnUsage usage)
+        {
+            if (usage == null || usage.IsEmpty) return null;
+            return new ChatSessionUsage
+            {
+                InputTokens = usage.InputTokens,
+                OutputTokens = usage.OutputTokens,
+                CacheReadTokens = usage.CacheReadTokens,
+                CacheWriteTokens = usage.CacheWriteTokens,
+                ContextTokens = usage.ContextTokens,
+                CostUsd = usage.ReportedCostUsd
+            };
+        }
+
+        /// <summary>Back to a <see cref="TurnUsage"/> so the pane's own wording and pricing apply.</summary>
+        public TurnUsage ToTurnUsage(string model) => new TurnUsage
+        {
+            Model = model,
+            InputTokens = InputTokens,
+            OutputTokens = OutputTokens,
+            CacheReadTokens = CacheReadTokens,
+            CacheWriteTokens = CacheWriteTokens,
+            ContextTokens = ContextTokens,
+            ReportedCostUsd = CostUsd
+        };
     }
 
     /// <summary>Lightweight listing entry for the history browser (no message bodies).</summary>

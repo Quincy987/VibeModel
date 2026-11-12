@@ -1224,7 +1224,7 @@ namespace VibeModel.UI
                             EndTurnDisplay(turn, answer);
 
                             ChatHistory.Add("Claude", content);
-                            sessionForTurn.Append(ChatSession.RoleAssistant, content);
+                            AppendTurnRecord(sessionForTurn, ChatSession.RoleAssistant, content, turn.Model);
                             ChatSessionStore.Default.SaveSession(sessionForTurn);
                             // Quick replies: a separate cheap call, never on the token stream.
                             if (ReferenceEquals(sessionForTurn, _session))
@@ -1248,13 +1248,23 @@ namespace VibeModel.UI
                         var errorMsg = "Error: " + error;
                         AddMessage(new ChatMessage(ChatRole.System, errorMsg));
                         ChatHistory.Add("System", errorMsg);
-                        sessionForTurn.Append(ChatSession.RoleSystem, errorMsg);
+                        AppendTurnRecord(sessionForTurn, ChatSession.RoleSystem, errorMsg, turn.Model);
                         ChatSessionStore.Default.SaveSession(sessionForTurn);
                         SetGenerating(false);
                         ScrollToBottomIfNeeded();
                     }));
                 },
                 cancellationToken: _cts.Token);
+        }
+
+        // The stored message carries what the turn ran (steps, usage, model, duration) for the
+        // chat export; the content — the only part a model or History ever reads — is unchanged.
+        private void AppendTurnRecord(ChatSession session, string role, string content, TurnActivity activity)
+        {
+            var usage = activity.Usage;
+            var modelName = !string.IsNullOrWhiteSpace(usage?.Model) ? usage.Model : (_backend as ChatBackendBase)?.ModelName;
+            var elapsed = (long)activity.Elapsed(DateTime.UtcNow).TotalMilliseconds;
+            session.Append(role, content, ChatSessionStep.FromTurn(activity), ChatSessionUsage.From(usage), modelName, elapsed);
         }
 
         // The turn ended: collapse the activity block to its summary line (or drop it when the

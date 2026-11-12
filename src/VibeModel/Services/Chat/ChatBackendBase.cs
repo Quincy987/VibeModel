@@ -356,6 +356,17 @@ namespace VibeModel.Services.Chat
         internal const string ApprovalReadOnlyRule =
             "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
+        // Plan 21 (interview Ruben Wolbers, 2026-11-12): sheets annotated from a specification came out
+        // "een rommeltje" — tags, dimensions and texts on top of each other; the chat saw the overlap but
+        // had no numbers to fix it with. `annolayout` and the `-- layout:` line give it those numbers.
+        internal const string AnnotationLayoutRule =
+            "Annotate with `tag`, `dimension`, `spot`, `text` and `region`, never with exec: `spot`, `dimension` and `tag --leader` keep clear of what is already in the view, and every one reports where it landed. " +
+            "After annotating a view, run `annolayout <view>` (and whenever a response has a `-- layout:` line) and fix every WARN before you report: " +
+            "these commands always place a NEW annotation, so replace the misplaced one — `delete <its id>`, then place it again with `tag … --at x y` / `--elbow x y`, " +
+            "`spot … --leader x y` or `dimension … --offset <model mm past the elements: paper mm × scale>` — and run `annolayout` again. Keep text and tags horizontal. " +
+            "When the user has corrected a drawing by hand, read its positions with `annolayout` and copy that spacing in the next one. " +
+            "Annotations you placed this turn you may delete and place again without asking first.";
+
         // Plan 20: the pane's "next message as preview" — the server previews every change of
         // this turn on its own, the model only has to report it as such.
         internal const string PreviewTurnRule =
@@ -409,6 +420,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Complete and checkable");
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
+            sb.AppendLine("- " + AnnotationLayoutRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");
             sb.AppendLine("- " + ForbiddenRule);

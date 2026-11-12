@@ -354,6 +354,8 @@ namespace VibeModel.Services.Claude
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
 
             var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
+            // Plan 21: the annotations this run added (re-hosted ones are new elements too), against their neighbours.
+            var layout = kept != null && changes != null ? AnnotationExtents.ForAdded(doc, LayoutIds(changes, ShownAnnotations(annotations, runControl, run))) : null;
             if (cr.Success && changes != null)
             {
                 // A modifying command that also writes a file (a generated family's .rfa) names it.
@@ -367,7 +369,19 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout);
+        }
+
+        /// <summary>
+        /// Plan 21: the annotations the layout line checks — what the run added, plus what the
+        /// annotation guard re-hosted (created after the recorder stopped).
+        /// </summary>
+        private static IEnumerable<ElementId> LayoutIds(RecordedChanges changes, AnnotationOutcome annotations)
+        {
+            var ids = new List<ElementId>(changes.Added);
+            if (annotations != null)
+                ids.AddRange(annotations.Rehosted.Where(r => r.To > 0).Select(r => new ElementId((int)r.To)));
+            return ids;
         }
 
         /// <summary>
@@ -392,12 +406,12 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// The response of a single command: the result, then the "-- revit", "-- check",
-        /// "-- annotations", "-- changed" and plan-15 lines, then the stamp (text); the same as additive JSON
+        /// "-- annotations", "-- layout" (plan 21), "-- changed" and plan-15 lines, then the stamp (text); the same as additive JSON
         /// objects next to the envelope.
         /// </summary>
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
             List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
-            ChangeSetSummary changed = null, string forbidden = null)
+            ChangeSetSummary changed = null, string forbidden = null, AnnotationExtents.LayoutReport layout = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -420,6 +434,7 @@ namespace VibeModel.Services.Claude
                     if (revit != null && !revit.IsEmpty) dict["revit"] = revit.ToJson();
                     run?.AddJson(dict);
                     AddAnnotationsJson(dict, annotations, run);
+                    if (layout != null) dict["layout"] = layout.Json;
                     if (changed != null) dict["changes"] = changed.ChangesJson();
                     if (forbidden != null) dict["forbidden"] = forbidden;
                 }
@@ -436,6 +451,7 @@ namespace VibeModel.Services.Claude
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
             if (annotationLine != null) text = AppendLine(text, annotationLine);
+            if (layout != null) text = AppendLine(text, layout.Line);
             if (changed != null) text = AppendLine(text, changed.ChangedLine());
             if (run?.Line != null) text = AppendLine(text, run.Line);
             if (forbidden != null) text = ForbiddenActions.KeptLine(forbidden) + "\n" + text;
@@ -904,6 +920,8 @@ namespace VibeModel.Services.Claude
             List<CheckFinding> findings = anyModified && !rolledBack ? PostCommandCheck.Run(app, changes.Added) : null;
             // One line for the whole batch: the recorder holds one running change set.
             var kept = anyModified && !rolledBack ? KeptChanges(doc, changes, preRead, run) : null;
+            // Plan 21: one layout line for the whole batch.
+            var layout = kept != null && changes != null ? AnnotationExtents.ForAdded(doc, LayoutIds(changes, ShownAnnotations(annotations, runControl, run))) : null;
             var recipes = kept != null ? SaveRecipes(doc, batchExecs, kept, req.Turn) : null;
             var forbiddenKept = !rolledBack ? forbidden : null;
             if (anyModified && !rolledBack)
@@ -914,6 +932,7 @@ namespace VibeModel.Services.Claude
             annotations = ShownAnnotations(annotations, runControl, run);
             var annotationLine = AnnotationText(annotations, run);
             if (annotationLine != null) sb.AppendLine(annotationLine);
+            if (layout != null) sb.AppendLine(layout.Line);
             if (kept != null) sb.AppendLine(kept.ChangedLine());
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
             if (forbiddenKept != null) sb.Insert(0, ForbiddenActions.KeptLine(forbiddenKept) + "\n");
@@ -936,6 +955,7 @@ namespace VibeModel.Services.Claude
                     envelope["check"] = CheckEnvelope(checkLine, findings);
                 run.AddJson(envelope);
                 AddAnnotationsJson(envelope, annotations, run);
+                if (layout != null) envelope["layout"] = layout.Json;
                 if (kept != null) envelope["changes"] = kept.ChangesJson();
                 if (forbiddenKept != null) envelope["forbidden"] = forbiddenKept;
                 // Additive: why a run-controlled batch kept nothing (READ_ONLY, QUERY_MODIFIED_MODEL, DISCARDED).
