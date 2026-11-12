@@ -394,8 +394,10 @@ wall 5000 0 5000 5000"
 A read-only batch (no modifications) creates no undo entry.
 
 ### Change approval, preview, read-only runs (approvals / ?preview=1 / ?readonly=1)
-Settings → *Wijzigingen door de AI* / *Changes by the AI* (`ChangeApproval`; managed.json →
-`VIBEMODEL_APPROVAL` → settings.json → `auto`). Plan: `docs/plans/15-approve-and-preview.md`.
+Chosen in the chat's **mode chip** (see below; the only place — Settings has no section for it since the
+tabbed Settings) and remembered in settings.json `ChangeApproval` (`ChangeApprovalPolicy.ChooseAndRemember`; Auto removes
+the key). Precedence unchanged: managed.json → the chip's choice this session → `VIBEMODEL_APPROVAL` → settings.json
+→ `auto`. Plan: `docs/plans/15-approve-and-preview.md`.
 ```bash
 curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000&preview=1"     # Runs, reports, rolls back
 curl -s -X POST "http://localhost:18884/batch?preview=1" -d "delete 1561047
@@ -478,12 +480,13 @@ curl -s http://localhost:18884/approvals                                  # This
   rounded box — text on top, a footer with the paperclip, the chip and a round send arrow (amber in
   *Vragen*; *Cancel* in its place during a turn). The chip shows the mode in force (*Automatisch* /
   *Vragen* / *Alleen opmaak* / *Alleen lezen*; *Vragen* with "don't ask again" ticked shows *Automatisch*) and opens a
-  menu that sets `ChangeApprovalPolicy.SessionOverride` for the rest of the Revit session
-  (`ChooseForSession`; choosing *Vragen* clears "don't ask again"). Precedence: managed.json → chip →
+  menu that sets `ChangeApprovalPolicy.SessionOverride` for the rest of the Revit session AND stores the pick in
+  settings.json for the next start (`ChooseAndRemember` → `ChooseForSession` + `SettingsManager.SetChangeApproval`;
+  choosing *Vragen* clears "don't ask again"; the session override keeps a `build.ps1 -Approval` variable from
+  overriding what the user just chose). Precedence: managed.json → chip →
   `VIBEMODEL_APPROVAL` → settings.json → auto (`WithSessionOverride` / `EffectiveOf` / `Chosen`;
   Describe/Diagnose/`approvals` say `ask (this session)`, JSON `source: "session"`). Locked by
-  managed.json → greyed, no menu, tooltip "beheerd door Revit-beheer". Settings shows the session choice as a
-  ticked box; untick + Save clears it. `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
+  managed.json → greyed, no menu, tooltip "beheerd door Revit-beheer". `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
   refreshes the chip, as do Settings closing, `ActiveDocumentTracker.Changed` and a turn ending.
   **Volgend bericht als preview**: the pane arms `ChangeApprovalPolicy.ArmNextTurn` on every send;
   `RunJournaledTurn` takes it (`BeginTurn` → `PreviewTurn`, cleared in its finally) and both enqueue
@@ -834,13 +837,13 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
   `-- schedules:` / `-- views:` lines, with or without a pack (see `schedule` under Sheet Assembly).
 - **Prompt.** Each chat turn gets a `TEMPLATE:` block (≤1 kB, live facts incl. the active view's
   phase) and, when a pack is active, a `STANDARDS:` block (the pack's core rules, ≤`coreMaxBytes`).
-- **Where packs come from** (first id wins): Settings → *Standards pack folder* (`StandardsPackPath`,
+- **Where packs come from** (first id wins): Settings → *Standaarden* → pack folder (`StandardsPackPath`,
   e.g. the office share) → `%LOCALAPPDATA%\VibeModel\standards\<pack>\` → `<add-in folder>\standards\`
   (the loader's folder, Revit's add-ins folder — stable across in-app updates; `StandardsPackRegistry.AddinStandardsRoot`).
   A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
   background (startup, `--refresh`, Settings → Save) and only the mirror is read.
-  Settings → *Office source documents folder* (`StandardsFolder`) is what `standards --index` reads.
-  Settings → *Apply office standards* (`StandardsEnabled`) switches everything off.
+  Settings → *Standaarden* → source documents folder (`StandardsFolder`) is what `standards --index` reads.
+  Settings → *Standaarden* → *Kantoorstandaard toepassen* (`StandardsEnabled`) switches everything off.
 - Network shares are never read on Revit's main thread without a deadline: the library and the
   source documents are indexed in the background and cached under
   `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack>\`; PDF text comes from a separate helper
@@ -851,7 +854,7 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
 ### Project Folder (docs / readdoc)
 Each model has a **project folder** with its reference documents (bestek, memo's, DO-tekening
 PDF, inspection reports). Default: the folder the open `.rvt` lives in. The chat pane's
-Settings → *Project folder* (Browse… / Clear) overrides it for the current project only
+Settings → *Dit project* (Bladeren… / Wissen) overrides it for the current project only
 (`ProjectContextFolders` in settings.json, keyed by the sanitized document title — the same key
 as the attachment store). Unsaved / cloud models have no default. Every output names the folder
 and its source: `(map van het model)` (default) or `(ingesteld)` (configured).
@@ -911,7 +914,7 @@ curl -s "http://localhost:18884/recipes?args=3"                # One of them, in
   (`-2`, `-3` … when taken). Memory commands read/write with the same 3 s deadline.
 - `remember` / `memory` / `forget` / `journal` are not modifications (no transaction, no undo
   step). `docs` does not list the `VibeModel` subfolder.
-- **Switch:** Settings → *Projectgeheugen en journaal bijhouden* (`ProjectMemoryEnabled`, default
+- **Switch:** Settings → *Dit project* → *Projectgeheugen en journaal bijhouden* (`ProjectMemoryEnabled`, default
   on). Off: no block, no header, nothing written, and the five commands (`IProjectMemoryCommand`, with `recipes`)
   are left out of the prompt file, the tool lists and `help` — the exact prompt as before.
 
@@ -938,7 +941,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   says it is IT's: file and folder owned by Administrators or SYSTEM, no Allow-write ACE for Users /
   Authenticated Users / Everyone / Interactive (ordinary users may create folders under ProgramData).
   Otherwise it is ignored, logged once as WARN and named by Diagnose (`ManagedSettings.UntrustedFile`).
-- **Theme** (`UI/ThemeColors.cs` pure, `UI/ThemeManager.cs`, `UI/Palette.cs`): Settings → *Thema* (`Theme` in settings.json;
+- **Theme** (`UI/ThemeColors.cs` pure, `UI/ThemeManager.cs`, `UI/Palette.cs`): Settings → *Algemeen* → *Thema* (`Theme` in settings.json;
   managed.json `Theme` locks it): `revit` (default) = light on Revit 2023, and on Revit 2024+ Revit's own UI theme
   (`UIThemeManager.CurrentTheme` at startup, `UIControlledApplication.ThemeChanged` live — `#if` off for 2022/2023); `light`;
   `dark` = the original look (only text on blue buttons is now white everywhere). Light follows Revit's Properties/Project Browser look (F5F5F5 / EBEBEB / white
@@ -1012,7 +1015,7 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
   fallback `PickFromReleases`); managed `DisableUpdates`; settings `UpdateCheck`, `UpdateLastChecked`,
   `UpdateLastResult`. UI: `UI/UpdateBanner.cs` (row 1 of the pane; AutomationIds `UpdateText`,
   `UpdateInstall`, `UpdateNotes`, `UpdateLater` — the Border itself has no automation peer), Settings →
-  *Versie en updates* (`SettingsUpdateCheck`, `SettingsUpdateCheckNow`, `SettingsUpdateRollback`,
+  *Over* (`SettingsUpdateCheck`, `SettingsUpdateCheckNow`, `SettingsUpdateRollback`,
   `SettingsUpdateStatus`), Diagnose `== Updates` (+ a `Loader signature` line next to `Signature`).
   Code that looks next to VibeModel.dll (`DocumentIndex.PdfToolPath`) finds what the zip ships in the
   version folder; the user's `<add-in folder>\standards\` is the loader's folder (`AddinStandardsRoot`).
@@ -1043,7 +1046,7 @@ run, every other tool is denied, never prompted) — narrower than `bypassPermis
 VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with
 the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language, approval)` — reply language,
 undo (worded per change-approval policy), ask-first for sheets/shared resources, compact answers, what is never allowed); edit the wording there, both
-backends use it. Settings → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
+backends use it. Settings → *Algemeen* → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
 reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`) —
 the only language source and the only Dutch/English tables; `UI/UiText.cs` just composes them.
 
@@ -1062,15 +1065,14 @@ WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream and the mod
 unchanged; the stored chat JSON only gains the additive turn record (see Chat export). A new command
 gets its step label from `StatusVerbs` (add it to BOTH maps — a test checks).
 
-**Chat export** (Diagnose → *Exporteer chats…* `DiagnoseExportChats`, Settings → *Versie en updates* →
-*Exporteer chats…* `SettingsExportChats` / `SettingsExportChatsStatus`, or `chatlog --export [n|all]`,
+**Chat export** (Diagnose → *Exporteer chats…* `DiagnoseExportChats` — no longer in Settings — or `chatlog --export [n|all]`,
 default the last 20): the saved chats as markdown in `%LOCALAPPDATA%\VibeModel\exports\` — up to 5 chats one
 `chats-<yyyyMMdd-HHmmss>.md` (README on top), more a `.zip` with `chats/<yyyyMMdd-HHmm> <slug>.md` per chat,
 `INDEX.md` (date, chat, project, turns, commands, failed, tokens) and `README.md` (what is in it, the
 upload-to-Claude tip). Per chat: title, dates, project, backend · model, id; per turn the question, the
 commands (table: command, args ≤ 200 chars, ✓/✗ + error, duration; multi-line or longer args in full
 below it, `csharp` for exec), the answer as stored (with the notes between steps) and the pane's token
-line (+ context, `≈ €`). The buttons export every chat and open Explorer on the file (`UI/ChatExportUi.cs`).
+line (+ context, `≈ €`). The button exports every chat and opens Explorer on the file (`UI/ChatExportUi.cs`).
 - **Turn record** (additive, since the chat export): each answer in `chats\<id>.json` carries `steps:[{command, args,
   ok, error, durationMs}]`, `usage:{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
   contextTokens, costUsd}`, `model`, `durationMs` (`ChatSession.Append(role, content, steps, usage, model,

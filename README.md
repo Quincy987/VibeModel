@@ -133,7 +133,7 @@ curl -s "http://localhost:18884/wall?args=0 0 5000 0 3000"  # a wall, in mm
 
 Close to eighty commands cover reading, diagnosing, modelling, sheets, annotation, office standards, project documents, memory and export. The full reference, with every flag, is in [CLAUDE.md](CLAUDE.md).
 
-**Who decides what is kept.** By default every change the AI makes is one Ctrl+Z. With the mode chip next to the paperclip in the chat (or in Settings → *Wijzigingen door de AI*) you can have Revit ask first: a deletion or edit is shown (isolated in the view, counted by category) and kept only when you press *Behouden*. *Alleen opmaak* keeps views, sheets and annotations and refuses any change to the model, *Alleen lezen* refuses every change, and any command can be tried with `?preview=1` to see what it would do without doing it — or tick *Volgend bericht als preview* in the chip's menu to try a whole chat message that way. For `exec`, `apilookup` shows the Revit API of the Revit you run, and a runaway loop stops after 25 s instead of freezing Revit. Every script that changed the model is kept in the project folder (`recipes`), and VibeModel refuses to move base points, unpin datums or links, or edit view templates, also when asked.
+**Who decides what is kept.** By default every change the AI makes is one Ctrl+Z. With the mode chip next to the paperclip in the chat (it remembers your choice for the next Revit start) you can have Revit ask first: a deletion or edit is shown (isolated in the view, counted by category) and kept only when you press *Behouden*. *Alleen opmaak* keeps views, sheets and annotations and refuses any change to the model, *Alleen lezen* refuses every change, and any command can be tried with `?preview=1` to see what it would do without doing it — or tick *Volgend bericht als preview* in the chip's menu to try a whole chat message that way. For `exec`, `apilookup` shows the Revit API of the Revit you run, and a runaway loop stops after 25 s instead of freezing Revit. Every script that changed the model is kept in the project folder (`recipes`), and VibeModel refuses to move base points, unpin datums or links, or edit view templates, also when asked.
 
 ## Your own standards
 
@@ -141,7 +141,7 @@ VibeModel does not know how your office models. You tell it with a **standards p
 
 1. **Copy the sample.** `standards/example-office/` is a complete, fictional pack: `pack.json` (phases, view templates, title block, library paths, link settings), `core.md` (the rules every chat turn gets), topic sheets (`topics/phasing.md`, `sheets.md`, …) and `checks.json` (what `check` audits).
 2. **Fill in your office.** Your phase names, your view templates, where your family library lives, which parameters must be filled. Drop your modelling manual (PDF) next to it and run `standards --index` once: the chat can then quote it by chapter and cite it.
-3. **Point VibeModel at it.** Settings → *Standards pack folder* → your office share. Every modeller gets the same pack without a new add-in release; the add-in mirrors it to the local machine, so a missing VPN only means yesterday's pack stays in force.
+3. **Point VibeModel at it.** Settings → *Standaarden* → the pack folder → your office share. Every modeller gets the same pack without a new add-in release; the add-in mirrors it to the local machine, so a missing VPN only means yesterday's pack stays in force.
 
 https://github.com/user-attachments/assets/01549e12-8f9f-47ff-ae17-dba4e2b72a42
 

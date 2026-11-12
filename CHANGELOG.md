@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed — Instellingen in tabbladen
+- Instellingen heeft nu vijf tabbladen: *Algemeen* (taal, thema), *AI-verbinding* (Claude Code, API-sleutel of een lokaal
+  model; model, API-adres en wachttijd onder *Geavanceerd*), *Dit project* (projectmap, geheugen en journaal), *Standaarden*
+  (kantoorstandaard en de mappen) en *Over* (versie en updates). *Opslaan* staat altijd onderaan in beeld, en alle teksten
+  zijn Nederlands of Engels, wat je bij Taal kiest. Niet verbonden met Claude? Dan opent het venster op *AI-verbinding*.
+- Wat de AI mag wijzigen (*Automatisch* / *Vragen* / *Alleen opmaak* / *Alleen lezen*) kies je alleen nog in de chip onder
+  het invoervak, en die keuze wordt onthouden voor de volgende keer dat je Revit start. Het dubbele blok in Instellingen
+  is weg. Een vergrendeling door Revit-beheer (managed.json) werkt zoals voorheen.
+- *Exporteer chats…* staat alleen nog in Diagnose.
+
 ## v1.2.20 — Schema's, hoeveelheden en aannames (2026-11-12)
 
 ### Added — schedules and drawings say what they leave out

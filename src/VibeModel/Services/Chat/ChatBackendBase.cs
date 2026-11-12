@@ -348,7 +348,7 @@ namespace VibeModel.Services.Chat
         internal const string DerivedCoverageRule =
             "When a command output carries a `-- schedules:` or `-- views:` line (`schedules` / `views` in JSON: new elements an existing schedule leaves out, or a view on a sheet hides), if the user wanted those elements in that overview, fix it in the same turn (the schedule's filter or phase, rebar.SetUnobscuredInView(view, true) via exec), following the Ask first rules for sheets; otherwise tell the user in one line what is missing where. Never report that schedule or drawing as complete.";
 
-        // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
+        // Plan 15: "Wijzigingen door de AI" (the mode chip). Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
         internal const string UndoRule =
@@ -358,13 +358,13 @@ namespace VibeModel.Services.Chat
         internal const string ApprovalWaitRule =
             "delete, set, phase, join, unjoin, an exec that changes the model and batches holding them wait for the user's Keep/Discard in Revit: when your shell tool has a timeout, set it to 600000 ms for those calls. If a call still times out (APPROVAL_PENDING), call approvals to learn the outcome; never re-run the change.";
         internal const string ApprovalAnnotateRule =
-            "Every kept change through VibeModel is one Revit undo step (Ctrl+Z). VibeModel is set to annotation-only (Settings → Wijzigingen door de AI): views, sheets, schedules and annotations (text, tags, dimensions, spot elevations, filled regions) are made and kept; a change to a model element is rolled back and refused (ANNOTATION_ONLY). After a refusal: say so, do not retry or work around it with exec, and offer the user to switch the mode in the chat's mode chip.";
+            "Every kept change through VibeModel is one Revit undo step (Ctrl+Z). VibeModel is set to annotation-only (the mode chip under the chat input): views, sheets, schedules and annotations (text, tags, dimensions, spot elevations, filled regions) are made and kept; a change to a model element is rolled back and refused (ANNOTATION_ONLY). After a refusal: say so, do not retry or work around it with exec, and offer the user to switch the mode in the chat's mode chip.";
         internal const string ForbiddenRule =
             "Never move the project base point or survey point, change the shared coordinates, unpin grids, levels, links or imports, or edit a view template, even when the user asks: VibeModel refuses it (FORBIDDEN). This goes before every other rule here. Say that Revit-beheer does this; do not work around it.";
         internal const string ExecRecipeRule =
             "Begin every exec snippet with `// Doel: <what it does, in the user's words>` and `// Aannames: <units, levels, types, phases you assumed>` on their OWN lines (real newlines: in a one-line --data-urlencode argument or a batch line a typed \\n is not a newline, so use `/* Doel: … */ /* Aannames: … */` there). They are saved with the script so a colleague can read, re-run or change it without the AI.";
         internal const string ApprovalReadOnlyRule =
-            "VibeModel is set to read-only (Settings → Wijzigingen door de AI): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
+            "VibeModel is set to read-only (the mode chip under the chat input): every change is rolled back and refused (READ_ONLY) with what it would have changed. Read and answer as usual; for a requested change, say it is blocked by that setting and what it would change — do not retry.";
 
         // Plan 21 (interview Ruben Wolbers, 2026-11-12): sheets annotated from a specification came out
         // "een rommeltje" — tags, dimensions and texts on top of each other; the chat saw the overlap but

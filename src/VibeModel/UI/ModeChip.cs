@@ -13,8 +13,9 @@ namespace VibeModel.UI
 {
     /// <summary>
     /// Plan 20: the mode chip in the chat input's footer (Cursor-style). Shows the change-approval
-    /// mode in force — Automatisch / Vragen / Alleen opmaak / Alleen lezen — and opens a menu to pick it for this
-    /// Revit session (<see cref="ChangeApprovalPolicy.ChooseForSession"/>) and to send the next
+    /// mode in force — Automatisch / Vragen / Alleen opmaak / Alleen lezen — and opens a menu to pick it: for this
+    /// Revit session and the next ones (<see cref="ChangeApprovalPolicy.ChooseAndRemember"/>; the only place to
+    /// choose it since Settings lost its section) and to send the next
     /// message as a preview. Locked (greyed, no menu) when managed.json sets the mode.
     /// The state lives in <see cref="ChangeApprovalPolicy"/>; <see cref="Refresh"/> re-reads it.
     /// </summary>
@@ -101,7 +102,7 @@ namespace VibeModel.UI
             set { _previewNext = value; Refresh(); }
         }
 
-        /// <summary>Re-reads the policy (Settings, the approval window's checkbox, managed.json may have changed it).</summary>
+        /// <summary>Re-reads the policy (the approval window's checkbox or managed.json may have changed it).</summary>
         public void Refresh()
         {
             var language = Strings.Current;
@@ -251,7 +252,8 @@ namespace VibeModel.UI
             row.MouseLeave += (s, e) => row.Background = mode == Shown ? RowHover : Brushes.Transparent;
             row.Click += (s, e) =>
             {
-                ChangeApprovalPolicy.ChooseForSession(mode);
+                // Remembered for the next Revit start too: the chip is the only place to choose.
+                ChangeApprovalPolicy.ChooseAndRemember(mode);
                 CloseMenu();
                 Refresh();
                 ModeChanged?.Invoke(this, EventArgs.Empty);

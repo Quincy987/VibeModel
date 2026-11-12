@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 namespace VibeModel.Services.Claude
 {
     /// <summary>
-    /// Settings → "Wijzigingen door de AI" (plan 15). <see cref="Auto"/> is today's behaviour and
+    /// "Wijzigingen door de AI" (plan 15), chosen in the chat's mode chip (plan 20). <see cref="Auto"/> is today's behaviour and
     /// the default: every change is kept and is one Ctrl+Z.
     /// </summary>
     public enum ChangeApprovalMode
@@ -92,7 +92,8 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// The mode chosen in the chat pane's mode chip for the rest of this Revit session; null =
-        /// none (settings decide). managed.json still wins over it. Settings shows and clears it.
+        /// none (settings decide). managed.json still wins over it. The chip also stores its pick in
+        /// settings.json (<see cref="ChooseAndRemember"/>), so the next Revit session starts with it.
         /// </summary>
         public static ChangeApprovalMode? SessionOverride
         {
@@ -114,6 +115,18 @@ namespace VibeModel.Services.Claude
         {
             if (mode == ChangeApprovalMode.Ask) DontAskThisSession = false;
             SessionOverride = mode;
+        }
+
+        /// <summary>
+        /// The chip's pick, also remembered: <see cref="ChooseForSession"/> for this session (so an
+        /// environment variable cannot override what the user just chose), and settings.json for the
+        /// next Revit start (Auto removes the key). The chip is the only place the user chooses the
+        /// mode; managed.json locks it (the chip then has no menu).
+        /// </summary>
+        public static void ChooseAndRemember(ChangeApprovalMode mode)
+        {
+            ChooseForSession(mode);
+            Infrastructure.SettingsManager.SetChangeApproval(mode);
         }
 
         // Plan 20: "next message as preview". The pane arms the flag before every send (true or
@@ -364,10 +377,10 @@ namespace VibeModel.Services.Claude
 
         public const string ReadOnlyCode = "READ_ONLY";
         public const string ReadOnlyMessage = "VibeModel is set to read-only; nothing was changed.";
-        public const string ReadOnlyHint = "Settings → Wijzigingen door de AI.";
+        public const string ReadOnlyHint = "the user switches the mode in the chat's mode chip (under the input box).";
 
         public const string AnnotationOnlyCode = "ANNOTATION_ONLY";
-        public const string AnnotationOnlyHint = "Settings → Wijzigingen door de AI, or ask the user.";
+        public const string AnnotationOnlyHint = "ask the user; they switch the mode in the chat's mode chip (under the input box).";
 
         /// <summary>"VibeModel is set to annotation-only; this change touched the model (added 1 (Walls 1)) and was rolled back."</summary>
         public static string AnnotationOnlyMessage(ChangeSetSummary changes)
@@ -384,7 +397,7 @@ namespace VibeModel.Services.Claude
 
         /// <summary>exec's hint when a snippet saves, closes or synchronizes inside a run group (Revit refuses that).</summary>
         public const string InRunGroupHint =
-            "saving, closing or synchronizing is not allowed while VibeModel previews a change or waits for the user's approval (the run is one transaction group) - switch Settings → Wijzigingen door de AI to \"Nooit vragen\" for this snippet, or let the user save.";
+            "saving, closing or synchronizing is not allowed while VibeModel previews a change or waits for the user's approval (the run is one transaction group) - the user switches the chat's mode chip to \"Automatisch\" for this snippet, or saves themselves.";
 
         private static readonly Regex SaveOrClose = new Regex(
             @"\.\s*(Save|SaveAs|Close|SynchronizeWithCentral)\s*\(", RegexOptions.Compiled);

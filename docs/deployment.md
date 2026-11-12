@@ -77,8 +77,8 @@ against the manifest, unpacks it into `versions\Revit<year>\<version>\` and poin
 **It is active after the next Revit start** — Revit is never restarted for the user, the running
 version is never touched and nothing changes in the model. The loader stays the same file, so Revit
 does **not** ask *Always Load* again (measured with unsigned test builds: an update to a new add-in
-version started without a prompt). The running version, the new one and one older version are kept; Settings → *Versie en
-updates* offers *Nu controleren* and *Terug naar &lt;version&gt;* (a rollback, at the next start). In
+version started without a prompt). The running version, the new one and one older version are kept; Settings → *Over* (*About*)
+offers *Nu controleren* and *Terug naar &lt;version&gt;* (a rollback, at the next start). In
 the chat or a terminal: `update`, `update --install`, `update --rollback`.
 
 A download that does not match the manifest is deleted and nothing is installed ("the download did
@@ -132,7 +132,7 @@ VibeModel can talk to Claude three ways. In the default `auto` mode it takes the
    proxies through `HTTPS_PROXY` with basic credentials only, **not NTLM/Kerberos**; VibeModel hands it
    the Windows proxy address (`HTTPS_PROXY`, and `NO_PROXY` for 127.0.0.1/localhost) when none is
    set. Git for Windows is not required.
-3. A local LLM server (llama.cpp, Ollama, LM Studio) — Settings → Local LLM.
+3. A local LLM server (llama.cpp, Ollama, LM Studio) — Settings → *AI-verbinding* → *Lokaal model*.
 
 When nothing is configured, the chat pane shows **Connect to Claude**: the user pastes a key (checked
 against the API right away — free, no tokens — and stored DPAPI-encrypted only when accepted), or

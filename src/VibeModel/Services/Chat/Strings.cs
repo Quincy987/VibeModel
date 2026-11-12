@@ -132,7 +132,7 @@ namespace VibeModel.Services.Chat
         public const string WizardRecheck = "WizardRecheck";
         public const string WizardLocal = "WizardLocal";
         public const string WizardFailedToStart = "WizardFailedToStart";       // {0} = reason
-        // Change approval (plan 15): the approval window and the Settings section.
+        // Change approval (plan 15): the approval window.
         public const string ApprovalTitle = "ApprovalTitle";
         public const string ApprovalAdded = "ApprovalAdded";
         public const string ApprovalModified = "ApprovalModified";
@@ -148,18 +148,75 @@ namespace VibeModel.Services.Chat
         public const string ApprovalDontAsk = "ApprovalDontAsk";
         public const string ApprovalDiscard = "ApprovalDiscard";
         public const string ApprovalKeep = "ApprovalKeep";
-        public const string SettingApprovalTitle = "SettingApprovalTitle";
-        public const string SettingApprovalAuto = "SettingApprovalAuto";
-        public const string SettingApprovalAutoHint = "SettingApprovalAutoHint";
-        public const string SettingApprovalAsk = "SettingApprovalAsk";
-        public const string SettingApprovalAskHint = "SettingApprovalAskHint";
-        public const string SettingApprovalAnnotate = "SettingApprovalAnnotate";
-        public const string SettingApprovalAnnotateHint = "SettingApprovalAnnotateHint";
-        public const string SettingApprovalReadOnly = "SettingApprovalReadOnly";
-        public const string SettingApprovalReadOnlyHint = "SettingApprovalReadOnlyHint";
-        public const string SettingApprovalSession = "SettingApprovalSession";
-        public const string SettingApprovalEnv = "SettingApprovalEnv";          // {0} = mode, {1} = variable
-        public const string SettingApprovalChip = "SettingApprovalChip";        // {0} = mode name
+        // Settings window (tabs, footer, every page's own texts).
+        public const string SettingsWindowTitle = "SettingsWindowTitle";
+        public const string SettingsTabGeneral = "SettingsTabGeneral";
+        public const string SettingsTabConnection = "SettingsTabConnection";
+        public const string SettingsTabProject = "SettingsTabProject";
+        public const string SettingsTabStandards = "SettingsTabStandards";
+        public const string SettingsTabAbout = "SettingsTabAbout";
+        public const string SettingsSave = "SettingsSave";
+        public const string SettingsSaveHint = "SettingsSaveHint";
+        public const string SettingsSaved = "SettingsSaved";
+        public const string SettingsBrowse = "SettingsBrowse";
+        public const string SettingsClear = "SettingsClear";
+        public const string SettingsAdvanced = "SettingsAdvanced";
+        public const string SettingsPickFileInFolder = "SettingsPickFileInFolder";
+        public const string SettingsAllFiles = "SettingsAllFiles";
+        public const string SettingsDocumentsFilter = "SettingsDocumentsFilter";
+        public const string SettingsLanguageHint = "SettingsLanguageHint";
+        public const string SettingsConnectionTitle = "SettingsConnectionTitle";
+        public const string SettingsConnectionHint = "SettingsConnectionHint";
+        public const string SettingsBackendManaged = "SettingsBackendManaged";
+        public const string SettingsLocalTab = "SettingsLocalTab";
+        public const string SettingsCliHint = "SettingsCliHint";
+        public const string SettingsCliLooking = "SettingsCliLooking";
+        public const string SettingsCliFound = "SettingsCliFound";
+        public const string SettingsCliNotFound = "SettingsCliNotFound";
+        public const string SettingsCliDisabled = "SettingsCliDisabled";
+        public const string SettingsApiTitle = "SettingsApiTitle";
+        public const string SettingsApiHint = "SettingsApiHint";
+        public const string SettingsApiInUse = "SettingsApiInUse";
+        public const string SettingsApiFromEnv = "SettingsApiFromEnv";
+        public const string SettingsApiValidate = "SettingsApiValidate";
+        public const string SettingsApiModel = "SettingsApiModel";
+        public const string SettingsApiEndpoint = "SettingsApiEndpoint";
+        public const string SettingsApiKeyEmpty = "SettingsApiKeyEmpty";
+        public const string SettingsApiChecking = "SettingsApiChecking";
+        public const string SettingsLocalHint = "SettingsLocalHint";
+        public const string SettingsLocalEndpoint = "SettingsLocalEndpoint";
+        public const string SettingsLocalTest = "SettingsLocalTest";
+        public const string SettingsLocalModel = "SettingsLocalModel";
+        public const string SettingsLocalTools = "SettingsLocalTools";
+        public const string SettingsLocalToolsHint = "SettingsLocalToolsHint";
+        public const string SettingsLocalTimeout = "SettingsLocalTimeout";
+        public const string SettingsLocalNoEndpoint = "SettingsLocalNoEndpoint";
+        public const string SettingsLocalTesting = "SettingsLocalTesting";
+        public const string SettingsLocalHealthy = "SettingsLocalHealthy";
+        public const string SettingsLocalModelFound = "SettingsLocalModelFound";
+        public const string SettingsLocalNoModels = "SettingsLocalNoModels";
+        public const string SettingsLocalConnected = "SettingsLocalConnected";
+        public const string SettingsLocalUnreachable = "SettingsLocalUnreachable";
+        public const string SettingsLocalError = "SettingsLocalError";
+        public const string SettingsLocalUnknownModel = "SettingsLocalUnknownModel";
+        public const string SettingsProjectTitle = "SettingsProjectTitle";
+        public const string SettingsProjectNoModel = "SettingsProjectNoModel";
+        public const string SettingsProjectFolder = "SettingsProjectFolder";
+        public const string SettingsProjectFolderHint = "SettingsProjectFolderHint";
+        public const string SettingsProjectPickTitle = "SettingsProjectPickTitle";
+        public const string SettingsProjectPickName = "SettingsProjectPickName";
+        public const string SettingsProjectNotSet = "SettingsProjectNotSet";
+        public const string SettingsProjectMissing = "SettingsProjectMissing";
+        public const string SettingsProjectUsing = "SettingsProjectUsing";
+        public const string SettingsProjectNoFolder = "SettingsProjectNoFolder";
+        public const string SettingsProjectSourceModel = "SettingsProjectSourceModel";
+        public const string SettingsProjectSourceConfigured = "SettingsProjectSourceConfigured";
+        public const string SettingsStandardsTitle = "SettingsStandardsTitle";
+        public const string SettingsStandardsHint = "SettingsStandardsHint";
+        public const string SettingsStandardsEnabled = "SettingsStandardsEnabled";
+        public const string SettingsStandardsPack = "SettingsStandardsPack";
+        public const string SettingsStandardsPackTip = "SettingsStandardsPackTip";
+        public const string SettingsStandardsDocs = "SettingsStandardsDocs";
         // Mode chip in the chat input (plan 20).
         public const string ModeAuto = "ModeAuto";
         public const string ModeAutoHint = "ModeAutoHint";
@@ -186,7 +243,7 @@ namespace VibeModel.Services.Chat
         public const string DiagnoseClose = "DiagnoseClose";
         public const string DiagnoseSendHint = "DiagnoseSendHint";
 
-        // In-app updates (plan 19): the chat pane's banner and Settings → Updates.
+        // In-app updates (plan 19): the chat pane's banner and Settings → About.
         public const string UpdateAvailable = "UpdateAvailable";               // {0} = version, {1} = size
         public const string UpdateInstall = "UpdateInstall";
         public const string UpdateInstallTip = "UpdateInstallTip";
@@ -216,7 +273,7 @@ namespace VibeModel.Services.Chat
         public const string SettingsUpdateRollback = "SettingsUpdateRollback";   // {0} = version
         public const string SettingsUpdatePending = "SettingsUpdatePending";     // {0} = version
 
-        // Chat export (Diagnose / Settings → Exporteer chats…, chatlog --export).
+        // Chat export (Diagnose → Exporteer chats…, chatlog --export).
         public const string ExportChats = "ExportChats";
         public const string ExportChatsTip = "ExportChatsTip";
         public const string ExportChatsBusy = "ExportChatsBusy";
@@ -256,7 +313,7 @@ namespace VibeModel.Services.Chat
                 { StaleResume, "[Resumed session was stale - starting fresh chat.]" },
                 { IdleStoppedMidTool, "[Stopped: task went idle for 3 min mid-tool. Session was reset to avoid a broken transcript - please rephrase your request.]" },
                 { IdleStopped, "[Stopped: task went idle for 3 min. Say \"continue\" to resume.]" },
-                { ApiKeyMissing, "Not connected to Claude yet. Use the Connect to Claude card in the chat (New Chat shows it), or Settings → Anthropic API." },
+                { ApiKeyMissing, "Not connected to Claude yet. Use the Connect to Claude card in the chat (New Chat shows it), or Settings → AI connection → Anthropic API." },
                 { LocalEndpointMissing, "Local LLM endpoint not configured. Click Settings to set it up." },
                 { LocalNotReachable, "Local LLM not reachable at {0}. Is the server running?" },
                 { LocalError, "Local LLM error {0}: {1}" },
@@ -349,7 +406,7 @@ namespace VibeModel.Services.Chat
                 { WizardCliLoginHint, "Log in opens a window: follow the steps (a browser opens for your Claude account), then close it and press Use Claude Code." },
                 { WizardCliUse, "Use Claude Code" },
                 { WizardRecheck, "Check again" },
-                { WizardLocal, "Local model (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
+                { WizardLocal, "Local model (llama.cpp, Ollama, LM Studio): Settings → AI connection → Local model" },
                 { WizardFailedToStart, "Could not start it: {0}" },
                 { ApprovalTitle, "VibeModel wants to keep this change" },
                 { ApprovalAdded, "Added" },
@@ -366,18 +423,74 @@ namespace VibeModel.Services.Chat
                 { ApprovalDontAsk, "Don't ask again this Revit session" },
                 { ApprovalDiscard, "Discard" },
                 { ApprovalKeep, "Keep" },
-                { SettingApprovalTitle, "Changes by the AI" },
-                { SettingApprovalAuto, "Never ask - every change is one Ctrl+Z (default)" },
-                { SettingApprovalAutoHint, "As before: the AI carries out changes directly." },
-                { SettingApprovalAsk, "Ask before a deletion or edit is kept" },
-                { SettingApprovalAskHint, "delete, parameter values, phases, joins and exec first show what changes; new elements never ask." },
-                { SettingApprovalAnnotate, "Annotation only - views, sheets and annotations" },
-                { SettingApprovalAnnotateHint, "The AI makes views, sheets and annotations; a change to a model element is rolled back and refused." },
-                { SettingApprovalReadOnly, "Read-only - the AI may not change anything" },
-                { SettingApprovalReadOnlyHint, "For viewers: every change is rolled back and refused; reading still works." },
-                { SettingApprovalSession, "Not asking for the rest of this Revit session (ticked in the approval window) - untick to ask again" },
-                { SettingApprovalEnv, "In force now: '{0}' from the environment variable {1}, which overrides the choice above." },
-                { SettingApprovalChip, "This Revit session: {0} (chosen in the chat) - untick to follow the choice above again" },
+                { SettingsWindowTitle, "VibeModel – Settings" },
+                { SettingsTabGeneral, "General" },
+                { SettingsTabConnection, "AI connection" },
+                { SettingsTabProject, "This project" },
+                { SettingsTabStandards, "Standards" },
+                { SettingsTabAbout, "About" },
+                { SettingsSave, "Save" },
+                { SettingsSaveHint, "Buttons inside a tab act at once; everything else is saved with Save." },
+                { SettingsSaved, "Settings saved." },
+                { SettingsBrowse, "Browse…" },
+                { SettingsClear, "Clear" },
+                { SettingsAdvanced, "Advanced" },
+                { SettingsPickFileInFolder, "Pick a file inside the folder" },
+                { SettingsAllFiles, "All files" },
+                { SettingsDocumentsFilter, "Documents" },
+                { SettingsLanguageHint, "The chat replies in the language you write in; this is the language when that is unclear, and the language of the pane's own texts." },
+                { SettingsConnectionTitle, "How VibeModel talks to the AI" },
+                { SettingsConnectionHint, "Pick one. If you switch, the chat starts over after Save." },
+                { SettingsBackendManaged, "Connection: {0} - {1}" },
+                { SettingsLocalTab, "Local model" },
+                { SettingsCliHint, "Uses Claude Code with your own Claude subscription; the AI then carries out the steps in Revit itself.\nInstall it without administrator rights: the Connect to Claude card in the chat, or in PowerShell:" },
+                { SettingsCliLooking, "Looking for Claude Code…" },
+                { SettingsCliFound, "Found: Claude Code {0}\n{1}" },
+                { SettingsCliNotFound, "Not found on this computer" },
+                { SettingsCliDisabled, "Switched off on this computer ({0})" },
+                { SettingsApiTitle, "Anthropic API key" },
+                { SettingsApiHint, "Get your key from console.anthropic.com (or from your administrator). It is stored encrypted for your Windows account." },
+                { SettingsApiInUse, "In use: {0} - {1}" },
+                { SettingsApiFromEnv, "from the ANTHROPIC_API_KEY variable" },
+                { SettingsApiValidate, "Test key" },
+                { SettingsApiModel, "Model (empty = {0})" },
+                { SettingsApiEndpoint, "API address, for a company gateway (empty = {0})" },
+                { SettingsApiKeyEmpty, "Enter an API key first." },
+                { SettingsApiChecking, "Testing the key…" },
+                { SettingsLocalHint, "A language model on this computer or in your network (an OpenAI-compatible server such as llama.cpp, Ollama or LM Studio)." },
+                { SettingsLocalEndpoint, "Server address" },
+                { SettingsLocalTest, "Test connection" },
+                { SettingsLocalModel, "Model name (optional; empty = the server's default)" },
+                { SettingsLocalTools, "Let the model run Revit commands (tool use)" },
+                { SettingsLocalToolsHint, "Only when the model supports function calling (e.g. Qwen 3.5 9B+, Mistral 7B+)." },
+                { SettingsLocalTimeout, "Wait for an answer: " },
+                { SettingsLocalNoEndpoint, "Enter a server address first." },
+                { SettingsLocalTesting, "Testing the connection…" },
+                { SettingsLocalHealthy, "Connected - the server is running." },
+                { SettingsLocalModelFound, "Connected - model: {0}" },
+                { SettingsLocalNoModels, "Connected (the server lists no models)." },
+                { SettingsLocalConnected, "Connected." },
+                { SettingsLocalUnreachable, "No server answers at {0}. Is it running?" },
+                { SettingsLocalError, "Connection error: {0}" },
+                { SettingsLocalUnknownModel, "unknown" },
+                { SettingsProjectTitle, "This project: {0}" },
+                { SettingsProjectNoModel, "Open a model to set its project folder." },
+                { SettingsProjectFolder, "Project folder" },
+                { SettingsProjectFolderHint, "Reference documents the chat can list and read (specification, memos, drawings, reports). Default: the folder the model is in." },
+                { SettingsProjectPickTitle, "Open the project folder, then click Open" },
+                { SettingsProjectPickName, "Select this folder" },
+                { SettingsProjectNotSet, "Not set - this model has no folder on disk (not saved yet, or a cloud model). Browse to pick one." },
+                { SettingsProjectMissing, "Configured folder not found: {0} - {1}. Browse or Clear." },
+                { SettingsProjectUsing, "using {0}" },
+                { SettingsProjectNoFolder, "no folder" },
+                { SettingsProjectSourceModel, "(the model's folder)" },
+                { SettingsProjectSourceConfigured, "(set here)" },
+                { SettingsStandardsTitle, "Office standards" },
+                { SettingsStandardsHint, "A standards pack teaches the chat how your office models: phases, view templates, naming and checks. It is only used for models it fits." },
+                { SettingsStandardsEnabled, "Apply the office standards (rules in the chat, default phase, checks)" },
+                { SettingsStandardsPack, "Folder of the standards pack (with pack.json, or a folder of packs). Empty = the copy on this computer. A network folder is copied to this computer in the background." },
+                { SettingsStandardsPackTip, "Empty = {0}" },
+                { SettingsStandardsDocs, "Folder with the source documents (the PDFs of the modelling manual). Empty = what the pack names." },
                 { ModeAuto, "Automatic" },
                 { ModeAutoHint, "Changes applied at once · one Ctrl+Z" },
                 { ModeAsk, "Ask" },
@@ -389,7 +502,7 @@ namespace VibeModel.Services.Chat
                 { ModePreviewNext, "Next message as preview" },
                 { ModePreviewNextHint, "run, report, roll back" },
                 { ModePreviewBadge, "preview" },
-                { ModeChipTip, "Changes by the AI: {0}. Click to change it for this Revit session." },
+                { ModeChipTip, "Changes by the AI: {0}. Click to change it; the choice is remembered." },
                 { ModeChipManaged, "Changes by the AI: {0} - managed by your Revit administrators" },
                 { SendTip, "Send (Enter)" },
                 { DiagnoseTitle, "VibeModel diagnosis" },
@@ -469,7 +582,7 @@ namespace VibeModel.Services.Chat
                 { StaleResume, "[De vorige sessie was verlopen - er is een nieuwe chat gestart.]" },
                 { IdleStoppedMidTool, "[Gestopt: de taak stond 3 minuten stil midden in een stap. De sessie is opnieuw gestart om een kapot gesprek te voorkomen - formuleer je vraag opnieuw.]" },
                 { IdleStopped, "[Gestopt: de taak stond 3 minuten stil. Typ \"ga door\" om verder te gaan.]" },
-                { ApiKeyMissing, "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude in de chat (New Chat toont hem), of Settings → Anthropic API." },
+                { ApiKeyMissing, "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude in de chat (New Chat toont hem), of Settings → AI-verbinding → Anthropic API." },
                 { LocalEndpointMissing, "Er is geen adres voor het lokale taalmodel ingesteld. Klik op Settings om het in te stellen." },
                 { LocalNotReachable, "Het lokale taalmodel is niet bereikbaar op {0}. Draait de server?" },
                 { LocalError, "Fout van het lokale taalmodel {0}: {1}" },
@@ -562,7 +675,7 @@ namespace VibeModel.Services.Chat
                 { WizardCliLoginHint, "Inloggen opent een venster: volg de stappen (er opent een browser voor je Claude-account), sluit het daarna en klik op Claude Code gebruiken." },
                 { WizardCliUse, "Claude Code gebruiken" },
                 { WizardRecheck, "Opnieuw controleren" },
-                { WizardLocal, "Lokaal taalmodel (llama.cpp, Ollama, LM Studio): Settings → Local LLM" },
+                { WizardLocal, "Lokaal taalmodel (llama.cpp, Ollama, LM Studio): Settings → AI-verbinding → Lokaal model" },
                 { WizardFailedToStart, "Kon het niet starten: {0}" },
                 { ApprovalTitle, "VibeModel wil deze wijziging behouden" },
                 { ApprovalAdded, "Toegevoegd" },
@@ -579,18 +692,74 @@ namespace VibeModel.Services.Chat
                 { ApprovalDontAsk, "Deze Revit-sessie niet meer vragen" },
                 { ApprovalDiscard, "Ongedaan maken" },
                 { ApprovalKeep, "Behouden" },
-                { SettingApprovalTitle, "Wijzigingen door de AI" },
-                { SettingApprovalAuto, "Nooit vragen - elke wijziging is één Ctrl+Z (standaard)" },
-                { SettingApprovalAutoHint, "Zoals altijd: de AI voert wijzigingen direct uit." },
-                { SettingApprovalAsk, "Vragen voordat een verwijdering of bewerking blijft staan" },
-                { SettingApprovalAskHint, "Verwijderen, parameterwaarden, fases, joins en exec tonen eerst wat er verandert; nieuwe elementen vragen nooit." },
-                { SettingApprovalAnnotate, "Alleen opmaak - views, bladen en annotaties" },
-                { SettingApprovalAnnotateHint, "De AI maakt views, bladen en annotaties; een wijziging aan een modelelement wordt teruggedraaid en geweigerd." },
-                { SettingApprovalReadOnly, "Alleen lezen - de AI mag niets wijzigen" },
-                { SettingApprovalReadOnlyHint, "Voor meekijkers: elke wijziging wordt teruggedraaid en geweigerd; lezen kan wel." },
-                { SettingApprovalSession, "Deze Revit-sessie wordt niet meer gevraagd (aangevinkt in het venster) - vink uit om weer te vragen" },
-                { SettingApprovalEnv, "Nu in werking: '{0}' uit de omgevingsvariabele {1}, die de keuze hierboven overschrijft." },
-                { SettingApprovalChip, "Deze Revit-sessie: {0} (gekozen in de chat) - vink uit om weer de keuze hierboven te volgen" },
+                { SettingsWindowTitle, "VibeModel – Instellingen" },
+                { SettingsTabGeneral, "Algemeen" },
+                { SettingsTabConnection, "AI-verbinding" },
+                { SettingsTabProject, "Dit project" },
+                { SettingsTabStandards, "Standaarden" },
+                { SettingsTabAbout, "Over" },
+                { SettingsSave, "Opslaan" },
+                { SettingsSaveHint, "Knoppen in een tabblad werken meteen; de rest bij Opslaan." },
+                { SettingsSaved, "Instellingen opgeslagen." },
+                { SettingsBrowse, "Bladeren…" },
+                { SettingsClear, "Wissen" },
+                { SettingsAdvanced, "Geavanceerd" },
+                { SettingsPickFileInFolder, "Kies een bestand in de map" },
+                { SettingsAllFiles, "Alle bestanden" },
+                { SettingsDocumentsFilter, "Documenten" },
+                { SettingsLanguageHint, "De chat antwoordt in de taal waarin je schrijft; dit is de taal als dat niet duidelijk is, en de taal van de vaste teksten in het venster." },
+                { SettingsConnectionTitle, "Hoe VibeModel met de AI praat" },
+                { SettingsConnectionHint, "Kies er één. Wissel je, dan begint de chat na Opslaan opnieuw." },
+                { SettingsBackendManaged, "Verbinding: {0} - {1}" },
+                { SettingsLocalTab, "Lokaal model" },
+                { SettingsCliHint, "Gebruikt Claude Code met je eigen Claude-abonnement; de AI voert de stappen in Revit dan zelf uit.\nInstalleren zonder beheerdersrechten: de kaart Verbind met Claude in de chat, of in PowerShell:" },
+                { SettingsCliLooking, "Claude Code zoeken…" },
+                { SettingsCliFound, "Gevonden: Claude Code {0}\n{1}" },
+                { SettingsCliNotFound, "Niet gevonden op deze computer" },
+                { SettingsCliDisabled, "Uitgezet op deze computer ({0})" },
+                { SettingsApiTitle, "Anthropic API-sleutel" },
+                { SettingsApiHint, "Je sleutel krijg je op console.anthropic.com (of van je beheerder). Hij wordt versleuteld bewaard voor jouw Windows-account." },
+                { SettingsApiInUse, "In gebruik: {0} - {1}" },
+                { SettingsApiFromEnv, "uit de variabele ANTHROPIC_API_KEY" },
+                { SettingsApiValidate, "Sleutel testen" },
+                { SettingsApiModel, "Model (leeg = {0})" },
+                { SettingsApiEndpoint, "API-adres, voor een bedrijfsgateway (leeg = {0})" },
+                { SettingsApiKeyEmpty, "Vul eerst een API-sleutel in." },
+                { SettingsApiChecking, "Sleutel testen…" },
+                { SettingsLocalHint, "Een taalmodel op deze computer of in het netwerk (een OpenAI-compatibele server, zoals llama.cpp, Ollama of LM Studio)." },
+                { SettingsLocalEndpoint, "Serveradres" },
+                { SettingsLocalTest, "Verbinding testen" },
+                { SettingsLocalModel, "Modelnaam (optioneel; leeg = wat de server standaard gebruikt)" },
+                { SettingsLocalTools, "Het model Revit-commando's laten uitvoeren (tool use)" },
+                { SettingsLocalToolsHint, "Alleen als het model function calling ondersteunt (bijv. Qwen 3.5 9B+, Mistral 7B+)." },
+                { SettingsLocalTimeout, "Wachten op een antwoord: " },
+                { SettingsLocalNoEndpoint, "Vul eerst een serveradres in." },
+                { SettingsLocalTesting, "Verbinding testen…" },
+                { SettingsLocalHealthy, "Verbonden - de server draait." },
+                { SettingsLocalModelFound, "Verbonden - model: {0}" },
+                { SettingsLocalNoModels, "Verbonden (de server noemt geen modellen)." },
+                { SettingsLocalConnected, "Verbonden." },
+                { SettingsLocalUnreachable, "Op {0} antwoordt geen server. Draait hij?" },
+                { SettingsLocalError, "Verbindingsfout: {0}" },
+                { SettingsLocalUnknownModel, "onbekend" },
+                { SettingsProjectTitle, "Dit project: {0}" },
+                { SettingsProjectNoModel, "Open een model om de projectmap in te stellen." },
+                { SettingsProjectFolder, "Projectmap" },
+                { SettingsProjectFolderHint, "Referentiedocumenten die de chat kan opzoeken en lezen (bestek, memo's, DO-tekening, rapporten). Standaard: de map waar het model in staat." },
+                { SettingsProjectPickTitle, "Open de projectmap en klik op Openen" },
+                { SettingsProjectPickName, "Deze map kiezen" },
+                { SettingsProjectNotSet, "Niet ingesteld - dit model staat niet in een map (nog niet opgeslagen, of een cloudmodel). Kies er een met Bladeren." },
+                { SettingsProjectMissing, "Ingestelde map niet gevonden: {0} - {1}. Kies Bladeren of Wissen." },
+                { SettingsProjectUsing, "nu {0}" },
+                { SettingsProjectNoFolder, "geen map" },
+                { SettingsProjectSourceModel, "(map van het model)" },
+                { SettingsProjectSourceConfigured, "(ingesteld)" },
+                { SettingsStandardsTitle, "Kantoorstandaard" },
+                { SettingsStandardsHint, "Een standaardenpakket leert de chat hoe jullie kantoor modelleert: fases, view templates, naamgeving en controles. Het wordt alleen gebruikt bij modellen waar het bij past." },
+                { SettingsStandardsEnabled, "Kantoorstandaard toepassen (regels in de chat, standaardfase, controles)" },
+                { SettingsStandardsPack, "Map van het standaardenpakket (met pack.json, of een map met pakketten). Leeg = de kopie op deze computer. Een netwerkmap wordt op de achtergrond naar deze computer gekopieerd." },
+                { SettingsStandardsPackTip, "Leeg = {0}" },
+                { SettingsStandardsDocs, "Map met de brondocumenten (de pdf's van de modelleerhandleiding). Leeg = wat het pakket aangeeft." },
                 { ModeAuto, "Automatisch" },
                 { ModeAutoHint, "Wijzigingen direct doorvoeren · één Ctrl+Z" },
                 { ModeAsk, "Vragen" },
@@ -602,7 +771,7 @@ namespace VibeModel.Services.Chat
                 { ModePreviewNext, "Volgend bericht als preview" },
                 { ModePreviewNextHint, "uitvoeren, rapporteren, terugdraaien" },
                 { ModePreviewBadge, "voorbeeld" },
-                { ModeChipTip, "Wijzigingen door de AI: {0}. Klik om het voor deze Revit-sessie te wijzigen." },
+                { ModeChipTip, "Wijzigingen door de AI: {0}. Klik om het te wijzigen; de keuze wordt onthouden." },
                 { ModeChipManaged, "Wijzigingen door de AI: {0} - beheerd door Revit-beheer" },
                 { SendTip, "Versturen (Enter)" },
                 { DiagnoseTitle, "VibeModel-diagnose" },

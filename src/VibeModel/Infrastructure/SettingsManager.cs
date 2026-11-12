@@ -190,7 +190,7 @@ namespace VibeModel.Infrastructure
         }
 
         /// <summary>
-        /// Settings → "Wijzigingen door de AI" (plan 15): managed.json, then VIBEMODEL_APPROVAL, then
+        /// "Wijzigingen door de AI" (plan 15; chosen in the chat's mode chip): managed.json, then VIBEMODEL_APPROVAL, then
         /// settings.json, else auto (never ask — the default). An unreadable value is skipped.
         /// </summary>
         public static Services.Claude.ChangeApprovalMode GetChangeApproval(out Services.Claude.ChangeApprovalSource source)

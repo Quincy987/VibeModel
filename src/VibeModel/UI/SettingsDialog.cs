@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows;
@@ -14,14 +13,18 @@ using VibeModel.Services.Claude;
 
 namespace VibeModel.UI
 {
+    /// <summary>
+    /// The chat pane's Settings window: five tabs (General, AI connection, This project, Standards,
+    /// About), each scrolling on its own, with the status line and Save in a fixed footer. Every
+    /// text comes from <see cref="Strings"/> (nl/en) except product names. The change-approval mode
+    /// is not here: the chat's mode chip chooses it and remembers it (<see cref="ModeChip"/>).
+    /// </summary>
     public class SettingsDialog : Window
     {
         private static SolidColorBrush BgWindow => Palette.BgWindow;
         private static SolidColorBrush BgInput => Palette.BgInput;
-        private static SolidColorBrush BgPanel => Palette.BgPanel;
         private static SolidColorBrush FgPrimary => Palette.FgPrimary;
         private static SolidColorBrush FgSecondary => Palette.FgSecondary;
-        private static SolidColorBrush AccentBlue => Palette.Accent;
         private static SolidColorBrush BgButton => Palette.BgButton;
         private static SolidColorBrush BgButtonHover => Palette.BgButtonHover;
         private static SolidColorBrush BorderColor => Palette.BorderColor;
@@ -30,7 +33,17 @@ namespace VibeModel.UI
         private static SolidColorBrush BgSelectedTab => Palette.BgButton;
         private static SolidColorBrush BgUnselectedTab => Palette.BgTab;
 
-        // Backend selector
+        // Page tabs (keys) — the last one shown is remembered for the rest of the Revit session.
+        private const string TabGeneral = "general";
+        private const string TabConnection = "connection";
+        private const string TabProject = "project";
+        private const string TabStandards = "standards";
+        private const string TabAbout = "about";
+        private static string _lastTab = TabGeneral;
+
+        private readonly List<Tuple<string, Button, ScrollViewer>> _pages = new List<Tuple<string, Button, ScrollViewer>>();
+
+        // Backend selector (sub-tabs inside "AI connection")
         private Button _tabCli;
         private Button _tabApi;
         private Button _tabLocal;
@@ -58,17 +71,13 @@ namespace VibeModel.UI
         private TextBlock _timeoutLabel;
         private Button _testConnectionButton;
 
-        // Shared
+        // Footer
         private TextBlock _statusText;
         private Button _saveButton;
 
-        // Chat language ("nl" / "en")
+        // Chat language ("nl" / "en") and theme
         private ComboBox _languageCombo;
         private ComboBox _themeCombo;
-        // Plan 15: "Wijzigingen door de AI" (auto / ask / readonly) + the session's "don't ask again".
-        private readonly List<RadioButton> _approvalRadios = new List<RadioButton>();
-        private CheckBox _approvalSessionCheck;
-        private CheckBox _approvalChipCheck;
 
         // Updates (plan 19)
         private CheckBox _updateCheckBox;
@@ -93,19 +102,22 @@ namespace VibeModel.UI
         /// <summary>True if the user changed the backend selection (caller should reset chat).</summary>
         public bool BackendChanged { get; private set; }
 
+        private static string S(string key, params object[] args) => Strings.Get(key, args);
+
         /// <param name="documentTitle">Active document title (the project key); null when unknown.</param>
         /// <param name="documentPath">Its Document.PathName — the default project folder is its directory.</param>
-        public SettingsDialog(string documentTitle = null, string documentPath = null)
+        /// <param name="connectionNeeded">No working chat backend yet: open on the AI connection tab.</param>
+        public SettingsDialog(string documentTitle = null, string documentPath = null, bool connectionNeeded = false)
         {
             _projectKey = string.IsNullOrWhiteSpace(documentTitle) ? null : Services.Chat.ProjectDocs.ProjectKey(documentTitle);
             _documentPath = documentPath ?? "";
             _projectFolderOverride = _projectKey != null ? SettingsManager.GetProjectContextFolderSetting(_projectKey) ?? "" : "";
 
-            Title = "VibeModel Settings";
-            Width = 500;
-            // Tall enough for the office-standards section, never taller than the screen (the
-            // content scrolls instead).
-            Height = Math.Min(700, SystemParameters.WorkArea.Height - 40);
+            Title = S(Strings.SettingsWindowTitle);
+            Width = 560;
+            // A fixed height for every tab (the window does not jump when switching); never taller
+            // than the screen — each tab scrolls on its own.
+            Height = Math.Min(640, SystemParameters.WorkArea.Height - 40);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode = ResizeMode.NoResize;
             Background = BgWindow;
@@ -116,100 +128,197 @@ namespace VibeModel.UI
             if (_selectedBackend == "direct" || _selectedBackend == "auto")
                 _selectedBackend = "anthropic-api";
 
-            var mainPanel = new StackPanel { Margin = new Thickness(24, 16, 24, 16) };
+            var root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // Title
-            mainPanel.Children.Add(new TextBlock
+            // The footer first: the backend sub-tabs and the test buttons write to its status line.
+            var footer = CreateFooter();
+            Grid.SetRow(footer, 2);
+
+            var tabBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(24, 16, 24, 0) };
+            var tabBorder = new Border
             {
-                Text = "AI Backend",
-                Foreground = FgPrimary,
-                FontSize = 16,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 12)
-            });
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Child = tabBar,
+                Padding = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(tabBorder, 0);
 
-            // Tab bar
-            mainPanel.Children.Add(CreateTabBar());
-            if (ManagedSettings.IsManaged(ManagedSettings.PreferredBackend))
-                mainPanel.Children.Add(CreateLabel("Backend: " + SettingsManager.GetPreferredBackend() + " - " + Strings.Get(Strings.SettingManaged)));
+            var host = new Grid();
+            Grid.SetRow(host, 1);
 
-            // Config panels (stacked, visibility toggled)
-            _cliPanel = CreateCliPanel();
-            _apiPanel = CreateApiPanel();
-            _localPanel = CreateLocalPanel();
+            AddPage(tabBar, host, TabGeneral, S(Strings.SettingsTabGeneral), "SettingsTabGeneral", CreateGeneralPage());
+            AddPage(tabBar, host, TabConnection, S(Strings.SettingsTabConnection), "SettingsTabConnection", CreateConnectionPage());
+            AddPage(tabBar, host, TabProject, S(Strings.SettingsTabProject), "SettingsTabProject", CreateProjectPage(documentTitle));
+            AddPage(tabBar, host, TabStandards, S(Strings.SettingsTabStandards), "SettingsTabStandards", CreateStandardsPage());
+            AddPage(tabBar, host, TabAbout, S(Strings.SettingsTabAbout), "SettingsTabAbout", CreateAboutPage());
 
-            mainPanel.Children.Add(_cliPanel);
-            mainPanel.Children.Add(_apiPanel);
-            mainPanel.Children.Add(_localPanel);
+            root.Children.Add(tabBorder);
+            root.Children.Add(host);
+            root.Children.Add(footer);
+            Content = root;
 
-            // Chat language — independent of the backend tabs.
-            mainPanel.Children.Add(CreateLanguagePanel());
-            mainPanel.Children.Add(CreateThemePanel());
+            UpdateTabVisuals();
+            ShowPage(connectionNeeded ? TabConnection : _lastTab);
+        }
 
-            // Change approval (plan 15) — what happens to the AI's deletions and edits.
-            mainPanel.Children.Add(CreateApprovalPanel());
+        // --- Pages ---
 
-            // Project folder (plan 10) — this model's reference documents.
-            mainPanel.Children.Add(CreateProjectFolderPanel(documentTitle));
+        private void AddPage(Panel tabBar, Grid host, string key, string label, string automationId, Panel content)
+        {
+            var tab = CreateTabButton(label, () => ShowPage(key));
+            tab.FontSize = 13;
+            tab.Padding = new Thickness(12, 6, 12, 6);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(tab, automationId);
+            tabBar.Children.Add(tab);
 
-            // Office standards (plan 11) — independent of the backend tabs.
-            mainPanel.Children.Add(CreateStandardsPanel());
+            content.Margin = new Thickness(24, 12, 24, 16);
+            var scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = content,
+                Visibility = Visibility.Collapsed
+            };
+            host.Children.Add(scroll);
+            _pages.Add(Tuple.Create(key, tab, scroll));
+        }
 
-            // In-app updates (plan 19).
-            mainPanel.Children.Add(CreateUpdatesPanel());
+        private void ShowPage(string key)
+        {
+            if (!_pages.Exists(p => p.Item1 == key)) key = TabGeneral;
+            _lastTab = key;
+            foreach (var page in _pages)
+            {
+                bool on = page.Item1 == key;
+                page.Item3.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                page.Item2.Background = on ? BgSelectedTab : BgUnselectedTab;
+                page.Item2.Foreground = on ? Palette.FgButton : Palette.Get(ThemeRole.TabFg);
+            }
+        }
 
-            // Status text
+        private Border CreateFooter()
+        {
+            var panel = new StackPanel { Margin = new Thickness(24, 8, 24, 12) };
             _statusText = new TextBlock
             {
                 Text = "",
                 Foreground = FgSecondary,
                 FontSize = 12,
-                Margin = new Thickness(0, 12, 0, 8),
+                Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap
             };
-            mainPanel.Children.Add(_statusText);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_statusText, "SettingsStatus");
+            panel.Children.Add(_statusText);
 
-            // Save button
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            _saveButton = CreateButton("Save");
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var hint = CreateLabel(S(Strings.SettingsSaveHint));
+            hint.FontSize = 11;
+            hint.VerticalAlignment = VerticalAlignment.Center;
+            hint.Margin = new Thickness(0, 0, 12, 0);
+            Grid.SetColumn(hint, 0);
+            row.Children.Add(hint);
+
+            _saveButton = CreateButton(S(Strings.SettingsSave));
             _saveButton.Click += OnSaveClick;
-            buttonPanel.Children.Add(_saveButton);
-            mainPanel.Children.Add(buttonPanel);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_saveButton, "SettingsSave");
+            Grid.SetColumn(_saveButton, 1);
+            row.Children.Add(_saveButton);
+            panel.Children.Add(row);
 
-            Content = new ScrollViewer
+            return new Border
             {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = mainPanel
+                BorderBrush = BorderColor,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Child = panel
             };
-            UpdateTabVisuals();
         }
 
-        // --- Tab bar ---
+        private StackPanel CreateGeneralPage()
+        {
+            var page = new StackPanel();
+            page.Children.Add(CreateLanguagePanel());
+            var theme = CreateThemePanel();
+            theme.Margin = new Thickness(0, 20, 0, 0);
+            page.Children.Add(theme);
+            return page;
+        }
 
-        private StackPanel CreateTabBar()
+        private StackPanel CreateConnectionPage()
+        {
+            var page = new StackPanel();
+            page.Children.Add(CreateHeading(S(Strings.SettingsConnectionTitle)));
+            page.Children.Add(CreateLabel(S(Strings.SettingsConnectionHint)));
+            page.Children.Add(CreateBackendTabBar());
+            if (ManagedSettings.IsManaged(ManagedSettings.PreferredBackend))
+                page.Children.Add(CreateLabel(S(Strings.SettingsBackendManaged, SettingsManager.GetPreferredBackend(), S(Strings.SettingManaged))));
+
+            // Config panels (stacked, visibility toggled)
+            _cliPanel = CreateCliPanel();
+            _apiPanel = CreateApiPanel();
+            _localPanel = CreateLocalPanel();
+            page.Children.Add(_cliPanel);
+            page.Children.Add(_apiPanel);
+            page.Children.Add(_localPanel);
+            return page;
+        }
+
+        private StackPanel CreateProjectPage(string documentTitle)
+        {
+            var page = new StackPanel();
+            page.Children.Add(CreateHeading(_projectKey != null
+                ? S(Strings.SettingsProjectTitle, documentTitle)
+                : S(Strings.SettingsTabProject)));
+            if (_projectKey == null)
+                page.Children.Add(CreateLabel(S(Strings.SettingsProjectNoModel)));
+            page.Children.Add(CreateProjectFolderPanel());
+            return page;
+        }
+
+        private StackPanel CreateStandardsPage() => CreateStandardsPanel();
+
+        private StackPanel CreateAboutPage() => CreateUpdatesPanel();
+
+        // --- Backend sub-tabs ---
+
+        private StackPanel CreateBackendTabBar()
         {
             var panel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 0, 0, 16)
+                Margin = new Thickness(0, 6, 0, 14)
             };
 
-            _tabCli = CreateTabButton("Claude CLI", "claude-cli");
-            _tabApi = CreateTabButton("Anthropic API", "anthropic-api");
-            _tabLocal = CreateTabButton("Local LLM", "local-llm");
+            // Product names stay as they are in both languages.
+            _tabCli = CreateBackendTab("Claude Code", "claude-cli", "SettingsBackendCli");
+            _tabApi = CreateBackendTab("Anthropic API", "anthropic-api", "SettingsBackendApi");
+            _tabLocal = CreateBackendTab(S(Strings.SettingsLocalTab), "local-llm", "SettingsBackendLocal");
 
             panel.Children.Add(_tabCli);
             panel.Children.Add(_tabApi);
             panel.Children.Add(_tabLocal);
-
             return panel;
         }
 
-        private Button CreateTabButton(string text, string backendKey)
+        private Button CreateBackendTab(string text, string backendKey, string automationId)
+        {
+            var btn = CreateTabButton(text, () =>
+            {
+                _selectedBackend = backendKey;
+                _tabClicked = true;
+                UpdateTabVisuals();
+            });
+            btn.Tag = backendKey;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(btn, automationId);
+            return btn;
+        }
+
+        private Button CreateTabButton(string text, Action onClick)
         {
             var btn = new Button
             {
@@ -220,15 +329,9 @@ namespace VibeModel.UI
                 Padding = new Thickness(14, 6, 14, 6),
                 FontSize = 12,
                 Cursor = Cursors.Hand,
-                Margin = new Thickness(0, 0, 4, 0),
-                Tag = backendKey
+                Margin = new Thickness(0, 0, 4, 0)
             };
-            btn.Click += (s, e) =>
-            {
-                _selectedBackend = backendKey;
-                _tabClicked = true;
-                UpdateTabVisuals();
-            };
+            btn.Click += (s, e) => onClick();
             return btn;
         }
 
@@ -247,55 +350,34 @@ namespace VibeModel.UI
             _statusText.Text = "";
         }
 
-        // --- Claude CLI panel ---
+        // --- Claude Code panel ---
 
         private StackPanel CreateCliPanel()
         {
             var panel = new StackPanel();
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Claude Code CLI",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 8)
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Uses the Claude Code CLI (your own Claude subscription) for full agentic capabilities.\n" +
-                       "Install it without administrator rights: the chat's Connect to Claude card, or in PowerShell:\n" +
-                       ClaudeSetup.InstallCommand,
-                Foreground = FgSecondary,
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 12)
-            });
+            panel.Children.Add(CreateSubHeading("Claude Code"));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsCliHint) + "\n" + ClaudeSetup.InstallCommand));
 
             // Detection status: the same search the backend uses (.local\bin, a fresh PATH, the npm
             // folders). It spawns `claude --version`, so it runs off the UI thread.
-            var status = new TextBlock
-            {
-                Text = "Looking for Claude Code…",
-                Foreground = FgSecondary,
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 4)
-            };
+            var status = CreateLabel(S(Strings.SettingsCliLooking));
+            status.Margin = new Thickness(0, 8, 0, 4);
             panel.Children.Add(status);
             if (SettingsManager.IsClaudeCodeDisabled())
             {
-                status.Text = "Switched off on this computer (" + Strings.Get(Strings.SettingManaged) + ")";
+                status.Text = S(Strings.SettingsCliDisabled, S(Strings.SettingManaged));
                 status.Foreground = FgError;
                 return panel;
             }
-            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            var found = Strings.SettingsCliFound;
+            var notFound = S(Strings.SettingsCliNotFound);
+            var language = Strings.Current;
+            ThreadPool.QueueUserWorkItem(_ =>
             {
                 var path = ClaudeCodeBackend.LocateCli(out var version);
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    status.Text = path != null ? "Detected: Claude Code " + version + "\n" + path : "Not detected";
+                    status.Text = path != null ? Strings.For(language, found, version, path) : notFound;
                     status.Foreground = path != null ? FgSuccess : FgError;
                 }));
             });
@@ -307,17 +389,10 @@ namespace VibeModel.UI
 
         private StackPanel CreateLanguagePanel()
         {
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Taal / Language",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-            panel.Children.Add(CreateLabel(
-                "The chat replies in the language you write in; this is the fallback, and the language of the pane's own messages."));
+            var panel = new StackPanel();
+            // Both languages on purpose: whoever cannot read the current one still finds it.
+            panel.Children.Add(CreateHeading("Taal / Language"));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsLanguageHint)));
 
             _languageCombo = new ComboBox
             {
@@ -326,6 +401,7 @@ namespace VibeModel.UI
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 4, 0, 4)
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_languageCombo, "SettingsLanguage");
             _languageCombo.Items.Add(new ComboBoxItem { Content = "Nederlands", Tag = Services.Chat.Strings.Dutch });
             _languageCombo.Items.Add(new ComboBoxItem { Content = "English", Tag = Services.Chat.Strings.English });
             _languageCombo.SelectedIndex = Services.Chat.Strings.IsEnglish(SettingsManager.GetLanguage()) ? 1 : 0;
@@ -333,7 +409,7 @@ namespace VibeModel.UI
             if (ManagedSettings.IsManaged(ManagedSettings.Language))
             {
                 _languageCombo.IsEnabled = false;
-                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
+                panel.Children.Add(CreateLabel(S(Strings.SettingManaged)));
             }
             return panel;
         }
@@ -342,16 +418,9 @@ namespace VibeModel.UI
 
         private StackPanel CreateThemePanel()
         {
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = Strings.Get(Strings.SettingThemeTitle),
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingThemeHint)));
+            var panel = new StackPanel();
+            panel.Children.Add(CreateHeading(S(Strings.SettingThemeTitle)));
+            panel.Children.Add(CreateLabel(S(Strings.SettingThemeHint)));
 
             _themeCombo = new ComboBox
             {
@@ -361,124 +430,31 @@ namespace VibeModel.UI
                 Margin = new Thickness(0, 4, 0, 4)
             };
             System.Windows.Automation.AutomationProperties.SetAutomationId(_themeCombo, "SettingsTheme");
-            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeFollowRevit), Tag = ThemeChoice.Revit });
-            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeLight), Tag = ThemeChoice.Light });
-            _themeCombo.Items.Add(new ComboBoxItem { Content = Strings.Get(Strings.ThemeDark), Tag = ThemeChoice.Dark });
+            _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeFollowRevit), Tag = ThemeChoice.Revit });
+            _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeLight), Tag = ThemeChoice.Light });
+            _themeCombo.Items.Add(new ComboBoxItem { Content = S(Strings.ThemeDark), Tag = ThemeChoice.Dark });
             var current = SettingsManager.GetTheme();
             _themeCombo.SelectedIndex = current == ThemeChoice.Light ? 1 : current == ThemeChoice.Dark ? 2 : 0;
             panel.Children.Add(_themeCombo);
             if (ManagedSettings.IsManaged(ManagedSettings.Theme))
             {
                 _themeCombo.IsEnabled = false;
-                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
-            }
-            return panel;
-        }
-
-        // --- Change approval panel (plan 15) ---
-
-        private StackPanel CreateApprovalPanel()
-        {
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = Strings.Get(Strings.SettingApprovalTitle),
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-
-            var configured = SettingsManager.GetChangeApproval(out var source);
-            bool managed = source == ChangeApprovalSource.Managed;
-            var current = managed ? configured : SettingsManager.GetChangeApprovalSetting();
-            var options = new[]
-            {
-                Tuple.Create(ChangeApprovalMode.Auto, Strings.SettingApprovalAuto, Strings.SettingApprovalAutoHint, "SettingApprovalAuto"),
-                Tuple.Create(ChangeApprovalMode.Ask, Strings.SettingApprovalAsk, Strings.SettingApprovalAskHint, "SettingApprovalAsk"),
-                Tuple.Create(ChangeApprovalMode.Annotate, Strings.SettingApprovalAnnotate, Strings.SettingApprovalAnnotateHint, "SettingApprovalAnnotate"),
-                Tuple.Create(ChangeApprovalMode.ReadOnly, Strings.SettingApprovalReadOnly, Strings.SettingApprovalReadOnlyHint, "SettingApprovalReadOnly"),
-            };
-            foreach (var o in options)
-            {
-                var radio = new RadioButton
-                {
-                    Content = Strings.Get(o.Item2),
-                    Tag = o.Item1,
-                    GroupName = "ChangeApproval",
-                    IsChecked = current == o.Item1,
-                    IsEnabled = !managed,
-                    Foreground = FgPrimary,
-                    FontSize = 12,
-                    Margin = new Thickness(0, 4, 0, 0)
-                };
-                System.Windows.Automation.AutomationProperties.SetAutomationId(radio, o.Item4);
-                _approvalRadios.Add(radio);
-                panel.Children.Add(radio);
-                var hint = CreateLabel(Strings.Get(o.Item3));
-                hint.Margin = new Thickness(20, 0, 0, 2);
-                panel.Children.Add(hint);
-            }
-            if (managed)
-                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingManaged)));
-            else if (source == ChangeApprovalSource.Environment)
-                panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingApprovalEnv,
-                    ChangeApprovalPolicy.Name(configured), ChangeApprovalPolicy.EnvVar)));
-
-            // Only while "don't ask again" was ticked in the approval window this Revit session.
-            if (ChangeApprovalPolicy.DontAskThisSession)
-            {
-                _approvalSessionCheck = new CheckBox
-                {
-                    Content = Strings.Get(Strings.SettingApprovalSession),
-                    IsChecked = true,
-                    Foreground = FgSecondary,
-                    FontSize = 12,
-                    Margin = new Thickness(0, 6, 0, 2)
-                };
-                System.Windows.Automation.AutomationProperties.SetAutomationId(_approvalSessionCheck, "SettingApprovalSession");
-                panel.Children.Add(_approvalSessionCheck);
-            }
-
-            // Plan 20: the mode picked in the chat's mode chip wins over the choice above until
-            // Revit closes (managed.json still wins over both).
-            var chip = ChangeApprovalPolicy.SessionOverride;
-            if (chip.HasValue && !managed)
-            {
-                _approvalChipCheck = new CheckBox
-                {
-                    Content = Strings.Get(Strings.SettingApprovalChip, UiText.ModeName(chip.Value, Strings.Current)),
-                    IsChecked = true,
-                    Foreground = FgSecondary,
-                    FontSize = 12,
-                    Margin = new Thickness(0, 6, 0, 2)
-                };
-                System.Windows.Automation.AutomationProperties.SetAutomationId(_approvalChipCheck, "SettingApprovalChip");
-                panel.Children.Add(_approvalChipCheck);
+                panel.Children.Add(CreateLabel(S(Strings.SettingManaged)));
             }
             return panel;
         }
 
         // --- Project folder panel (plan 10) ---
 
-        private StackPanel CreateProjectFolderPanel(string documentTitle)
+        private StackPanel CreateProjectFolderPanel()
         {
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Project folder",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-            panel.Children.Add(CreateLabel(
-                "Reference documents the chat can list and read (bestek, memo's, DO-tekening, reports). " +
-                "Default: the folder the model is in. " +
-                (_projectKey != null ? "Applies to: " + documentTitle : "Open a model to set one.")));
+            var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            panel.Children.Add(CreateSubHeading(S(Strings.SettingsProjectFolder)));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsProjectFolderHint)));
 
             _projectFolderBox = CreateTextBox("");
             _projectFolderBox.IsReadOnly = true;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_projectFolderBox, "SettingsProjectFolder");
 
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -487,7 +463,7 @@ namespace VibeModel.UI
             Grid.SetColumn(_projectFolderBox, 0);
             grid.Children.Add(_projectFolderBox);
 
-            var browse = CreateButton("Browse…");
+            var browse = CreateButton(S(Strings.SettingsBrowse));
             browse.MinWidth = 0;
             browse.Margin = new Thickness(6, 0, 0, 4);
             browse.IsEnabled = _projectKey != null;
@@ -499,8 +475,8 @@ namespace VibeModel.UI
                     CheckFileExists = false,
                     CheckPathExists = true,
                     ValidateNames = false,
-                    FileName = "Select this folder",
-                    Title = "Open the project folder, then click Open"
+                    FileName = S(Strings.SettingsProjectPickName),
+                    Title = S(Strings.SettingsProjectPickTitle)
                 };
                 var current = _projectFolderBox.Text;
                 if (!string.IsNullOrWhiteSpace(current) && System.IO.Directory.Exists(current))
@@ -517,7 +493,7 @@ namespace VibeModel.UI
             Grid.SetColumn(browse, 1);
             grid.Children.Add(browse);
 
-            var clear = CreateButton("Clear");
+            var clear = CreateButton(S(Strings.SettingsClear));
             clear.MinWidth = 0;
             clear.Margin = new Thickness(6, 0, 0, 4);
             clear.IsEnabled = _projectKey != null;
@@ -530,29 +506,30 @@ namespace VibeModel.UI
             grid.Children.Add(clear);
             panel.Children.Add(grid);
 
-            _projectFolderSource = new TextBlock
-            {
-                Foreground = FgSecondary,
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 4)
-            };
+            _projectFolderSource = CreateLabel("");
+            _projectFolderSource.Margin = new Thickness(0, 0, 0, 4);
             panel.Children.Add(_projectFolderSource);
             UpdateProjectFolderRow();
 
             // Project memory + journal (plan 08) live in that folder's VibeModel subfolder.
             _projectMemoryCheck = new CheckBox
             {
-                Content = Services.Chat.Strings.Get(Services.Chat.Strings.SettingProjectMemory),
+                Content = S(Strings.SettingProjectMemory),
                 IsChecked = SettingsManager.GetProjectMemoryEnabled(),
                 Foreground = FgPrimary,
                 FontSize = 12,
-                Margin = new Thickness(0, 6, 0, 2)
+                Margin = new Thickness(0, 14, 0, 2)
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_projectMemoryCheck, "SettingsProjectMemory");
             panel.Children.Add(_projectMemoryCheck);
-            panel.Children.Add(CreateLabel(Services.Chat.Strings.Get(Services.Chat.Strings.SettingProjectMemoryHint)));
+            var memoryHint = CreateLabel(S(Strings.SettingProjectMemoryHint));
+            memoryHint.Margin = new Thickness(20, 0, 0, 4);
+            panel.Children.Add(memoryHint);
             return panel;
         }
+
+        private static string SourceText(ProjectFolderSource source) =>
+            source == ProjectFolderSource.Configured ? S(Strings.SettingsProjectSourceConfigured) : S(Strings.SettingsProjectSourceModel);
 
         // Shows the folder that will be in force (pending choice + model default) and its source.
         private void UpdateProjectFolderRow()
@@ -560,12 +537,10 @@ namespace VibeModel.UI
             var live = SettingsManager.LiveFolderOrNull(_projectFolderOverride);
             var folder = Services.Chat.ProjectDocs.Resolve(live, _documentPath);
             _projectFolderBox.Text = folder.IsSet ? folder.Path : "";
-            var text = folder.IsSet
-                ? folder.SourceLabel
-                : "Not set — this model has no folder on disk (not saved yet, or a cloud model). Browse to pick one.";
+            var text = folder.IsSet ? SourceText(folder.Source) : S(Strings.SettingsProjectNotSet);
             if (!string.IsNullOrWhiteSpace(_projectFolderOverride) && live == null)
-                text = "Configured folder not found: " + _projectFolderOverride + " — " +
-                       (folder.IsSet ? "using " + folder.SourceLabel : "no folder") + ". Browse or Clear.";
+                text = S(Strings.SettingsProjectMissing, _projectFolderOverride,
+                    folder.IsSet ? S(Strings.SettingsProjectUsing, SourceText(folder.Source)) : S(Strings.SettingsProjectNoFolder));
             _projectFolderSource.Text = text;
         }
 
@@ -573,33 +548,38 @@ namespace VibeModel.UI
 
         private StackPanel CreateStandardsPanel()
         {
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Office standards",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
+            var panel = new StackPanel();
+            panel.Children.Add(CreateHeading(S(Strings.SettingsStandardsTitle)));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsStandardsHint)));
 
             _standardsEnabledCheck = new CheckBox
             {
-                Content = "Apply office standards (rules in chat, default phase, checks)",
+                Content = S(Strings.SettingsStandardsEnabled),
                 IsChecked = SettingsManager.GetStandardsEnabled(),
                 Foreground = FgPrimary,
                 FontSize = 12,
-                Margin = new Thickness(0, 4, 0, 6)
+                Margin = new Thickness(0, 8, 0, 12)
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_standardsEnabledCheck, "SettingsStandardsEnabled");
             panel.Children.Add(_standardsEnabledCheck);
 
-            panel.Children.Add(CreateLabel("Standards pack folder (pack.json, or a folder of packs). Empty = the local copy in %LOCALAPPDATA%\\VibeModel\\standards. A network folder is mirrored locally in the background."));
+            var localCopy = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VibeModel", "standards");
+            var packLabel = CreateLabel(S(Strings.SettingsStandardsPack));
+            packLabel.ToolTip = S(Strings.SettingsStandardsPackTip, localCopy);
+            panel.Children.Add(packLabel);
             _packPathBox = CreateTextBox(SettingsManager.GetStandardsPackPath());
-            panel.Children.Add(CreateFolderRow(_packPathBox, "pack.json|pack.json|All files|*.*"));
+            _packPathBox.ToolTip = packLabel.ToolTip;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_packPathBox, "SettingsStandardsPack");
+            panel.Children.Add(CreateFolderRow(_packPathBox, "pack.json|pack.json|" + S(Strings.SettingsAllFiles) + "|*.*"));
 
-            panel.Children.Add(CreateLabel("Office source documents folder (the modelling manual PDFs). Empty = the pack's default."));
+            var docsLabel = CreateLabel(S(Strings.SettingsStandardsDocs));
+            docsLabel.Margin = new Thickness(0, 12, 0, 4);
+            panel.Children.Add(docsLabel);
             _standardsFolderBox = CreateTextBox(SettingsManager.GetStandardsFolder());
-            panel.Children.Add(CreateFolderRow(_standardsFolderBox, "Documents|*.pdf;*.txt;*.md|All files|*.*"));
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_standardsFolderBox, "SettingsStandardsDocs");
+            panel.Children.Add(CreateFolderRow(_standardsFolderBox,
+                S(Strings.SettingsDocumentsFilter) + "|*.pdf;*.txt;*.md|" + S(Strings.SettingsAllFiles) + "|*.*"));
             return panel;
         }
 
@@ -608,38 +588,31 @@ namespace VibeModel.UI
         private StackPanel CreateUpdatesPanel()
         {
             var engine = Services.Update.UpdateService.Engine;
-            var panel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            panel.Children.Add(new TextBlock
-            {
-                Text = Strings.Get(Strings.SettingsUpdatesTitle),
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
+            var panel = new StackPanel();
+            panel.Children.Add(CreateHeading(S(Strings.SettingsUpdatesTitle)));
 
-            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateInstalled,
+            panel.Children.Add(CreateLabel(S(Strings.SettingsUpdateInstalled,
                 Services.Update.UpdateManifest.ShortVersion(engine.Running.Version),
                 Services.Update.LoaderInfo.Version == null ? "-" : Services.Update.UpdateManifest.ShortVersion(Services.Update.LoaderInfo.ParsedVersion))));
-            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateRunsFrom,
-                engine.InPlace ? Strings.Get(Strings.UpdateDevBuild) : System.IO.Path.GetDirectoryName(engine.Running.PayloadPath))));
-            panel.Children.Add(CreateLabel(Strings.Get(Strings.SettingsUpdateSource, engine.Source.Describe()) +
+            panel.Children.Add(CreateLabel(S(Strings.SettingsUpdateRunsFrom,
+                engine.InPlace ? S(Strings.UpdateDevBuild) : System.IO.Path.GetDirectoryName(engine.Running.PayloadPath))));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsUpdateSource, engine.Source.Describe()) +
                                            ManagedNote(ManagedSettings.UpdateSource)));
 
             bool disabled = SettingsManager.IsUpdateDisabled();
             _updateCheckBox = new CheckBox
             {
-                Content = Strings.Get(Strings.SettingsUpdateCheck),
+                Content = S(Strings.SettingsUpdateCheck),
                 IsChecked = SettingsManager.GetUpdateCheck() && !disabled,
                 IsEnabled = !disabled,
                 Foreground = FgPrimary,
                 FontSize = 12,
-                Margin = new Thickness(0, 4, 0, 4)
+                Margin = new Thickness(0, 10, 0, 4)
             };
             System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckBox, "SettingsUpdateCheck");
             panel.Children.Add(_updateCheckBox);
             if (disabled)
-                panel.Children.Add(CreateLabel(Strings.Get(Strings.UpdateDisabled) + " (" + Strings.Get(Strings.SettingManaged) + ")"));
+                panel.Children.Add(CreateLabel(S(Strings.UpdateDisabled) + " (" + S(Strings.SettingManaged) + ")"));
 
             _updateStatusText = CreateLabel("");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_updateStatusText, "SettingsUpdateStatus");
@@ -648,24 +621,20 @@ namespace VibeModel.UI
             panel.Children.Add(_updatePendingText);
 
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-            _updateCheckNowButton = CreateButton(Strings.Get(Strings.SettingsUpdateCheckNow));
+            _updateCheckNowButton = CreateButton(S(Strings.SettingsUpdateCheckNow));
             _updateCheckNowButton.IsEnabled = !disabled && !engine.InPlace;
             System.Windows.Automation.AutomationProperties.SetAutomationId(_updateCheckNowButton, "SettingsUpdateCheckNow");
             _updateCheckNowButton.Click += async (s, e) =>
             {
                 _updateCheckNowButton.IsEnabled = false;
-                _updateStatusText.Text = Strings.Get(Strings.UpdateChecking);
+                _updateStatusText.Text = S(Strings.UpdateChecking);
                 var status = await Services.Update.UpdateService.CheckAsync(manual: true);
                 _updateCheckNowButton.IsEnabled = true;
                 ShowUpdateState(status);
             };
             row.Children.Add(_updateCheckNowButton);
 
-            _updateRollbackButton = CreateButton("");
-            _updateRollbackButton.Background = Brushes.Transparent;
-            _updateRollbackButton.Foreground = FgSecondary;
-            _updateRollbackButton.BorderBrush = BorderColor;
-            _updateRollbackButton.BorderThickness = new Thickness(1);
+            _updateRollbackButton = CreateSecondaryButton("");
             _updateRollbackButton.Margin = new Thickness(8, 0, 0, 0);
             System.Windows.Automation.AutomationProperties.SetAutomationId(_updateRollbackButton, "SettingsUpdateRollback");
             _updateRollbackButton.Click += async (s, e) =>
@@ -678,20 +647,6 @@ namespace VibeModel.UI
             row.Children.Add(_updateRollbackButton);
             panel.Children.Add(row);
 
-            // Chat export: every saved chat with the commands per turn, to send or upload to Claude.
-            var exportRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-            var exportChats = CreateButton(Strings.Get(Strings.ExportChats));
-            exportChats.ToolTip = Strings.Get(Strings.ExportChatsTip);
-            System.Windows.Automation.AutomationProperties.SetAutomationId(exportChats, "SettingsExportChats");
-            var exportStatus = CreateLabel("");
-            exportStatus.VerticalAlignment = VerticalAlignment.Center;
-            exportStatus.Margin = new Thickness(8, 0, 0, 0);
-            System.Windows.Automation.AutomationProperties.SetAutomationId(exportStatus, "SettingsExportChatsStatus");
-            exportChats.Click += (s, e) => ChatExportUi.Run(exportChats, exportStatus);
-            exportRow.Children.Add(exportChats);
-            exportRow.Children.Add(exportStatus);
-            panel.Children.Add(exportRow);
-
             ShowUpdateState(engine.Refresh());
             return panel;
         }
@@ -700,12 +655,12 @@ namespace VibeModel.UI
         {
             var engine = Services.Update.UpdateService.Engine;
             _updateStatusText.Text = UiText.UpdateLine(status, engine.Progress, Strings.Current) +
-                                     (status.LastError != null ? "\n" + Strings.Get(Strings.UpdateLastError, status.LastError) : "");
-            _updatePendingText.Text = status.Pending != null ? Strings.Get(Strings.SettingsUpdatePending, status.Pending) : "";
+                                     (status.LastError != null ? "\n" + S(Strings.UpdateLastError, status.LastError) : "");
+            _updatePendingText.Text = status.Pending != null ? S(Strings.SettingsUpdatePending, status.Pending) : "";
             _updatePendingText.Visibility = status.Pending != null ? Visibility.Visible : Visibility.Collapsed;
             var target = engine.RollbackTarget;
             _updateRollbackButton.Visibility = target != null ? Visibility.Visible : Visibility.Collapsed;
-            if (target != null) _updateRollbackButton.Content = Strings.Get(Strings.SettingsUpdateRollback, target);
+            if (target != null) _updateRollbackButton.Content = S(Strings.SettingsUpdateRollback, target);
         }
 
         // Text box + Browse (pick any file in the folder) + Clear. A file dialog avoids a
@@ -720,7 +675,7 @@ namespace VibeModel.UI
             Grid.SetColumn(box, 0);
             grid.Children.Add(box);
 
-            var browse = CreateButton("Browse…");
+            var browse = CreateButton(S(Strings.SettingsBrowse));
             browse.MinWidth = 0;
             browse.Margin = new Thickness(6, 0, 0, 4);
             browse.Click += (s, e) =>
@@ -729,7 +684,7 @@ namespace VibeModel.UI
                 {
                     Filter = filter,
                     CheckFileExists = true,
-                    Title = "Pick a file inside the folder"
+                    Title = S(Strings.SettingsPickFileInFolder)
                 };
                 if (dlg.ShowDialog(this) == true)
                     box.Text = System.IO.Path.GetDirectoryName(dlg.FileName);
@@ -737,7 +692,7 @@ namespace VibeModel.UI
             Grid.SetColumn(browse, 1);
             grid.Children.Add(browse);
 
-            var clear = CreateButton("Clear");
+            var clear = CreateButton(S(Strings.SettingsClear));
             clear.MinWidth = 0;
             clear.Margin = new Thickness(6, 0, 0, 4);
             clear.Click += (s, e) => box.Text = "";
@@ -751,24 +706,10 @@ namespace VibeModel.UI
         private StackPanel CreateApiPanel()
         {
             var panel = new StackPanel();
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Anthropic API Key",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Get your key from console.anthropic.com (or from your administrator). It is stored encrypted for your Windows account.",
-                Foreground = FgSecondary,
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8)
-            });
+            panel.Children.Add(CreateSubHeading(S(Strings.SettingsApiTitle)));
+            var hint = CreateLabel(S(Strings.SettingsApiHint));
+            hint.Margin = new Thickness(0, 0, 0, 8);
+            panel.Children.Add(hint);
 
             _apiKeyBox = new PasswordBox
             {
@@ -780,6 +721,7 @@ namespace VibeModel.UI
                 FontSize = 13,
                 MaxLength = 200
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_apiKeyBox, "SettingsApiKey");
 
             // Only the user's own key goes in the box. A key from IT (managed.json) or from the
             // ANTHROPIC_API_KEY variable is named, masked, and never copied into settings.json.
@@ -792,114 +734,92 @@ namespace VibeModel.UI
 
             panel.Children.Add(_apiKeyBox);
             if (keySource == ApiKeySource.Managed || keySource == ApiKeySource.Environment)
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "In use: " + SettingsManager.MaskKey(existingKey) + " - " +
-                           (keySource == ApiKeySource.Managed ? Strings.Get(Strings.SettingManaged) + " (managed.json)" : "from the ANTHROPIC_API_KEY variable"),
-                    Foreground = FgSecondary,
-                    FontSize = 11,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 4, 0, 0)
-                });
-
-            var btnRow = new StackPanel
             {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 8, 0, 0)
-            };
-            _validateApiButton = CreateButton("Validate");
-            _validateApiButton.Click += OnValidateApiClick;
-            _validateApiButton.Background = Brushes.Transparent;
-            _validateApiButton.Foreground = FgSecondary;
-            _validateApiButton.BorderBrush = BorderColor;
-            _validateApiButton.BorderThickness = new Thickness(1);
-            btnRow.Children.Add(_validateApiButton);
-            panel.Children.Add(btnRow);
+                var inUse = CreateLabel(S(Strings.SettingsApiInUse, SettingsManager.MaskKey(existingKey),
+                    keySource == ApiKeySource.Managed ? S(Strings.SettingManaged) + " (managed.json)" : S(Strings.SettingsApiFromEnv)));
+                inUse.FontSize = 11;
+                panel.Children.Add(inUse);
+            }
 
-            // Model: empty = the default. Endpoint: a gateway that speaks the Messages API.
-            panel.Children.Add(CreateLabel("Model (empty = " + SettingsManager.DefaultModel + ")" + ManagedNote(ManagedSettings.Model)));
+            _validateApiButton = CreateSecondaryButton(S(Strings.SettingsApiValidate));
+            _validateApiButton.Click += OnValidateApiClick;
+            _validateApiButton.Margin = new Thickness(0, 8, 0, 0);
+            _validateApiButton.HorizontalAlignment = HorizontalAlignment.Left;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_validateApiButton, "SettingsApiValidate");
+            panel.Children.Add(_validateApiButton);
+
+            // Advanced: model (empty = the default) and endpoint (a gateway that speaks the Messages API).
+            var advanced = new StackPanel();
+            advanced.Children.Add(CreateLabel(S(Strings.SettingsApiModel, SettingsManager.DefaultModel) + ManagedNote(ManagedSettings.Model)));
             _apiModelBox = CreateTextBox(ManagedSettings.IsManaged(ManagedSettings.Model) ? SettingsManager.GetModel() : SettingsManager.GetModelSetting());
             _apiModelBox.IsEnabled = !ManagedSettings.IsManaged(ManagedSettings.Model);
-            panel.Children.Add(_apiModelBox);
+            advanced.Children.Add(_apiModelBox);
 
-            panel.Children.Add(CreateLabel("API endpoint (advanced; empty = " + SettingsManager.DefaultApiBaseUrl + ")" + ManagedNote(ManagedSettings.ApiBaseUrl)));
+            advanced.Children.Add(CreateLabel(S(Strings.SettingsApiEndpoint, SettingsManager.DefaultApiBaseUrl) + ManagedNote(ManagedSettings.ApiBaseUrl)));
             var baseUrl = SettingsManager.GetApiBaseUrl();
             _apiBaseUrlBox = CreateTextBox(baseUrl == SettingsManager.DefaultApiBaseUrl ? "" : baseUrl);
             _apiBaseUrlBox.IsEnabled = !ManagedSettings.IsManaged(ManagedSettings.ApiBaseUrl);
-            panel.Children.Add(_apiBaseUrlBox);
+            advanced.Children.Add(_apiBaseUrlBox);
 
+            // Open from the start when something in it is set or locked, so it is never hidden.
+            bool open = !string.IsNullOrWhiteSpace(_apiModelBox.Text) || !string.IsNullOrWhiteSpace(_apiBaseUrlBox.Text) ||
+                        ManagedSettings.IsManaged(ManagedSettings.Model) || ManagedSettings.IsManaged(ManagedSettings.ApiBaseUrl);
+            AddAdvanced(panel, advanced, open, "SettingsApiAdvanced");
             return panel;
         }
 
         private static string ManagedNote(string key) =>
-            ManagedSettings.IsManaged(key) ? " - " + Strings.Get(Strings.SettingManaged) : "";
+            ManagedSettings.IsManaged(key) ? " - " + S(Strings.SettingManaged) : "";
 
         // --- Local LLM panel ---
 
         private StackPanel CreateLocalPanel()
         {
             var panel = new StackPanel();
+            panel.Children.Add(CreateSubHeading(S(Strings.SettingsLocalTab)));
+            var hint = CreateLabel(S(Strings.SettingsLocalHint));
+            hint.Margin = new Thickness(0, 0, 0, 8);
+            panel.Children.Add(hint);
 
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Local LLM Server",
-                Foreground = FgPrimary,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Connect to a local OpenAI-compatible server (llama.cpp, Ollama, LM Studio).",
-                Foreground = FgSecondary,
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 10)
-            });
-
-            // Endpoint
-            panel.Children.Add(CreateLabel("Server Endpoint"));
+            panel.Children.Add(CreateLabel(S(Strings.SettingsLocalEndpoint)));
             _endpointBox = CreateTextBox(SettingsManager.GetLocalLlmEndpoint());
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_endpointBox, "SettingsLocalEndpoint");
             panel.Children.Add(_endpointBox);
 
-            // Model name
-            panel.Children.Add(CreateLabel("Model Name (optional — leave blank for server default)"));
-            _modelBox = CreateTextBox(SettingsManager.GetLocalLlmModel());
-            panel.Children.Add(_modelBox);
+            _testConnectionButton = CreateSecondaryButton(S(Strings.SettingsLocalTest));
+            _testConnectionButton.Click += OnTestConnectionClick;
+            _testConnectionButton.Margin = new Thickness(0, 4, 0, 0);
+            _testConnectionButton.HorizontalAlignment = HorizontalAlignment.Left;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_testConnectionButton, "SettingsLocalTest");
+            panel.Children.Add(_testConnectionButton);
 
-            // Tool use toggle
+            var advanced = new StackPanel();
+            advanced.Children.Add(CreateLabel(S(Strings.SettingsLocalModel)));
+            _modelBox = CreateTextBox(SettingsManager.GetLocalLlmModel());
+            advanced.Children.Add(_modelBox);
+
             _toolUseCheck = new CheckBox
             {
-                Content = "Enable tool use (Revit commands)",
+                Content = S(Strings.SettingsLocalTools),
                 Foreground = FgPrimary,
                 FontSize = 12,
                 IsChecked = SettingsManager.GetLocalLlmToolUse(),
                 Margin = new Thickness(0, 8, 0, 0)
             };
-            panel.Children.Add(_toolUseCheck);
+            advanced.Children.Add(_toolUseCheck);
+            var toolHint = CreateLabel(S(Strings.SettingsLocalToolsHint));
+            toolHint.FontSize = 11;
+            toolHint.Margin = new Thickness(20, 2, 0, 8);
+            advanced.Children.Add(toolHint);
 
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Only enable if your model supports function calling (Qwen 3.5 9B+, Mistral 7B+).",
-                Foreground = FgSecondary,
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(18, 2, 0, 8)
-            });
-
-            // Timeout slider
             var timeoutRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-            timeoutRow.Children.Add(new TextBlock
-            {
-                Text = "Response timeout: ",
-                Foreground = FgSecondary,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center
-            });
+            var timeoutText = CreateLabel(S(Strings.SettingsLocalTimeout));
+            timeoutText.Margin = new Thickness(0);
+            timeoutText.VerticalAlignment = VerticalAlignment.Center;
+            timeoutRow.Children.Add(timeoutText);
             _timeoutLabel = new TextBlock
             {
-                Text = SettingsManager.GetLocalLlmTimeout() + "s",
+                Text = SettingsManager.GetLocalLlmTimeout() + " s",
                 Foreground = FgPrimary,
                 FontSize = 12,
                 FontWeight = FontWeights.SemiBold,
@@ -907,7 +827,7 @@ namespace VibeModel.UI
                 MinWidth = 32
             };
             timeoutRow.Children.Add(_timeoutLabel);
-            panel.Children.Add(timeoutRow);
+            advanced.Children.Add(timeoutRow);
 
             _timeoutSlider = new Slider
             {
@@ -922,25 +842,74 @@ namespace VibeModel.UI
             };
             _timeoutSlider.ValueChanged += (s, e) =>
             {
-                _timeoutLabel.Text = (int)_timeoutSlider.Value + "s";
+                _timeoutLabel.Text = (int)_timeoutSlider.Value + " s";
             };
-            panel.Children.Add(_timeoutSlider);
+            advanced.Children.Add(_timeoutSlider);
 
-            // Test Connection
-            _testConnectionButton = CreateButton("Test Connection");
-            _testConnectionButton.Click += OnTestConnectionClick;
-            _testConnectionButton.Background = Brushes.Transparent;
-            _testConnectionButton.Foreground = FgSecondary;
-            _testConnectionButton.BorderBrush = BorderColor;
-            _testConnectionButton.BorderThickness = new Thickness(1);
-            _testConnectionButton.Margin = new Thickness(0, 4, 0, 0);
-            _testConnectionButton.HorizontalAlignment = HorizontalAlignment.Left;
-            panel.Children.Add(_testConnectionButton);
-
+            AddAdvanced(panel, advanced, !string.IsNullOrWhiteSpace(_modelBox.Text), "SettingsLocalAdvanced");
             return panel;
         }
 
+        // A plain "▸ Advanced" toggle (WPF's Expander ignores the theme palette) that shows the
+        // panel below it.
+        private void AddAdvanced(Panel parent, StackPanel content, bool open, string automationId)
+        {
+            var label = S(Strings.SettingsAdvanced);
+            var toggle = new Button
+            {
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = Palette.Accent,
+                FontSize = 12,
+                Padding = new Thickness(0, 2, 0, 2),
+                Margin = new Thickness(0, 14, 0, 2),
+                Cursor = Cursors.Hand,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, automationId);
+            System.Windows.Automation.AutomationProperties.SetName(toggle, label);
+            content.Margin = new Thickness(14, 0, 0, 0);
+            Action apply = () =>
+            {
+                toggle.Content = (content.Visibility == Visibility.Visible ? "▾ " : "▸ ") + label;
+            };
+            content.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+            apply();
+            toggle.Click += (s, e) =>
+            {
+                content.Visibility = content.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                apply();
+            };
+            parent.Children.Add(toggle);
+            parent.Children.Add(content);
+        }
+
         // --- Helpers ---
+
+        private TextBlock CreateHeading(string text)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                Foreground = FgPrimary,
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+        }
+
+        private TextBlock CreateSubHeading(string text)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                Foreground = FgPrimary,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+        }
 
         private TextBlock CreateLabel(string text)
         {
@@ -1000,6 +969,17 @@ namespace VibeModel.UI
             return btn;
         }
 
+        // An outlined button for actions that run at once (test a key, a connection, roll back).
+        private Button CreateSecondaryButton(string text)
+        {
+            var btn = CreateButton(text);
+            btn.Background = Brushes.Transparent;
+            btn.Foreground = FgSecondary;
+            btn.BorderBrush = BorderColor;
+            btn.BorderThickness = new Thickness(1);
+            return btn;
+        }
+
         // --- Actions ---
 
         private void OnValidateApiClick(object sender, RoutedEventArgs e)
@@ -1013,12 +993,12 @@ namespace VibeModel.UI
             }
             if (string.IsNullOrEmpty(key))
             {
-                _statusText.Text = "Please enter an API key";
+                _statusText.Text = S(Strings.SettingsApiKeyEmpty);
                 _statusText.Foreground = FgError;
                 return;
             }
 
-            _statusText.Text = "Validating...";
+            _statusText.Text = S(Strings.SettingsApiChecking);
             _statusText.Foreground = FgSecondary;
             _validateApiButton.IsEnabled = false;
 
@@ -1046,17 +1026,18 @@ namespace VibeModel.UI
             var endpoint = _endpointBox.Text?.Trim();
             if (string.IsNullOrEmpty(endpoint))
             {
-                _statusText.Text = "Please enter an endpoint URL";
+                _statusText.Text = S(Strings.SettingsLocalNoEndpoint);
                 _statusText.Foreground = FgError;
                 return;
             }
 
-            _statusText.Text = "Testing connection...";
+            _statusText.Text = S(Strings.SettingsLocalTesting);
             _statusText.Foreground = FgSecondary;
             _testConnectionButton.IsEnabled = false;
 
             // Capture UI values on UI thread before switching to background
             var timeoutSec = (int)_timeoutSlider.Value;
+            var language = Strings.Current;
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -1077,7 +1058,7 @@ namespace VibeModel.UI
                             if (r.IsSuccessStatusCode)
                             {
                                 connected = true;
-                                message = "Connected! Server is healthy.";
+                                message = Strings.For(language, Strings.SettingsLocalHealthy);
                             }
                         }
                         catch { }
@@ -1102,16 +1083,17 @@ namespace VibeModel.UI
                                         {
                                             var first = data[0] as Dictionary<string, object>;
                                             var id = first != null && first.ContainsKey("id") ? first["id"] as string : null;
-                                            message = "Connected! Model: " + (id ?? "unknown");
+                                            message = Strings.For(language, Strings.SettingsLocalModelFound,
+                                                id ?? Strings.For(language, Strings.SettingsLocalUnknownModel));
                                         }
                                         else
                                         {
-                                            message = "Connected! (no models listed)";
+                                            message = Strings.For(language, Strings.SettingsLocalNoModels);
                                         }
                                     }
                                     catch
                                     {
-                                        message = "Connected!";
+                                        message = Strings.For(language, Strings.SettingsLocalConnected);
                                     }
                                 }
                             }
@@ -1119,12 +1101,12 @@ namespace VibeModel.UI
                         }
 
                         if (!connected)
-                            message = "Could not reach server at " + endpoint + ". Is it running?";
+                            message = Strings.For(language, Strings.SettingsLocalUnreachable, endpoint);
                     }
                 }
                 catch (Exception ex)
                 {
-                    message = "Connection error: " + (ex.InnerException?.Message ?? ex.Message);
+                    message = Strings.For(language, Strings.SettingsLocalError, ex.InnerException?.Message ?? ex.Message);
                 }
 
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -1166,15 +1148,6 @@ namespace VibeModel.UI
             if (_themeCombo.IsEnabled && (_themeCombo.SelectedItem as ComboBoxItem)?.Tag is ThemeChoice theme)
                 SettingsManager.SetTheme(theme);
 
-            // Change approval (plan 15): the user's own choice; IT's (managed.json) is locked.
-            foreach (var radio in _approvalRadios)
-                if (radio.IsEnabled && radio.IsChecked == true && radio.Tag is ChangeApprovalMode mode)
-                    SettingsManager.SetChangeApproval(mode);
-            if (_approvalSessionCheck != null && _approvalSessionCheck.IsChecked != true)
-                ChangeApprovalPolicy.DontAskThisSession = false;
-            if (_approvalChipCheck != null && _approvalChipCheck.IsChecked != true)
-                ChangeApprovalPolicy.SessionOverride = null;
-
             if (_updateCheckBox.IsEnabled)
                 SettingsManager.SetUpdateCheck(_updateCheckBox.IsChecked == true);
 
@@ -1196,7 +1169,7 @@ namespace VibeModel.UI
             BackendChanged = _selectedBackend != previousBackend || savedBackend != _originalBackend ||
                              (keyChanged && savedBackend == "auto");
 
-            _statusText.Text = "Settings saved!";
+            _statusText.Text = S(Strings.SettingsSaved);
             _statusText.Foreground = FgSuccess;
 
             var timer = new System.Windows.Threading.DispatcherTimer
