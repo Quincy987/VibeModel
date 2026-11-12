@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using VibeModel.Services.Helpers;
 
 namespace VibeModel.Services.Claude
 {
@@ -21,7 +22,7 @@ namespace VibeModel.Services.Claude
             public int StoppedAfter;
             public bool AtLeast => StoppedAfter > 0;
             /// <summary>Length, Area, Volume or Number.</summary>
-            public string Spec;
+            public QuantityKind Spec;
         }
 
         private const string Advice = "they do not follow model changes — use a schedule field, a takeoff or a family formula for quantities that must stay current";
@@ -29,7 +30,7 @@ namespace VibeModel.Services.Claude
         // A plain number (or count) is often an identifier (pile number, sequence) rather than a quantity: then the
         // warning is conditional. Length, area and volume are always quantities.
         private static string AdviceFor(IList<Entry> entries)
-            => entries.All(e => e.Spec == "Number") ? "if they are quantities, " + Advice : Advice;
+            => entries.All(e => e.Spec == QuantityKind.Number) ? "if they are quantities, " + Advice : Advice;
 
         /// <summary>One line, or null when nothing was filled.</summary>
         public static string Line(IList<Entry> entries)
@@ -55,11 +56,15 @@ namespace VibeModel.Services.Claude
                 { "newThisRun", true },
                 { "elements", e.Elements },
                 { "atLeast", e.AtLeast },
-                { "spec", e.Spec },
+                { "spec", CalculatedFieldHint.TypeLabel(e.Spec) },
             }).ToList();
         }
 
-        private static string Describe(string spec) => string.IsNullOrEmpty(spec) ? "" : spec + ", ";
+        private static string Describe(QuantityKind spec)
+        {
+            var label = CalculatedFieldHint.TypeLabel(spec);
+            return label == null ? "" : label + ", ";
+        }
 
         private static string Count(Entry e)
             => (e.AtLeast ? "at least " : "") + e.Elements + (e.Elements == 1 ? " element" : " elements") +

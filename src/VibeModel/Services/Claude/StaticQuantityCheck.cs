@@ -33,14 +33,14 @@ namespace VibeModel.Services.Claude
             try
             {
                 var sw = Stopwatch.StartNew();
-                var parameters = new List<(Definition Definition, string Spec)>();
+                var parameters = new List<(Definition Definition, QuantityKind Spec)>();
                 foreach (var id in changes.Added)
                 {
                     if (!(doc.GetElement(id) is ParameterElement pe) || pe is GlobalParameter) continue;
                     var def = pe.GetDefinition();
                     if (def == null || doc.ParameterBindings.get_Item(def) == null) continue;
-                    var spec = SpecLabel(def);
-                    if (spec != null) parameters.Add((def, spec));
+                    var spec = QuantitySpec(def);
+                    if (spec != null) parameters.Add((def, spec.Value));
                 }
                 if (parameters.Count == 0) return null;
 
@@ -73,12 +73,13 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        /// <summary>"Length" / "Area" / "Volume" / "Number" (counts included), else null: not a quantity.</summary>
-        private static string SpecLabel(Definition def)
+        /// <summary>Length / Area / Volume / Number (counts included), else null: not a quantity.</summary>
+        private static QuantityKind? QuantitySpec(Definition def)
         {
             ForgeTypeId spec;
             try { spec = def.GetDataType(); } catch { return null; }
-            return CalculatedFieldHint.TypeLabel(FormattingHelper.QuantityKindOf(spec, integerAsNumber: true));
+            var kind = FormattingHelper.QuantityKindOf(spec, integerAsNumber: true);
+            return CalculatedFieldHint.TypeLabel(kind) != null ? kind : (QuantityKind?)null;
         }
 
         private static bool HasFixedNumber(Parameter p)

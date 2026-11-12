@@ -685,7 +685,8 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   `at least 300 elements (stopped reading after 5000 changed elements)`). Only parameters new in the run
   (so every value was written by it); a parameter that already existed, a family's own shared parameter and a value
   tied to a global parameter are not flagged. When every flagged parameter is a plain Number/Integer (often an identifier
-  such as a pile number) the advice reads `if they are quantities, they do not follow …`. Never after a preview, Discard, READ_ONLY or rolled-back batch.
+  such as a pile number) the advice reads `if they are quantities, they do not follow …`. Never after a preview, Discard, READ_ONLY or rolled-back batch;
+  under `ask` it is in the response after Keep, not in the approval window (the check runs on what was kept).
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:

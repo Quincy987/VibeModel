@@ -249,7 +249,7 @@ namespace VibeModel.Tests
         public void QuantitiesLine_OneParameter()
         {
             var line = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
-                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 12, Spec = "Area" } });
+                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 12, Spec = Kind.Area } });
             Assert.Equal("-- quantities: parameter 'Oppervlak' (Area, new this run) was filled with fixed numbers on 12 elements; " +
                          "they do not follow model changes — use a schedule field, a takeoff or a family formula for quantities that must stay current", line);
         }
@@ -259,8 +259,8 @@ namespace VibeModel.Tests
         {
             var line = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
             {
-                new StaticQuantityReport.Entry { Parameter = "A", Elements = 1, Spec = "Area" },
-                new StaticQuantityReport.Entry { Parameter = "V", Elements = 3, Spec = "Volume" },
+                new StaticQuantityReport.Entry { Parameter = "A", Elements = 1, Spec = Kind.Area },
+                new StaticQuantityReport.Entry { Parameter = "V", Elements = 3, Spec = Kind.Volume },
             });
             Assert.StartsWith("-- quantities: new parameters 'A' (Area, 1 element), 'V' (Volume, 3 elements) were filled with fixed numbers this run; ", line);
         }
@@ -270,13 +270,13 @@ namespace VibeModel.Tests
         {
             // A Number parameter may be a pile number or a sequence, not a quantity.
             var number = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
-                { new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = "Number" } });
+                { new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = Kind.Number } });
             Assert.Contains("on 40 elements; if they are quantities, they do not follow model changes", number);
             // Mixed with a real quantity: the warning is not softened.
             var mixed = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
             {
-                new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = "Number" },
-                new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 40, Spec = "Area" },
+                new StaticQuantityReport.Entry { Parameter = "Paalnummer", Elements = 40, Spec = Kind.Number },
+                new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 40, Spec = Kind.Area },
             });
             Assert.DoesNotContain("if they are quantities", mixed);
         }
@@ -294,7 +294,7 @@ namespace VibeModel.Tests
         public void QuantitiesLine_SaysWhenItStoppedReading()
         {
             var line = StaticQuantityReport.Line(new List<StaticQuantityReport.Entry>
-                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 300, StoppedAfter = 5000, Spec = "Area" } });
+                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 300, StoppedAfter = 5000, Spec = Kind.Area } });
             Assert.Contains("on at least 300 elements (stopped reading after 5000 changed elements); ", line);
         }
 
@@ -310,7 +310,7 @@ namespace VibeModel.Tests
         public void QuantitiesJson_Shape()
         {
             var json = StaticQuantityReport.Json(new List<StaticQuantityReport.Entry>
-                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 2, Spec = "Area" } });
+                { new StaticQuantityReport.Entry { Parameter = "Oppervlak", Elements = 2, Spec = Kind.Area } });
             var e = Assert.IsType<Dictionary<string, object>>(Assert.Single(json));
             Assert.Equal("Oppervlak", e["parameter"]);
             Assert.Equal(true, e["newThisRun"]);
