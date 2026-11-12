@@ -169,7 +169,8 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// "-- schedules: 12 new Structural Rebar not in 'Wapeningsstaat' (schedule 4711 --rows for why); …",
-        /// null when every new element is in every checked schedule.
+        /// or only the "not checked" count when the caps left schedules out; null when every new element is in
+        /// every schedule of its category.
         /// </summary>
         public string SchedulesLine()
         {
@@ -186,7 +187,8 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// "-- views: 12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - Wapening), where the other
-        /// bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)"; null when nothing is missing.
+        /// bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)", or only the "not checked" count when
+        /// the caps left views out; null when nothing is missing and every view was checked.
         /// </summary>
         public string ViewsLine()
         {

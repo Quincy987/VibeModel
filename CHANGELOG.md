@@ -6,7 +6,7 @@
 - `schedule` (new and `--rows`) says how many elements of its category it shows and why the rest is outside: the schedule's phase,
   a design option, *filter by sheet* or its own filters, which it names. An empty schedule explains itself the same way.
 - After a command that adds elements, a schedule of that category that leaves them out is named (`-- schedules: …`), and so is a
-  view the AI put on a sheet this session that does not show them where it draws the rest of that category — including reinforcement hidden inside its concrete host where
+  view the AI made or put on a sheet this session that does not show them where it draws the rest of that category — including reinforcement hidden inside its concrete host where
   the other bars are drawn unobscured (`-- views: …`). The chat then fixes it or says what is missing, instead of calling the
   overview complete. (Feedback 12-11: the bottom reinforcement was modelled but did not appear in the overview.)
 
