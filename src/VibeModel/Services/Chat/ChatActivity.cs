@@ -31,6 +31,13 @@ namespace VibeModel.Services.Chat
         /// <summary>The command's short args, one line ("0 0 8000 0").</summary>
         public string Detail { get; set; }
 
+        /// <summary>
+        /// ToolStarted: the call's full arguments (the args string, the shell command, the file path),
+        /// capped at <see cref="ToolCallDescriber.MaxFullArgsLength"/>. Stored with the chat for the
+        /// export; never drawn.
+        /// </summary>
+        public string FullArgs { get; set; }
+
         /// <summary>ToolFinished: the first error line, or null when it succeeded.</summary>
         public string ErrorLine { get; set; }
 
@@ -48,6 +55,7 @@ namespace VibeModel.Services.Chat
                 ToolId = toolId,
                 Command = call.Command,
                 Detail = call.Detail,
+                FullArgs = call.FullArgs,
                 EchoText = echoText
             };
 
@@ -73,10 +81,14 @@ namespace VibeModel.Services.Chat
         public string Command;
         public string Detail;
 
-        public ToolCallInfo(string command, string detail)
+        /// <summary>The full arguments (capped, secrets scrubbed), kept for the stored chat and its export.</summary>
+        public string FullArgs;
+
+        public ToolCallInfo(string command, string detail, string fullArgs = null)
         {
             Command = command;
             Detail = detail;
+            FullArgs = fullArgs;
         }
     }
 
@@ -88,6 +100,9 @@ namespace VibeModel.Services.Chat
     {
         public const int MaxDetailLength = 60;
         public const int MaxErrorLength = 140;
+
+        /// <summary>The longest argument text kept per step in the stored chat (an exec snippet).</summary>
+        public const int MaxFullArgsLength = 4000;
 
         private static readonly Regex CurlUrl = new Regex(
             @"https?://(?:127\.0\.0\.1|localhost|\[::1\]):\d+/(?<cmd>[A-Za-z]+)(?<query>\?[^""'\s]*)?",
@@ -104,9 +119,10 @@ namespace VibeModel.Services.Chat
         public static ToolCallInfo ForRevitTool(string toolName, string args)
         {
             var command = (toolName ?? "").StartsWith("revit_") ? toolName.Substring(6) : (toolName ?? "");
+            var full = Full(args);
             if (command.Equals("batch", StringComparison.OrdinalIgnoreCase))
-                return new ToolCallInfo(command, BatchDetail(args));
-            return new ToolCallInfo(command, Shorten(args));
+                return new ToolCallInfo(command, BatchDetail(args), full);
+            return new ToolCallInfo(command, Shorten(args), full);
         }
 
         /// <summary>
@@ -125,19 +141,27 @@ namespace VibeModel.Services.Chat
                 {
                     var cmd = match.Groups["cmd"].Value.ToLowerInvariant();
                     string detail;
+                    // Full: the decoded ?args= when the command is just that one curl, else the
+                    // whole shell command (an exec sent with --data-urlencode or from a heredoc file,
+                    // several curls, a pipe or a loop — live: `for c in walls floors … args=$c` kept "$c").
+                    string full;
                     if (cmd == "batch")
                     {
                         var data = CurlData.Match(command);
-                        detail = data.Success ? BatchDetail(data.Groups["b"].Value.Replace("\\\"", "\"")) : "";
+                        var body = data.Success ? data.Groups["b"].Value.Replace("\\\"", "\"") : null;
+                        detail = body != null ? BatchDetail(body) : "";
+                        full = Full(body != null ? body.Replace("\\n", "\n") : command);
                     }
                     else
                     {
-                        detail = Shorten(QueryArgs(match.Groups["query"].Value));
+                        var queryArgs = QueryArgs(match.Groups["query"].Value);
+                        detail = Shorten(queryArgs);
+                        full = Full(queryArgs.Length > 0 && IsPlainCurl(command, match, queryArgs) ? queryArgs : command);
                     }
-                    return new ToolCallInfo(cmd, detail);
+                    return new ToolCallInfo(cmd, detail, full);
                 }
                 var description = GetString(input, "description");
-                return new ToolCallInfo("@shell", Shorten(string.IsNullOrWhiteSpace(description) ? command : description));
+                return new ToolCallInfo("@shell", Shorten(string.IsNullOrWhiteSpace(description) ? command : description), Full(command));
             }
 
             if (name == "Read")
@@ -146,12 +170,12 @@ namespace VibeModel.Services.Chat
                 var file = FileName(path);
                 var ext = System.IO.Path.GetExtension(file).ToLowerInvariant();
                 var isImage = ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" || ext == ".bmp";
-                return new ToolCallInfo(isImage ? "@image" : "@read", Shorten(file));
+                return new ToolCallInfo(isImage ? "@image" : "@read", Shorten(file), Full(path));
             }
 
             // Any other CLI tool: its name plus the first string input as the detail.
             var first = input?.Values.OfType<string>().FirstOrDefault();
-            return new ToolCallInfo("@" + name, Shorten(first));
+            return new ToolCallInfo("@" + name, Shorten(first), Full(first));
         }
 
         /// <summary>
@@ -237,6 +261,30 @@ namespace VibeModel.Services.Chat
             if (string.IsNullOrWhiteSpace(text)) return "";
             var one = Regex.Replace(text, @"\s+", " ").Trim();
             return one.Length <= max ? one : one.Substring(0, max - 1).TrimEnd() + "…";
+        }
+
+        /// <summary>
+        /// One curl and nothing around it: one line, one server URL, no shell variable in the args and
+        /// no <c>; | &amp; `</c> outside the URL (a pipe, a chain, a loop). Then its decoded args say it all.
+        /// </summary>
+        private static bool IsPlainCurl(string command, Match url, string queryArgs)
+        {
+            if (command.IndexOf('\n') >= 0 || queryArgs.IndexOf('$') >= 0) return false;
+            if (CurlUrl.Matches(command).Count != 1) return false;
+            var rest = command.Remove(url.Index, url.Length);
+            return rest.IndexOfAny(new[] { ';', '|', '&', '`' }) < 0;
+        }
+
+        /// <summary>
+        /// The full argument text, line breaks kept, secrets scrubbed (<see cref="ChatExportRedaction"/>),
+        /// capped at <see cref="MaxFullArgsLength"/> with "… (+N tekens)". Null when empty.
+        /// </summary>
+        public static string Full(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var scrubbed = ChatExportRedaction.Scrub(text.Trim());
+            if (scrubbed.Length <= MaxFullArgsLength) return scrubbed;
+            return scrubbed.Substring(0, MaxFullArgsLength) + "… (+" + (scrubbed.Length - MaxFullArgsLength) + " tekens)";
         }
 
         // The first failing sub-result of a JSON batch: results[i].result is either an
@@ -331,6 +379,15 @@ namespace VibeModel.Services.Chat
             public string Detail { get; internal set; }
             public StepState State { get; internal set; }
             public string ErrorLine { get; internal set; }
+
+            /// <summary>The full arguments (capped, secrets scrubbed) — for the stored chat, never drawn.</summary>
+            public string FullArgs { get; internal set; }
+            public DateTime StartedUtc { get; internal set; }
+            public DateTime? FinishedUtc { get; internal set; }
+
+            public long? DurationMs => FinishedUtc.HasValue
+                ? (long?)Math.Max(0, (long)(FinishedUtc.Value - StartedUtc).TotalMilliseconds)
+                : null;
         }
 
         /// <summary>One row of the block: either a step or a note (intermediate text).</summary>
@@ -450,6 +507,8 @@ namespace VibeModel.Services.Chat
                         Id = e.ToolId,
                         Command = e.Command ?? "",
                         Detail = e.Detail ?? "",
+                        FullArgs = e.FullArgs,
+                        StartedUtc = nowUtc,
                         State = StepState.Running
                     }
                 });
@@ -463,6 +522,7 @@ namespace VibeModel.Services.Chat
                 if (step == null || step.State != StepState.Running) return;
                 step.State = string.IsNullOrEmpty(e.ErrorLine) ? StepState.Done : StepState.Failed;
                 step.ErrorLine = e.ErrorLine;
+                step.FinishedUtc = nowUtc;
             }
         }
 
@@ -476,7 +536,10 @@ namespace VibeModel.Services.Chat
             if (IsFinished) return;
             FinishedUtc = nowUtc;
             foreach (var s in Steps.Where(s => s.State == StepState.Running))
+            {
                 s.State = cancelled ? StepState.Cancelled : StepState.Done;
+                s.FinishedUtc = nowUtc;
+            }
 
             var answer = LiveText;
             _segment.Clear();

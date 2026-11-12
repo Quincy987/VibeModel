@@ -17,7 +17,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "text";
         public string Description => "Place a text note in the active view (plan: project x,y mm; section/elevation: x = position along the view as " +
-                                     "printed by 'section', y = elevation mm; sheet: paper mm). '\\n' = new line. --leader x y points at something";
+                                     "printed by 'section', y = elevation mm; sheet: paper mm). '\\n' = new line. --leader x y points at something, --width <paper mm> wraps the text";
         public string Usage => TextArgs.Usage;
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -72,7 +72,10 @@ namespace VibeModel.Services.Claude.Commands
                         typeNote = "created text type '" + name + "' (no existing type at " + Mm.F1(a.Size.Value) + " mm)";
                     }
                 }
-                note = TextNote.Create(doc, view.Id, pos, a.Text, type.Id);
+                // --width: the wrap width on paper (TextNote.Width is paper space) — plan 21.
+                note = a.Width.HasValue
+                    ? TextNote.Create(doc, view.Id, pos, RevitUnitHelper.MmToFeet(a.Width.Value), a.Text, type.Id)
+                    : TextNote.Create(doc, view.Id, pos, a.Text, type.Id);
                 if (leaderEnd != null)
                 {
                     var leader = note.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_L);
@@ -91,6 +94,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("At: " + Mm.F(a.X) + ", " + Mm.F(a.Y) + " (" + convention + ")" + (a.Leader != null ? ", leader to " + Mm.F(a.Leader[0]) + ", " + Mm.F(a.Leader[1]) : ""));
             sb.AppendLine("Type: " + type.Name + " (" + Mm.F1(SizeMm(type)) + " mm on paper)" + (typeNote != null ? " — " + typeNote : ""));
             sb.AppendLine("Text: " + a.Text.Replace("\n", " ⏎ "));
+            if (a.Width.HasValue)
+                sb.AppendLine("Width: " + Mm.F1(RevitUnitHelper.FeetToMm(note.Width)) + " mm on paper (wraps; " + Mm.F1(RevitUnitHelper.FeetToMm(note.Height)) + " mm high)");
             if (a.Leader != null)
                 sb.AppendLine("Leader: free point (attached to nothing — a replacement cannot break it)");
 

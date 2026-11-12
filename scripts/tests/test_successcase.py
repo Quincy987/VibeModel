@@ -153,6 +153,14 @@ class TemplateMergeTest(unittest.TestCase):
         case = sc.build_chat_case(sc.load_chat(self.chat_path), self.logs)
         self.assertEqual(case["turns"][0]["commands"], 4)
 
+    def test_command_count_from_stored_steps(self):
+        # Newer chats: the answer carries its steps; they win over the (shared) debug log.
+        self.messages[1]["steps"] = [{"command": "filter", "args": "walls", "ok": True},
+                                     {"command": "wall", "args": "0 0 5000 0", "ok": False, "error": "x"}]
+        self.save_chat()
+        case = sc.build_chat_case(sc.load_chat(self.chat_path), self.logs)
+        self.assertEqual(case["turns"][0]["commands"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

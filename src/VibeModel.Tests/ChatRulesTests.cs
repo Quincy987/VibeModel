@@ -115,6 +115,52 @@ namespace VibeModel.Tests
             Assert.Contains("6 words max", rules);
         }
 
+        // Interview 2026-11-12: on a composite build the chat invented values and only reported
+        // them afterwards. Invented values are shown first; a single element is built at once.
+        [Theory]
+        [InlineData("nl", ChangeApprovalMode.Auto)]
+        [InlineData("en", ChangeApprovalMode.Auto)]
+        [InlineData("nl", ChangeApprovalMode.Ask)]
+        [InlineData("nl", ChangeApprovalMode.Annotate)]
+        [InlineData("nl", ChangeApprovalMode.ReadOnly)]
+        public void Rules_ShowInventedValuesBeforeACompositeBuild(string language, ChangeApprovalMode mode)
+        {
+            var rules = ChatBackendBase.BuildBehaviourRules(language, mode);
+            var rule = "- " + ChatBackendBase.AssumptionsFirstRule;
+            Assert.Contains(rule, rules);
+
+            int askFirst = rules.IndexOf("\nAsk first", System.StringComparison.Ordinal);
+            int at = rules.IndexOf(rule, System.StringComparison.Ordinal);
+            int indicative = rules.IndexOf("- Indicative work", System.StringComparison.Ordinal);
+            int compact = rules.IndexOf("\nCompact answers", System.StringComparison.Ordinal);
+            Assert.True(askFirst >= 0 && askFirst < at, "the rule sits under Ask first");
+            Assert.True(at < indicative, "the rule comes before the just-do-it bullet");
+            Assert.True(indicative < compact, "both stay in the Ask first section");
+
+            Assert.Contains("just do it, then report — unless the assumptions rule above applies", rules);
+        }
+
+        [Fact]
+        public void AssumptionsFirstRule_NamesSourcesThresholdWeakerChoicesAndTheException()
+        {
+            var rule = ChatBackendBase.AssumptionsFirstRule;
+            Assert.Contains("GIVEN", rule);
+            Assert.Contains("FROM A SOURCE", rule);
+            Assert.Contains("INVENTED", rule);
+            Assert.Contains("2 or more values are invented", rule);
+            Assert.Contains("typed in by hand", rule);
+            Assert.Contains("DirectShape", rule);
+            Assert.Contains("new type", rule);
+            Assert.Contains("A single element, or at most one invented value: build at once", rule);
+            Assert.Contains("Onderdeel | Aanname | Waarom", rule);
+            Assert.Contains("in the reply language", rule);
+            Assert.Contains("first read what the request points to", rule);
+            Assert.Contains("This is not a refusal", rule);
+
+            var turn = ClaudeCodeBackend.BuildTurnPrompt(@"C:\x\p.txt", 18884, "CURRENT REVIT CONTEXT: x", "nl");
+            Assert.Contains(rule, turn);
+        }
+
         // Logs 2026-10-12: answers ran to 6-8 lines (a closing next-steps list, the phase-1 view
         // re-explained every turn). One offer line stays: the quick-reply chips need it.
         [Fact]
