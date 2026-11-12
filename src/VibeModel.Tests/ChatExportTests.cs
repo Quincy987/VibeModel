@@ -233,7 +233,10 @@ namespace VibeModel.Tests
             Assert.DoesNotContain("Executing: later", md);
             Assert.DoesNotContain("` later", md);
             Assert.DoesNotContain("` info", md);
-            Assert.Equal(3, stats.Commands);
+            Assert.Equal(0, stats.Commands);                                  // exact and indicative never summed
+            Assert.Equal(3, stats.LogCommands);
+            Assert.Equal("~3", stats.CommandsText());
+            Assert.Contains("~3 commands", md);
             Assert.Equal(1, stats.ChatsFromLog);
             Assert.Equal(0, stats.ChatsWithoutRecord);
         }
@@ -397,6 +400,11 @@ namespace VibeModel.Tests
             Assert.Contains("9 chats have no commands recorded", text);
             Assert.Contains("No server token or API key", text);
             Assert.StartsWith("ERROR: chat export failed: boom", ChatLogCommand.Describe(new ChatExportResult { Error = "boom" }));
+            Assert.Equal("none", ChatLogCommand.Describe(new ChatExportResult { Error = "none", NothingToExport = true }));
+            Assert.Contains("(1 turns, 4 + ~7 commands,", ChatLogCommand.Describe(new ChatExportResult
+            {
+                Path = "x", Stats = new ChatExportStats { Chats = 2, Turns = 1, Commands = 4, LogCommands = 7 }
+            }));
         }
     }
 }

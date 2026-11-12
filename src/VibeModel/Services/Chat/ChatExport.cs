@@ -124,7 +124,15 @@ namespace VibeModel.Services.Chat
     {
         public int Chats { get; set; }
         public int Turns { get; set; }
+
+        /// <summary>Commands recorded with the chat (exact).</summary>
         public int Commands { get; set; }
+
+        /// <summary>
+        /// Commands taken from the debug log for older chats — indicative: every client on the
+        /// machine logs there, so never added to <see cref="Commands"/>.
+        /// </summary>
+        public int LogCommands { get; set; }
         public int Failed { get; set; }
         /// <summary>Chats in which no turn has commands from the chat file nor from the debug log.</summary>
         public int ChatsWithoutRecord { get; set; }
@@ -133,8 +141,17 @@ namespace VibeModel.Services.Chat
 
         public void Add(ChatExportStats o)
         {
-            Chats += o.Chats; Turns += o.Turns; Commands += o.Commands; Failed += o.Failed;
+            Chats += o.Chats; Turns += o.Turns; Commands += o.Commands; LogCommands += o.LogCommands; Failed += o.Failed;
             ChatsWithoutRecord += o.ChatsWithoutRecord; ChatsFromLog += o.ChatsFromLog; Tokens += o.Tokens;
+        }
+
+        /// <summary>"12", "~30" (only from the log) or "12 + ~30": exact and indicative never summed.</summary>
+        public string CommandsText()
+        {
+            var exact = Commands.ToString(CultureInfo.InvariantCulture);
+            if (LogCommands == 0) return exact;
+            var log = "~" + LogCommands.ToString(CultureInfo.InvariantCulture);
+            return Commands == 0 ? log : exact + " + " + log;
         }
     }
 
@@ -207,7 +224,7 @@ namespace VibeModel.Services.Chat
                     stats.Failed += rec.Steps.Count(s => !s.Ok);
                 }
                 else if (rec.Log != null && rec.Log.Available)
-                    stats.Commands += rec.Log.Commands.Count;
+                    stats.LogCommands += rec.Log.Commands.Count;
                 if (reply?.Usage != null)
                     stats.Tokens += reply.Usage.InputTokens + reply.Usage.OutputTokens + reply.Usage.CacheReadTokens + reply.Usage.CacheWriteTokens;
                 rows.Add(rec);
@@ -224,7 +241,7 @@ namespace VibeModel.Services.Chat
                 sb.Append("- ").AppendLine("Project: " + Clean(session.Project));
             sb.Append("- ").AppendLine("Backend: " + (string.IsNullOrWhiteSpace(session.Backend) ? "?" : session.Backend) + " · model: " + (
                 string.IsNullOrWhiteSpace(model) ? "?" : model));
-            sb.Append("- ").AppendLine(L(Strings.ChatExportSummary, session.Id, stats.Turns, stats.Commands, stats.Failed));
+            sb.Append("- ").AppendLine(L(Strings.ChatExportSummary, session.Id, stats.Turns, stats.CommandsText(), stats.Failed));
             sb.AppendLine();
 
             foreach (var rec in rows)
@@ -473,7 +490,7 @@ namespace VibeModel.Services.Chat
                          .Append(" | [").Append(Escape(ChatExportDocument.Clean(s.Title))).Append("](chats/").Append(Uri.EscapeDataString(name)).Append(')')
                          .Append(" | ").Append(Escape(ChatExportDocument.Clean(s.Project)))
                          .Append(" | ").Append(st.Turns)
-                         .Append(" | ").Append(st.ChatsWithoutRecord > 0 ? "–" : st.Commands.ToString(CultureInfo.InvariantCulture))
+                         .Append(" | ").Append(st.ChatsWithoutRecord > 0 ? "–" : st.CommandsText())
                          .Append(" | ").Append(st.Failed)
                          .Append(" | ").Append(st.Tokens > 0 ? ModelPricing.Tokens(st.Tokens) : "")
                          .AppendLine(" |");
@@ -486,7 +503,7 @@ namespace VibeModel.Services.Chat
         {
             return Strings.For(language, Strings.ChatExportReadme,
                 nowLocal.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
-                stats.Chats, stats.Turns, stats.Commands, stats.ChatsWithoutRecord, stats.ChatsFromLog) + "\n";
+                stats.Chats, stats.Turns, stats.CommandsText(), stats.ChatsWithoutRecord, stats.ChatsFromLog) + "\n";
         }
 
         private static void WriteEntry(ZipArchive zip, string name, string text)

@@ -225,7 +225,7 @@ namespace VibeModel.Services.Chat
         public const string ExportChatsTimeout = "ExportChatsTimeout";         // {0} = seconds
         public const string ExportChatsFailed = "ExportChatsFailed";           // {0} = reason
         public const string ChatExportDate = "ChatExportDate";                 // {0} = created, {1} = updated
-        public const string ChatExportSummary = "ChatExportSummary";           // {0} = id, {1} = turns, {2} = commands, {3} = failed
+        public const string ChatExportSummary = "ChatExportSummary";           // {0} = id, {1} = turns, {2} = commands ("12 + ~30"), {3} = failed
         public const string ChatExportTurn = "ChatExportTurn";                 // {0} = number, {1} = time
         public const string ChatExportQuestion = "ChatExportQuestion";
         public const string ChatExportAnswer = "ChatExportAnswer";
@@ -240,7 +240,7 @@ namespace VibeModel.Services.Chat
         public const string ChatExportNotRecorded = "ChatExportNotRecorded";
         public const string ChatExportIndexTitle = "ChatExportIndexTitle";
         public const string ChatExportIndexHeader = "ChatExportIndexHeader";
-        public const string ChatExportReadme = "ChatExportReadme";             // {0} = date, {1} = chats, {2} = turns, {3} = commands, {4} = without record, {5} = from log
+        public const string ChatExportReadme = "ChatExportReadme";             // {0} = date, {1} = chats, {2} = turns, {3} = commands ("12 + ~30"), {4} = without record, {5} = from log
 
         private static readonly Dictionary<string, string> En =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -451,7 +451,7 @@ namespace VibeModel.Services.Chat
                 { ChatExportNotRecorded, "no commands recorded — a chat from before this version, and debug logging was off" },
                 { ChatExportIndexTitle, "VibeModel chats" },
                 { ChatExportIndexHeader, "| date | chat | project | turns | commands | failed | tokens |" },
-                { ChatExportReadme, "# VibeModel chat export\n\nExported {0} · {1} chats · {2} turns · {3} commands.\n\nPer chat: the questions, the answers (as stored, including the notes between steps), the commands each turn ran with their arguments, whether they failed, and the tokens. Commands are recorded per turn since this export exists; {5} older chats take them from the debug log (indicative); for {4} they are missing.\n\nNo server token and no API key is in this export. Questions, answers, project names and file paths are — read it through before you send it.\n\nTip: upload it to Claude and ask for patterns — commands retried after a failure, errors that keep coming back, questions that needed many steps, what the instructions should say differently.\n" },
+                { ChatExportReadme, "# VibeModel chat export\n\nExported {0} · {1} chats · {2} turns · {3} commands.\n\nPer chat: the questions, the answers (as stored, including the notes between steps), the commands each turn ran with their arguments, whether they failed, and the tokens. Commands are recorded per turn since this export exists; {5} older chats take them from the debug log (indicative, counted with ~); for {4} they are missing.\n\nNo server token and no API key is in this export. Questions, answers, project names and file paths are — read it through before you send it.\n\nTip: upload it to Claude and ask for patterns — commands retried after a failure, errors that keep coming back, questions that needed many steps, what the instructions should say differently.\n" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -663,7 +663,7 @@ namespace VibeModel.Services.Chat
                 { ChatExportNotRecorded, "geen commands vastgelegd — chat van vóór deze versie, debuglog stond uit" },
                 { ChatExportIndexTitle, "VibeModel-chats" },
                 { ChatExportIndexHeader, "| datum | chat | project | beurten | commands | mislukt | tokens |" },
-                { ChatExportReadme, "# VibeModel-chatexport\n\nGeëxporteerd {0} · {1} chats · {2} beurten · {3} commands.\n\nPer chat: de vragen, de antwoorden (zoals opgeslagen, met de notities tussen de stappen), de commands die elke beurt uitvoerde met hun argumenten, of ze mislukten, en de tokens. Commands worden per beurt vastgelegd sinds deze export bestaat; {5} oudere chats halen ze uit de debuglog (indicatief); bij {4} ontbreken ze.\n\nEr staat geen servertoken en geen API-sleutel in deze export. Vragen, antwoorden, projectnamen en bestandspaden wel — lees hem door voordat je hem opstuurt.\n\nTip: upload hem in Claude en vraag naar patronen — commands die na een fout opnieuw werden geprobeerd, fouten die terugkomen, vragen die veel stappen nodig hadden, wat de instructies anders moeten zeggen.\n" },
+                { ChatExportReadme, "# VibeModel-chatexport\n\nGeëxporteerd {0} · {1} chats · {2} beurten · {3} commands.\n\nPer chat: de vragen, de antwoorden (zoals opgeslagen, met de notities tussen de stappen), de commands die elke beurt uitvoerde met hun argumenten, of ze mislukten, en de tokens. Commands worden per beurt vastgelegd sinds deze export bestaat; {5} oudere chats halen ze uit de debuglog (indicatief, geteld met ~); bij {4} ontbreken ze.\n\nEr staat geen servertoken en geen API-sleutel in deze export. Vragen, antwoorden, projectnamen en bestandspaden wel — lees hem door voordat je hem opstuurt.\n\nTip: upload hem in Claude en vraag naar patronen — commands die na een fout opnieuw werden geprobeerd, fouten die terugkomen, vragen die veel stappen nodig hadden, wat de instructies anders moeten zeggen.\n" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

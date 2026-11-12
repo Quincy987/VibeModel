@@ -10,7 +10,7 @@
   an error, recurring failures). No server token or API key goes in; questions, answers and paths do.
 - Each answer in the stored chat now also records what its turn ran (`steps`, `usage`, `model`, `durationMs` — additive;
   older chats stay readable and older builds ignore it). Chats from before this version take their commands from the
-  debug log when it was on (marked as indicative), else say none were recorded. `scripts/successcase.py` counts the
+  debug log when it was on (marked as indicative and counted apart with ~), else say none were recorded. `scripts/successcase.py` counts the
   stored steps exactly.
 
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)

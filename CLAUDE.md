@@ -972,8 +972,9 @@ line (+ context, `≈ €`). The buttons export every chat and open Explorer on 
   without a record is written exactly as before, and older builds ignore the keys. Never sent to a model.
 - **Older chats**: no record → the debug log's `Executing: …` / `Executing batch: N commands` lines between
   question and answer (`ChatExportLog`; local time, the day's `log_yyyy-MM-dd.txt`, shared read), marked
-  *indicative* — only with `VIBEMODEL_DEBUG=1`, and every client on the machine logs there; no log →
-  "no commands recorded".
+  *indicative* — only with `VIBEMODEL_DEBUG=1`, and every client on the machine logs there — and counted
+  apart (`ChatExportStats.LogCommands`, shown as `~30` / `12 + ~30`, never summed with the exact count); no
+  log → "no commands recorded". `chatlog --export` with no saved chats answers a plain note, not an ERROR.
 - **Secrets** (`ChatExportRedaction.Scrub`, on storing args AND on export): the `X-VibeModel-Token`
   header value, `VIBEMODEL_TOKEN=` / `ANTHROPIC_API_KEY=` assignments, a `"token":"…"` field, `sk-ant-…`
   keys and the live `ServerAuth.Token` itself → `<token>` / `sk-ant-…`; a `$VIBEMODEL_TOKEN` reference

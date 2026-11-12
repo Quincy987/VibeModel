@@ -62,19 +62,21 @@ namespace VibeModel.Services.Claude.Commands
         /// <summary>The command's answer for an export result (pure, English like every command).</summary>
         public static string Describe(ChatExportResult result)
         {
+            if (result != null && result.NothingToExport)
+                return result.Error;
             if (result == null || result.Error != null)
                 return "ERROR: chat export failed: " + (result?.Error ?? "unknown") + "\n" +
                        "Hint: the chats are in %LOCALAPPDATA%\\VibeModel\\chats\\ (one JSON file per chat).";
             var st = result.Stats;
             var sb = new StringBuilder();
             sb.Append("Exported ").Append(st.Chats).Append(st.Chats == 1 ? " chat" : " chats")
-              .Append(" (").Append(st.Turns).Append(" turns, ").Append(st.Commands).Append(" commands, ")
+              .Append(" (").Append(st.Turns).Append(" turns, ").Append(st.CommandsText()).Append(" commands, ")
               .Append(st.Failed).Append(" failed) to ").Append(result.IsZip ? "a zip" : "one markdown file")
               .Append(" in ").Append(((int)result.Elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture)).AppendLine(" ms:");
             sb.AppendLine(result.Path);
             if (st.ChatsFromLog > 0)
                 sb.Append(st.ChatsFromLog).Append(st.ChatsFromLog == 1 ? " older chat takes its" : " older chats take their")
-                  .AppendLine(" commands from the debug log (indicative).");
+                  .AppendLine(" commands from the debug log (~, indicative: every client on this computer logs there).");
             if (st.ChatsWithoutRecord > 0)
                 sb.Append(st.ChatsWithoutRecord).Append(st.ChatsWithoutRecord == 1 ? " chat has" : " chats have")
                   .AppendLine(" no commands recorded (older than the per-turn record, and debug logging was off).");
