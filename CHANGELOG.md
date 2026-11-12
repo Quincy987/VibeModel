@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added — leesbare annotaties
+- `annolayout [view|sheet]` reads back where every text, tag, dimension text and line, witness line and spot sits on paper and
+  names what collides, with ids (WARN for overlapping texts, lines through texts, stacked dimension strings and skewed text;
+  INFO for touching strips, vertical text and witness lines). After any change that adds annotations, one `-- layout:` line
+  names the new collisions.
+- Dimensions without `--offset` go to the first free row (8, 16, 24 mm on paper), past strings already there and other texts,
+  instead of all on the same line.
+- Spot elevations pick a free corner for their text when the default one is taken, and say which.
+- `tag` tags rebar (through the bar's sub-element — Revit refuses the bar as a whole) and parts, falls back to a multi-category
+  tag, takes `--type` and `--elbow x y`, and with `--leader` puts the head in a free spot next to the element.
+- `text --width <paper mm>` wraps a long note.
+- The chat annotates with these commands, checks the layout and fixes every collision (delete and place again) before it
+  reports, keeps text horizontal and copies the spacing of a drawing the user corrected by hand.
+
+### Fixed
+- `spot <x> <y>` in a section failed on every wall: it snapped to the section's cut surface. It now takes the wall's real face.
+- A tag the annotation guard re-hangs after a replacement on a rebar works (same sub-element reference).
+
 ## v1.2.17 — Licht thema zoals Revit (2026-11-12)
 
 ### Added — licht thema
