@@ -234,6 +234,7 @@ namespace VibeModel.Services.Chat
         public const string ChatExportNoSteps = "ChatExportNoSteps";
         public const string ChatExportResult = "ChatExportResult";
         public const string ChatExportDuration = "ChatExportDuration";
+        public const string ChatExportContext = "ChatExportContext";           // {0} = tokens ("50.0k")
         public const string ChatExportFullArgs = "ChatExportFullArgs";         // {0} = step, {1} = command
         public const string ChatExportFromLog = "ChatExportFromLog";
         public const string ChatExportNoLogLines = "ChatExportNoLogLines";
@@ -445,6 +446,7 @@ namespace VibeModel.Services.Chat
                 { ChatExportNoSteps, "this turn ran no commands" },
                 { ChatExportResult, "result" },
                 { ChatExportDuration, "time" },
+                { ChatExportContext, "conversation length {0} tokens" },
                 { ChatExportFullArgs, "Full arguments of step {0} ({1}):" },
                 { ChatExportFromLog, "from the debug log — indicative: every client on this computer logs into it" },
                 { ChatExportNoLogLines, "no commands in the debug log between question and answer" },
@@ -657,6 +659,7 @@ namespace VibeModel.Services.Chat
                 { ChatExportNoSteps, "deze beurt voerde geen commands uit" },
                 { ChatExportResult, "resultaat" },
                 { ChatExportDuration, "duur" },
+                { ChatExportContext, "gesprekslengte {0} tokens" },
                 { ChatExportFullArgs, "Volledige argumenten van stap {0} ({1}):" },
                 { ChatExportFromLog, "uit de debuglog — indicatief: elke client op deze pc logt hierin" },
                 { ChatExportNoLogLines, "geen commands in de debuglog tussen vraag en antwoord" },

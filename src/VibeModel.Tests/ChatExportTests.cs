@@ -194,7 +194,7 @@ namespace VibeModel.Tests
             Assert.Contains("```csharp\n// Doel: tel wanden\nsb.AppendLine(\"x\");\n```", md.Replace("\r\n", "\n"));
             Assert.Contains("**Antwoord** (30 s)", md);
             Assert.Contains("Er staan **12** wanden.", md);
-            Assert.Contains("50.8k tokens", md);
+            Assert.Contains("50.8k tokens · gesprekslengte 50.0k tokens · ≈ €", md);
             Assert.Contains("≈ €", md);                                   // sonnet is priced
             Assert.Equal(1, stats.Turns);
             Assert.Equal(3, stats.Commands);

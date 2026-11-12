@@ -17,20 +17,15 @@ namespace VibeModel.Services.Chat
     {
         public const int DefaultMaxSessions = 200;
 
-        private static ChatSessionStore _default;
+        // One instance for the whole session, also when the chat export (a worker thread) asks
+        // first: its lock is what keeps a save and an export read from overlapping.
+        private static readonly Lazy<ChatSessionStore> DefaultStore = new Lazy<ChatSessionStore>(() =>
+            new ChatSessionStore(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "VibeModel", "chats")));
 
         /// <summary>Store rooted at %LOCALAPPDATA%\VibeModel\chats (the production location).</summary>
-        public static ChatSessionStore Default
-        {
-            get
-            {
-                if (_default == null)
-                    _default = new ChatSessionStore(Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "VibeModel", "chats"));
-                return _default;
-            }
-        }
+        public static ChatSessionStore Default => DefaultStore.Value;
 
         private readonly string _dir;
         private readonly int _maxSessions;

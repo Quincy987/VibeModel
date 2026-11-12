@@ -353,7 +353,10 @@ namespace VibeModel.Services.Chat
             sb.AppendLine();
         }
 
-        /// <summary>The pane's own words: "3.9M tokens · lang gesprek · ≈ € 0,04".</summary>
+        /// <summary>
+        /// The pane's own words for the turn — "3.9M tokens · lang gesprek" — plus what its tooltip
+        /// holds, worded for a past turn: "· gesprekslengte 210k tokens · ≈ € 0,04".
+        /// </summary>
         public static string UsageLine(ChatSessionMessage reply, string chatModel, string language)
         {
             if (reply?.Usage == null) return null;
@@ -361,7 +364,7 @@ namespace VibeModel.Services.Chat
             var text = ConversationLength.Describe(usage, language);
             if (text == null) return null;
             if (usage.ContextTokens > 0)
-                text += " · " + Strings.For(language, Strings.UsageTipContext, ModelPricing.Tokens(usage.ContextTokens));
+                text += " · " + Strings.For(language, Strings.ChatExportContext, ModelPricing.Tokens(usage.ContextTokens));
             var euro = ModelPricing.EstimateEuro(usage, language);
             if (euro != null) text += " · ≈ € " + euro;
             return text;

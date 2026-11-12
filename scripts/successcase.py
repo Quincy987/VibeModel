@@ -10,8 +10,8 @@ Usage (stdlib only, run isolated):
     python -I scripts/successcase.py --index-only
 
 A chat argument is a path, a glob, or a bare chat id (looked up in %LOCALAPPDATA%/VibeModel/chats).
-Commands per turn: since VibeModel 1.2.18 the answer in the chat log carries them ("steps"), and
-those are counted exactly. Older chats fall back to the VibeModel debug log
+Commands per turn: since the chat export exists the answer in the chat log carries them
+("steps"), and those are counted exactly. Older chats fall back to the VibeModel debug log
 (%LOCALAPPDATA%/VibeModel/logs/log_<date>.txt, local time) between question and answer -
 indicative only: every client on this machine that talks to Revit logs to the same file.
 For a readable dump of the chats with every command, use Revit: Diagnose / Settings ->
@@ -201,7 +201,7 @@ def build_chat_case(chat: dict, logs_dir: str = DEFAULT_LOGS) -> dict:
             work += secs
         steps = t["answer"].get("steps") if t["answer"] else None
         if isinstance(steps, list):
-            # Recorded per turn since 1.2.18: exact, not the shared debug log.
+            # Recorded per turn (since the chat export): exact, not the shared debug log.
             cmds = len(steps)
         else:
             cmds = count_commands(q_at, a_at, logs_dir, cache) if a_at else None
