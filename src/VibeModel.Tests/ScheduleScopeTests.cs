@@ -246,7 +246,7 @@ namespace VibeModel.Tests
             var r = new CoverageReport { SchedulesNotChecked = 7, ViewsNotChecked = 2 };
             Assert.False(r.IsEmpty);
             Assert.Equal("-- schedules: every checked schedule lists the new elements; 7 more schedules of these categories not checked", r.SchedulesLine());
-            Assert.Equal("-- views: every checked view shows the new elements; 2 more views not checked", r.ViewsLine());
+            Assert.Equal("-- views: no checked view leaves the new elements out; 2 more views not checked", r.ViewsLine());
             var envelope = new Dictionary<string, object>();
             r.AddJson(envelope);
             Assert.Equal(7, envelope["schedulesNotChecked"]);

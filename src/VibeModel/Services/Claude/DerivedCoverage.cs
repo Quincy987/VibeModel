@@ -21,6 +21,12 @@ namespace VibeModel.Services.Claude
     internal static class DerivedCoverage
     {
         private const int MaxSchedules = 20, MaxViews = 30;
+        /// <summary>
+        /// Time budget per part (schedules, views) after a command: a view-scoped collector makes Revit work
+        /// out what the view shows, so on a big model the rest is counted as "not checked" instead of slowing
+        /// every command down.
+        /// </summary>
+        private const int BudgetMs = 300;
 
         // ------------------------------------------------------------------ schedule scope
 
@@ -258,32 +264,38 @@ namespace VibeModel.Services.Claude
                 })
                 .OrderBy(v => created.Contains(v.Id.IntegerValue) ? 0 : 1)
                 .ThenBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
-            report.SchedulesNotChecked = Math.Max(0, schedules.Count - MaxSchedules);
-            foreach (var vs in schedules.Take(MaxSchedules))
-            try
+            var toCheck = schedules.Take(MaxSchedules).ToList();
+            report.SchedulesNotChecked = schedules.Count - toCheck.Count;
+            var budget = Stopwatch.StartNew();
+            for (int n = 0; n < toCheck.Count; n++)
             {
-                var ids = byCategory[vs.Definition.CategoryId.IntegerValue];
-                // An area schedule lists one scheme: a new area of another scheme is not "missing" from it.
-                var scheme = AreaSchemeOf(doc, vs.Definition);
-                if (scheme != null) ids = ids.Where(i => (doc.GetElement(i) as Area)?.AreaScheme?.Id == scheme.Id).ToList();
-                if (ids.Count == 0) continue;
-                var shown = new HashSet<int>(new FilteredElementCollector(doc, vs.Id).WherePasses(new ElementIdSetFilter(ids))
-                    .ToElementIds().Select(i => i.IntegerValue));
-                var missing = ids.Where(i => !shown.Contains(i.IntegerValue)).ToList();
-                if (missing.Count == 0) continue;
-                report.Schedules.Add(new ScheduleMiss
+                if (budget.ElapsedMilliseconds > BudgetMs) { report.SchedulesNotChecked += toCheck.Count - n; break; }
+                var vs = toCheck[n];
+                try
                 {
-                    Schedule = vs.Name,
-                    Id = vs.Id.IntegerValue,
-                    Category = Category.GetCategory(doc, vs.Definition.CategoryId)?.Name ?? "elements",
-                    Missing = missing.Count,
-                    Ids = missing.Take(CoverageReport.MaxIds).Select(i => (long)i.IntegerValue).ToList()
-                });
-            }
-            catch (Exception ex)
-            {
-                // One schedule that cannot be read never costs the lines of the others.
-                Logger.Warn("Schedule coverage skipped for '" + vs.Name + "': " + ex.Message);
+                    var ids = byCategory[vs.Definition.CategoryId.IntegerValue];
+                    // An area schedule lists one scheme: a new area of another scheme is not "missing" from it.
+                    var scheme = AreaSchemeOf(doc, vs.Definition);
+                    if (scheme != null) ids = ids.Where(i => (doc.GetElement(i) as Area)?.AreaScheme?.Id == scheme.Id).ToList();
+                    if (ids.Count == 0) continue;
+                    var shown = new HashSet<int>(new FilteredElementCollector(doc, vs.Id).WherePasses(new ElementIdSetFilter(ids))
+                        .ToElementIds().Select(i => i.IntegerValue));
+                    var missing = ids.Where(i => !shown.Contains(i.IntegerValue)).ToList();
+                    if (missing.Count == 0) continue;
+                    report.Schedules.Add(new ScheduleMiss
+                    {
+                        Schedule = vs.Name,
+                        Id = vs.Id.IntegerValue,
+                        Category = Category.GetCategory(doc, vs.Definition.CategoryId)?.Name ?? "elements",
+                        Missing = missing.Count,
+                        Ids = missing.Take(CoverageReport.MaxIds).Select(i => (long)i.IntegerValue).ToList()
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // One schedule that cannot be read never costs the lines of the others.
+                    Logger.Warn("Schedule coverage skipped for '" + vs.Name + "': " + ex.Message);
+                }
             }
         }
 
@@ -308,9 +320,13 @@ namespace VibeModel.Services.Claude
                 if (v.ViewType == ViewType.DraftingView || v.ViewType == ViewType.Legend) continue;
                 candidates.Add(new KeyValuePair<View, ViewSheet>(v, doc.GetElement(vp.SheetId) as ViewSheet));
             }
-            report.ViewsNotChecked = Math.Max(0, candidates.Count - MaxViews);
-            foreach (var pair in candidates.Take(MaxViews))
+            var toCheck = candidates.Take(MaxViews).ToList();
+            report.ViewsNotChecked = candidates.Count - toCheck.Count;
+            var budget = Stopwatch.StartNew();
+            for (int n = 0; n < toCheck.Count; n++)
             {
+                if (budget.ElapsedMilliseconds > BudgetMs) { report.ViewsNotChecked += toCheck.Count - n; break; }
+                var pair = toCheck[n];
                 var view = pair.Key;
                 foreach (var kv in byCategory)
                 try

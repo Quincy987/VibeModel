@@ -161,7 +161,7 @@ namespace VibeModel.Services.Claude
         public const int MaxShown = 5, MaxIds = 20;
         public List<ScheduleMiss> Schedules = new List<ScheduleMiss>();
         public List<ViewMiss> Views = new List<ViewMiss>();
-        /// <summary>Schedules / views of the touched categories that were over the cap and not checked.</summary>
+        /// <summary>Schedules / views over the count cap or the time budget, not checked.</summary>
         public int SchedulesNotChecked, ViewsNotChecked;
 
         /// <summary>Nothing to say: no misses, and nothing left unchecked by the caps.</summary>
@@ -192,7 +192,7 @@ namespace VibeModel.Services.Claude
         {
             if (Views.Count == 0 && ViewsNotChecked == 0) return null;
             if (Views.Count == 0)
-                return "-- views: every checked view shows the new elements; " + ScopeText.N(ViewsNotChecked) + " more views not checked";
+                return "-- views: no checked view leaves the new elements out; " + ScopeText.N(ViewsNotChecked) + " more views not checked";
             var parts = Views.Take(MaxShown).Select(v =>
             {
                 var where = "'" + v.View + "'" + (string.IsNullOrEmpty(v.Sheet) ? "" : " (sheet " + v.Sheet + ")");

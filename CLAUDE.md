@@ -684,7 +684,7 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   only on the plan's level when the element has one (a wall on the next level is not "missing" from this plan). Only added ids: a
   modified element a filtered schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON
   `schedules:[{schedule,id,category,missing,ids≤20}]`, `views:[{view,id,sheet,category,missing,cause:obscured|notVisible,ids}]`;
-  a cap that left some unchecked is never silent: `-- schedules: every checked schedule lists the new elements; 7 more schedules
+  a cap (count, or 300 ms per part — view-scoped collectors cost time on a big model) that left some unchecked is never silent: `-- schedules: every checked schedule lists the new elements; 7 more schedules
   of these categories not checked` (JSON `schedulesNotChecked` / `viewsNotChecked`).
   Never after a preview, Discard, READ_ONLY/ANNOTATION_ONLY rollback or a rolled-back batch. Read-only, no transaction; > 200 ms is
   logged. The RULES block's `DerivedCoverageRule` tells the chat to fix it when the user wanted those elements in that overview
