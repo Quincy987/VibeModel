@@ -677,8 +677,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   schedule only for areas of its scheme), and `-- views: …` for views VibeModel created or put on a sheet this session that already
   draw that category (≤ 10 views): `12 new Structural Rebar hidden inside their host in 'Wapening boven' (sheet 0003 - …), where the
   other bars are unobscured — exec: rebar.SetUnobscuredInView(view, true)` (Revit hides rebar inside concrete in plans, sections and
-  elevations until *View Unobscured* is on; not checked in 3D views, where rebar draws solid at Fine detail since 2023), or `… not
-  visible in '…' — whyhidden <id> <view>` — only for an element that lies where the view already draws that category, compared in
+  elevations until *View Unobscured* is on; decided from the bar itself, also when the view's element set does not list it; not checked
+  in 3D views, where rebar draws solid at Fine detail since 2023), or `… not visible in '…' — whyhidden <id> <view>`. An element the
+  view's element set does not list counts (for either line) only when it lies where the view already draws that category, compared in
   the view's own plane (a plan ignores height, a section its depth; a 3D view all three axes, 10 mm touching tolerance), and in a plan
   only on the plan's level when the element has one (a wall on the next level is not "missing" from this plan). Only added ids: a
   modified element a filtered schedule rightly leaves out would be reported on every edit. After the `-- check:` line; JSON

@@ -252,6 +252,7 @@ namespace VibeModel.Services.Claude
                 .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
             report.SchedulesNotChecked = Math.Max(0, schedules.Count - MaxSchedules);
             foreach (var vs in schedules.Take(MaxSchedules))
+            try
             {
                 var ids = byCategory[vs.Definition.CategoryId.IntegerValue];
                 // An area schedule lists one scheme: a new area of another scheme is not "missing" from it.
@@ -270,6 +271,11 @@ namespace VibeModel.Services.Claude
                     Missing = missing.Count,
                     Ids = missing.Take(CoverageReport.MaxIds).Select(i => (long)i.IntegerValue).ToList()
                 });
+            }
+            catch (Exception ex)
+            {
+                // One schedule that cannot be read never costs the lines of the others.
+                Logger.Warn("Schedule coverage skipped for '" + vs.Name + "': " + ex.Message);
             }
         }
 
@@ -298,6 +304,7 @@ namespace VibeModel.Services.Claude
             {
                 var view = pair.Key;
                 foreach (var kv in byCategory)
+                try
                 {
                     var newIds = kv.Value;
                     var catId = new ElementId(kv.Key);
@@ -311,30 +318,41 @@ namespace VibeModel.Services.Claude
 
                     var obscured = new List<ElementId>();
                     var notVisible = new List<ElementId>();
-                    bool? othersUnobscured = null; // read once, and only when a new bar is drawn there
+                    // Both read lazily, once per view and category, and only when a new element needs them.
+                    bool? othersUnobscured = null;
                     bool areaRead = false, hasArea = false;
                     double[] areaMin = null, areaMax = null;
                     var axes = ViewAxes(view);
                     foreach (var id in newIds)
                     {
                         var e = doc.GetElement(id);
-                        if (!shown.Contains(id.IntegerValue))
+                        bool isShown = shown.Contains(id.IntegerValue);
+                        if (!isShown)
                         {
                             // Only inside what the view already draws of this category: a wall on the next
-                            // level is not "missing" from the plan of this one.
+                            // level is not "missing" from the plan of this one, a bar in another slab not
+                            // from this slab's drawing.
                             if (!areaRead) { hasArea = ShownArea(others(), axes, out areaMin, out areaMax); areaRead = true; }
-                            if (hasArea && Within(e, view, axes, areaMin, areaMax)) notVisible.Add(id);
-                            continue;
+                            if (!hasArea || !Within(e, view, axes, areaMin, areaMax)) continue;
                         }
-                        var unobscured = IsUnobscured(e, view);
-                        if (unobscured != false) continue;
-                        if (othersUnobscured == null) othersUnobscured = others().Any(o => IsUnobscured(o, view) == true);
-                        if (othersUnobscured == true) obscured.Add(id);
+                        // A bar hidden inside its host where the view's other bars are unobscured — decided
+                        // from the bar itself, whether or not the view's element set lists it.
+                        if (IsUnobscured(e, view) == false)
+                        {
+                            if (othersUnobscured == null) othersUnobscured = others().Any(o => IsUnobscured(o, view) == true);
+                            if (othersUnobscured == true) { obscured.Add(id); continue; }
+                        }
+                        if (!isShown) notVisible.Add(id);
                     }
                     var catName = Category.GetCategory(doc, catId)?.Name ?? "elements";
                     var sheet = pair.Value != null ? SheetHelper.Label(pair.Value) : null;
                     if (obscured.Count > 0) report.Views.Add(Miss(view, sheet, catName, obscured, ViewMiss.Obscured));
                     if (notVisible.Count > 0) report.Views.Add(Miss(view, sheet, catName, notVisible, ViewMiss.NotVisible));
+                }
+                catch (Exception ex)
+                {
+                    // One view that cannot be read never costs the lines of the others.
+                    Logger.Warn("View coverage skipped for '" + view.Name + "': " + ex.Message);
                 }
             }
         }
@@ -414,7 +432,7 @@ namespace VibeModel.Services.Claude
         /// <summary>
         /// A new element the view does not show only counts as "missing" when it lies where the view
         /// already draws this category — and, in a plan, on the plan's own level when it has one (a wall
-        /// on the next level is not missing from this plan). Rebar has no level: the plane decides.
+        /// on the next level is not missing from this plan). Without a level, the plane alone decides.
         /// </summary>
         private static bool Within(Element e, View view, XYZ[] axes, double[] areaMin, double[] areaMax)
         {
