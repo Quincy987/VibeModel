@@ -144,7 +144,7 @@ namespace VibeModel.Services.Claude.Commands
             if (a.Takeoff) sb.AppendLine("Kind: Material Takeoff (Material: Area/Volume follow every model change)");
             foreach (var n in notes) sb.AppendLine("Note: " + n);
             var data = Rows(doc, vs, ScheduleArgs.PreviewRows, sb, out int total);
-            if (a.Takeoff && NoMaterials(data, total))
+            if (a.Takeoff && NoMaterials(data, total) && (total > 0 || !AnyMaterial(doc, catId)))
             {
                 sb.AppendLine("Note: " + NoMaterialsNote);
                 data["noMaterials"] = true;
@@ -214,6 +214,21 @@ namespace VibeModel.Services.Claude.Commands
         {
             string Strip(string id) { int dash = (id ?? "").LastIndexOf('-'); return dash > 0 ? id.Substring(0, dash) : id ?? ""; }
             return a != null && b != null && string.Equals(Strip(a.TypeId), Strip(b.TypeId), StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// An empty takeoff can also be the schedule's phase or filter (its own "Empty:" line says so); the
+        /// "no materials" note is only given when no element of the category carries a material at all.
+        /// </summary>
+        private static bool AnyMaterial(Document doc, ElementId catId)
+        {
+            int seen = 0;
+            foreach (var e in new FilteredElementCollector(doc).OfCategoryId(catId).WhereElementIsNotElementType())
+            {
+                if (e.GetMaterialIds(false).Count > 0) return true;
+                if (++seen >= 2000) return true; // unknown beyond this: do not claim "no materials"
+            }
+            return false;
         }
 
         /// <summary>A takeoff with no rows, or with every Material: Name cell empty.</summary>
