@@ -2,7 +2,21 @@
 
 ## [Unreleased]
 
+### Added — hoeveelheden volgen het model
+- `schedule --takeoff`: a Material Takeoff whose Material: Area / Material: Volume follow every model change (default
+  columns Family and Type, Material: Name, Material: Area, Material: Volume; `--fields` from the takeoff's own list). An
+  empty takeoff says when the families have no material, and never assigns one.
+- `schedule --calc "<Name>=<formula>"`: the Revit API cannot add a calculated field (measured in Revit 2023), so the
+  command builds the rest — the fields the formula names as hidden columns, written as the schedule spells them — and
+  prints the clicks for the user with the Type the formula gives (Area for length × length; a mismatch gives Revit's
+  "Inconsistent units"). Also in `apilookup` as a Known gap (`ScheduleFieldType.Formula`, `IsCalculatedField`).
+- `-- quantities:` line after a change that created a project parameter and filled it with numbers: the values do not
+  follow the model (a plain number may be an identifier, so there the warning is conditional). JSON `quantities`.
+
 ### Changed
+- Hoeveelheden nooit als vaste waarde: a computed quantity is never written into a parameter on the AI's own
+  initiative — a schedule field, a takeoff, a family formula or the user's calculated field come first; when none works
+  it says so and asks. Creating project parameters now asks first (interview 2026-11-12).
 - Aannames vooraf: before building something made of several elements (a quay wall with capstone and deck, a row of piles), the chat
   sorts what it needs into given, read from a source, and invented. With two or more invented values, or a choice weaker than asked
   (values typed in by hand where Revit should calculate them, a DirectShape instead of a family, a new type), it builds nothing yet:

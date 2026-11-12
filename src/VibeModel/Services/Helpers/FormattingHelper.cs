@@ -140,11 +140,29 @@ namespace VibeModel.Services.Helpers
             try { key = RevitUnitHelper.SpecKey(param.Definition?.GetDataType()?.TypeId); } catch { }
             if (key.Length == 0)
                 return param.Definition != null && IsDimensionRelated(param.Definition.Name) ? QuantityKind.Length : QuantityKind.Unknown;
+            return KindOfSpecKey(key, integerAsNumber: false);
+        }
+
+        /// <summary>
+        /// What a spec measures (no name heuristic): Unknown when it cannot be read. With
+        /// <paramref name="integerAsNumber"/> an integer spec (a count) is a Number too — for quantity
+        /// work (a schedule's calculated field, a parameter filled with counts), not for value display.
+        /// </summary>
+        public static QuantityKind QuantityKindOf(ForgeTypeId spec, bool integerAsNumber = false)
+        {
+            string key = "";
+            try { key = RevitUnitHelper.SpecKey(spec?.TypeId); } catch { }
+            return key.Length == 0 ? QuantityKind.Unknown : KindOfSpecKey(key, integerAsNumber);
+        }
+
+        private static QuantityKind KindOfSpecKey(string key, bool integerAsNumber)
+        {
             if (key == SpecKeyOf(SpecTypeId.Length)) return QuantityKind.Length;
             if (key == SpecKeyOf(SpecTypeId.Area)) return QuantityKind.Area;
             if (key == SpecKeyOf(SpecTypeId.Volume)) return QuantityKind.Volume;
             if (key == SpecKeyOf(SpecTypeId.Angle)) return QuantityKind.Angle;
             if (key == SpecKeyOf(SpecTypeId.Number)) return QuantityKind.Number;
+            if (integerAsNumber && key == SpecKeyOf(SpecTypeId.Int.Integer)) return QuantityKind.Number;
             return QuantityKind.Other;
         }
 

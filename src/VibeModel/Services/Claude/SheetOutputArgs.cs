@@ -106,6 +106,8 @@ namespace VibeModel.Services.Claude
         public ScheduleFilterSpec Filter;
         public string Group, Name;
         public bool Total;
+        public bool Takeoff;           // --takeoff: a Material Takeoff instead of a plain schedule
+        public string CalcName, CalcFormula;   // --calc "<Name>=<formula>": the clicks for a calculated field
         public string ReadTarget;      // --rows mode: schedule name or id
         public int RowLimit = 200;
         public string Error;
@@ -113,19 +115,22 @@ namespace VibeModel.Services.Claude
         public const int PreviewRows = 20;
 
         public const string Usage = "schedule <category> --fields \"Family and Type,Count,Length\" [--filter \"<field> <op> <value>\"] " +
-                                    "[--group <field>] [--name <name>] [--total]  |  schedule <name|id> --rows [<max rows>]";
+                                    "[--group <field>] [--name <name>] [--total] [--takeoff] [--calc \"<Name>=<formula>\"]  |  schedule <name|id> --rows [<max rows>]";
+
+        /// <summary>The columns of a Material Takeoff when --fields is not given.</summary>
+        public static readonly string[] TakeoffDefaultFields = { "Family and Type", "Material: Name", "Material: Area", "Material: Volume" };
 
         public static ScheduleArgs Parse(string args)
         {
             var r = new ScheduleArgs();
             var f = FlagArgs.Parse(args);
-            r.Error = f.Unknown("fields", "filter", "group", "name", "total", "rows");
+            r.Error = f.Unknown("fields", "filter", "group", "name", "total", "rows", "takeoff", "calc");
             if (r.Error != null) return r;
             var target = string.Join(" ", f.Positional).Trim();
 
             if (f.Has("rows"))
             {
-                foreach (var flag in new[] { "fields", "filter", "group", "name", "total" })
+                foreach (var flag in new[] { "fields", "filter", "group", "name", "total", "takeoff", "calc" })
                     if (f.Has(flag)) { r.Error = "--rows reads an existing schedule; --" + flag + " is for creating one."; return r; }
                 if (target.Length == 0) { r.Error = "Give the schedule (name or id) before --rows."; return r; }
                 r.ReadTarget = target;
@@ -140,11 +145,31 @@ namespace VibeModel.Services.Claude
 
             if (target.Length == 0) { r.Error = "Give the category first, e.g. 'schedule structural foundations --fields ...'."; return r; }
             r.Category = target;
-            if (!f.Has("fields")) { r.Error = "--fields is required (comma-separated field names, e.g. --fields \"Family and Type,Count,Length\")."; return r; }
-            foreach (var name in (f.Text("fields") ?? "").Split(',').Select(x => x.Trim()).Where(x => x.Length > 0))
+            if (f.Has("takeoff"))
             {
-                if (r.Fields.Any(x => x.Equals(name, StringComparison.OrdinalIgnoreCase))) { r.Error = "Field '" + name + "' is given twice in --fields."; return r; }
-                r.Fields.Add(name);
+                if (f.Values("takeoff").Count > 0) { r.Error = "--takeoff takes no value (put it after the other flags' values, or before them)."; return r; }
+                r.Takeoff = true;
+            }
+            if (f.Has("calc"))
+            {
+                var calc = f.Text("calc");
+                int eq = calc == null ? -1 : calc.IndexOf('=');
+                if (eq < 0) { r.Error = "--calc needs \"<Name>=<formula>\", e.g. --calc \"Oppervlak=Length*Width\"."; return r; }
+                r.CalcName = calc.Substring(0, eq).Trim();
+                r.CalcFormula = calc.Substring(eq + 1).Trim();
+                if (r.CalcName.Length == 0) { r.Error = "--calc: the name before '=' is empty."; return r; }
+                if (r.CalcFormula.Length == 0) { r.Error = "--calc: the formula after '=' is empty."; return r; }
+            }
+            // A takeoff without --fields gets the material columns; filled in before the checks below.
+            if (r.Takeoff && !f.Has("fields")) r.Fields.AddRange(TakeoffDefaultFields);
+            else if (!f.Has("fields")) { r.Error = "--fields is required (comma-separated field names, e.g. --fields \"Family and Type,Count,Length\")."; return r; }
+            if (f.Has("fields"))
+            {
+                foreach (var name in (f.Text("fields") ?? "").Split(',').Select(x => x.Trim()).Where(x => x.Length > 0))
+                {
+                    if (r.Fields.Any(x => x.Equals(name, StringComparison.OrdinalIgnoreCase))) { r.Error = "Field '" + name + "' is given twice in --fields."; return r; }
+                    r.Fields.Add(name);
+                }
             }
             if (r.Fields.Count == 0) { r.Error = "--fields is empty."; return r; }
             if (f.Has("filter"))

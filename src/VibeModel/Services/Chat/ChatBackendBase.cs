@@ -337,6 +337,11 @@ namespace VibeModel.Services.Chat
             "When a command output says it is incomplete (showing N of M), tell the user the real total; never present a cut list as everything. Always name assumptions and omissions.";
         internal const string QuantitiesRule =
             "Quantities for an estimate or bill (hoeveelheden, begroting, palenstaat) are made as a Revit schedule with `schedule` by default, so anyone can check them in Revit; a list in the chat only when the user asks for one.";
+        // Interview Ruben Wolbers, 2026-11-12: asked for m² that no schedule field gives, the chat made project
+        // parameters and filled them with computed numbers ("filled by hand, does not follow changes"). Dynamic is
+        // always the wish; when it cannot be, say so and ask. Measured: the API cannot add a calculated schedule field.
+        internal const string DynamicQuantitiesRule =
+            "Quantities must follow the model: never compute a quantity (m², m³, length, count, weight) and write it as a fixed value into a parameter on your own initiative. When the quantity is ambiguous (plan area, face area, material area) ask which one first; then try in this order: a built-in schedulable field (`schedule`), a Material Takeoff (`schedule --takeoff`), a formula parameter in the family (`exec` with FamilyManager.SetFormula — ask first, it changes the family), a calculated schedule field the user adds by hand (`schedule --calc` builds the schedule and prints the clicks; the API cannot add that field). That click path is the exception to never redirecting to manual steps: name it in one line, since the API cannot do it (Known gap). When none works, say so in one sentence and ask how the user wants it solved; offer a fixed-value parameter only as one explicit option named with its drawback (does not follow model changes), never as the default.";
 
         // Plan 15: Settings → "Wijzigingen door de AI". Under the default (auto) the Undo section is
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
@@ -406,7 +411,7 @@ namespace VibeModel.Services.Chat
             }
             if (preview) sb.AppendLine("- " + PreviewTurnRule);
             sb.AppendLine("Ask first");
-            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, phases, worksets — state in one sentence what will change and ask for confirmation first.");
+            sb.AppendLine("- Before a change that lands on a sheet or on shared project resources — anything on a sheet (ViewSheet) or in a view placed on a sheet, project materials, families/types, shared parameters, project parameters and parameter bindings (also through exec), phases, worksets — state in one sentence what will change and ask for confirmation first.");
             sb.AppendLine("- " + AssumptionsFirstRule);
             sb.AppendLine("- Indicative work in working views, new views, colour overrides, selections, temporary isolates and anything the user explicitly asked for: just do it, then report — unless the assumptions rule above applies.");
             sb.AppendLine("Compact answers");
@@ -420,6 +425,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Complete and checkable");
             sb.AppendLine("- " + OmissionsRule);
             sb.AppendLine("- " + QuantitiesRule);
+            sb.AppendLine("- " + DynamicQuantitiesRule);
             sb.AppendLine("- " + AnnotationLayoutRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");
