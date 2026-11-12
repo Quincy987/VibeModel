@@ -54,7 +54,8 @@ namespace VibeModel.Services.Claude.Commands
                 return "ERROR: chatlog --export takes a number of chats or 'all' (got '" + arg + "').\n" +
                        "Hint: chatlog --export 5 | chatlog --export all";
 
-            var result = ChatExportService.Export(max, Strings.English);
+            // The document in the Settings language (like the buttons); this answer stays English like every command.
+            var result = ChatExportService.Export(max, Strings.Current);
             return Describe(result);
         }
 
