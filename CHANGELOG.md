@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.19 — Chats exporteren (2026-11-12)
+
 ### Added — chats exporteren
 - **Exporteer chats…** in Diagnose and in Settings → *Versie en updates*, and `chatlog --export [n|all]`: every saved chat
   as markdown — per turn the question, the commands it ran (full arguments — a shell call with a pipe or loop as a whole —, ✓/✗ with the error, duration), the answer and the
@@ -12,6 +14,7 @@
   older chats stay readable and older builds ignore it). Chats from before this version take their commands from the
   debug log when it was on (marked as indicative and counted apart with ~), else say none were recorded. `scripts/successcase.py` counts the
   stored steps exactly.
+
 ## v1.2.18 — Leesbare annotaties (2026-11-12)
 
 ### Added — leesbare annotaties
