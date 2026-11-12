@@ -557,6 +557,8 @@ curl -s "http://localhost:18884/dimension?args=--points 0 0 5000 0"             
 curl -s "http://localhost:18884/dimension?args=--levels"                                             # Level string in the active section
 curl -s "http://localhost:18884/text?args=-1200 850 Damwand AZ26-700\nlg. 15.05m --size 2.5 --leader -400 -1030"
 curl -s "http://localhost:18884/tag?args=1543814 --leader --at 1000 2000"
+curl -s "http://localhost:18884/tag?args=1731002 --leader --type IB_Tag_Rebar_aantal-x-dia"           # Rebar too; head in a free spot, --elbow x y bends it
+curl -s "http://localhost:18884/annolayout?args=Doorsnede 1-1"                                        # Read-only: paper boxes of every annotation + overlaps
 curl -s "http://localhost:18884/spot?args=103000 2000"                                               # Spot elevation (peilmaat) at a point, active view
 curl -s "http://localhost:18884/spot?args=1730980 bottom"                                            # ...on an element's top|bottom (a pile's tip)
 curl -s "http://localhost:18884/spot?args=101000 2000 --fixed --leader 104000 3500"                  # ...on a short detail line: never moves
@@ -595,6 +597,20 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   viewport type without a title.
 - **`sheetinfo`** grades box overlaps: a thin strip (≤ 30 mm) is `INFO` (usually empty crop margin),
   anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
+- **`annolayout [view|sheet]`** (plan 21, read-only; `docs/plans/21-annotation-layout.md`): per annotation its paper boxes
+  in the view frame (x along the view's right direction, y up, mm from the view origin, ÷ scale) — a text note's bounding
+  box, a dimension's text per segment (estimated around `TextPosition`: characters × size × width factor × 0.72, 1.9 × size
+  high — measured on NLCS-ISO) and its line as a thin strip, a spot's text (same estimate) and its leader, a tag's head
+  (estimated around `TagHeadPosition` from `TagText`; the bounding box when it has no leader) — then CHECKS: two texts
+  overlapping (`WARN`, a strip ≤ 1 mm `INFO`), a line or leader through another annotation's text (`WARN`), two parallel
+  dimension strings < 2 mm apart over a shared span (`WARN` stacked), text or tags off horizontal (rotated); `Verdict:`.
+  A sheet → every view on it. Pure part `AnnotationLayout.cs` (tested), Revit side `AnnotationExtents.cs` (cap 2000 per view).
+  **`-- layout:` line:** after every kept modifying command or batch that ADDED annotations (re-hosts are new elements too),
+  only the WARN conflicts of the new ones against their neighbours, ≤ 3 named: `-- layout: 2 overlaps in 'AL test': spot
+  1730946 ↔ spot 1730947 (5.4×4.8 mm); … → run 'annolayout AL test' for the boxes`, after the `-- annotations` line and
+  before `-- changed:`; JSON additive `layout:{views:[{view,viewName,overlaps}]}`. Never after a preview or rollback.
+  API facts (measured): tag head/elbow/end, dimension and segment `TextPosition`, spot text/shoulder/end and text note
+  position/width are all settable; Revit reports no box for a tag head or a dimension text, and has no "arrange" call.
 - **`dimension`** needs a plan/section/elevation as the ACTIVE view (`activate` it in a separate call —
   a view switch lands after the request). Per element it uses the outer two faces perpendicular to the
   dimension direction; grids, levels, reference planes and family centre planes are used directly.
@@ -608,6 +624,10 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   instance's own (`<instance>:0:INSTANCE:<symbol ref>`): instance geometry hands out references to
   the family symbol, and a dimension on those hangs on the symbol (outlives the pile, invisible to a
   scan for it). Revit's refusal message is returned verbatim with the usual cause.
+  **Rows (plan 21):** without `--offset` an element string goes to the first free row beyond the elements — 8, 16, 24 … paper
+  mm — skipping a row a parallel string (within 1°, within 4 mm, overlapping span) or another annotation's text (5.75 mm
+  either side of the row) already holds: `Placed: row 2 (16 mm on paper from the elements; row 1 taken by dimension 1730940)`,
+  JSON `rowMm`. `--offset` still places exactly; `--points`/`--levels` are unchanged.
 - **`spot`** (peilmaat) needs the same ACTIVE plan/section/elevation/detail view. `spot <x> <y>` snaps
   (≤ 100 mm, in the view plane) to the nearest reference: a face the view CUTS (system families), else
   the edge the view shows beyond the cut, and always an edge for family instances — measured: Revit
@@ -616,8 +636,11 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   square), then the element nearest the viewer. In a plan: the highest upward face at that x,y.
   `spot <id> top|bottom`: the highest/lowest horizontal face (system; its near edge when not cut) or the
   extreme level edge (instance), at the element's middle moved onto the cut plane. Default leader:
-  shoulder 12 paper mm above (top) / below (bottom), text 12 mm to the right; `--leader x y` moves the
-  text (view frame, the shoulder stays vertical over the point). `--fixed` hangs it on a 200 mm detail
+  shoulder 12 paper mm above (top) / below (bottom), text 12 mm to the right; when another annotation's box is there
+  (plan 21) the first free slot of up-left, then 24 / 36 mm high right/left — `Leader: text up-left (up-right taken by spot
+  1730946)`, JSON `leader`; none clear → the least crowded, said so. `--leader x y` moves the
+  text (view frame, the shoulder stays vertical over the point). A section's cut surface (the face lying in the view plane,
+  reference `…:-9999:SURFACE`) is never snapped to — a spot cannot use it (measured: every `spot x y` on a wall failed). `--fixed` hangs it on a 200 mm detail
   line through the point (sections only — in a plan a detail line has the level's height): it never
   moves or breaks, and never follows the model. `--type` = a spot elevation type (exact, else unique
   substring; default: the document's). The response gives the value, `Attached to: floor 1730959
@@ -653,6 +676,12 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   allowed inside a group), so there it is its own undo step. A rolled-back atomic batch is not
   reconciled. Nothing is touched when no recorded annotation changed. Pure parts (wording, tolerances,
   scope): `AnnotationReport.cs`; Revit side: `AnnotationGuard.cs`.
+- **`tag`** (plan 21): the category's own tag family, else a multi-category tag (`Type: … — multi-category tag (no Walls tag
+  loaded)`); rebar (`OST_RebarTags`) and parts are tagged too. `--type <name>` (`Family : Type`, the type or the family name;
+  exact, else one unique substring; else the candidates). `--leader` without `--at` puts the head in a free spot: right
+  above, left above, right below, left below the element's paper box at 8 mm, then right/left above at 16 mm — the response
+  says which and what took the first. `--elbow x y` (view frame; implies `--leader`) bends the leader there
+  (`SetLeaderElbow`). The response shows the tag's text. **`text --width <paper mm>`** wraps the note.
 - **`schedule`** matches fields by the names Revit lists (exact, else a unique substring; unknown →
   the schedulable fields of that category). `--filter` numbers are in the project's display unit;
   a filter field outside `--fields` is added as a hidden column. `--group` = not itemized, one row per
@@ -952,6 +981,10 @@ Backends report steps on a UI-only side channel (`IChatActivitySource.ActivitySi
 WPF-free model, `UI/ActivityBlockView.cs` draws it. The token stream, stored chat JSON and the
 model-bound history are unchanged. A new command gets its step label from `StatusVerbs` (add it to
 BOTH maps — a test checks).
+
+**Annotation layout (RULES block, plan 21).** `AnnotationLayoutRule` (under *Complete and checkable*): annotate with the
+commands, never exec; run `annolayout` after annotating (and on every `-- layout:` line) and fix each WARN before reporting;
+text and tags horizontal; copy a hand-corrected example's spacing; annotations placed this turn may be moved without asking.
 
 **Report what changed, name what is missing (RULES block).** `ChangeReportRule` (one closing line from `-- changed:` / `changes`, plus
 assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule).

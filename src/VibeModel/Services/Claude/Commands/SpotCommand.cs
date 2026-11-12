@@ -97,7 +97,19 @@ namespace VibeModel.Services.Claude.Commands
 
             // Leader
             AnnotationGeometry.DefaultLeader(view, hit.Point, top, out var bend, out var end);
-            if (a.Leader != null)
+            string slotNote = null;
+            if (a.Leader == null)
+            {
+                // Plan 21: the default corner, unless another annotation is there — then the first free one.
+                var slot = FreeSlot(doc, view, type, hit.Point, top, out slotNote);
+                if (slot != null)
+                {
+                    var f = new PaperFrame(view);
+                    bend = hit.Point + f.U * f.Feet(slot.Rise);
+                    end = bend + f.R * f.Feet(slot.Dir * 12);
+                }
+            }
+            else
             {
                 var e = SheetHelper.ViewPoint(doc, view, a.Leader[0], a.Leader[1], out _);
                 var vdir = view.ViewDirection.Normalize();
@@ -148,6 +160,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("View: " + view.Name + " (1:" + view.Scale + ")");
             sb.AppendLine("Value: " + (double.IsNaN(value) ? "?" : Signed(value)) + " mm");
             sb.AppendLine("Type: " + type.Name);
+            if (slotNote != null) sb.AppendLine("Leader: " + slotNote);
             if (a.Fixed)
                 sb.AppendLine("Attached to: detail line " + helper.Id.IntegerValue + " at " + where +
                               " (fixed: it does NOT follow the model — it keeps showing the height of " + AnnotationText.CategoryWord(host.Category?.Name) + " " + host.Id.IntegerValue + " as it is now)");
@@ -176,10 +189,42 @@ namespace VibeModel.Services.Claude.Commands
                 { "fixed", a.Fixed },
                 { "vibeModelCreated", vmCreated }
             };
+            if (slotNote != null) data["leader"] = slotNote;
             return CommandResult.Ok(sb.ToString(), data);
         }
 
         private static string Signed(double mm) => (mm >= 0 ? "+" : "") + Mm.F(mm);
+
+        /// <summary>
+        /// Plan 21: the leader slot for a new spot — the measured default (12 mm up, text right)
+        /// when it is clear, else the first free one. Null = keep the default (nothing around it,
+        /// or the view has no paper frame). <paramref name="note"/> says why it moved, null when not.
+        /// </summary>
+        private static AnnotationLayout.Slot FreeSlot(Document doc, View view, SpotDimensionType type, XYZ p, bool top, out string note)
+        {
+            note = null;
+            try
+            {
+                var taken = AnnotationExtents.OccupiedBoxes(doc, view);
+                if (taken.Count == 0) return null;
+                var f = new PaperFrame(view);
+                // The value is not known before Revit places the spot: "+2.500" (6 characters), one more past ±10 m.
+                int chars = Math.Abs(RevitUnitHelper.FeetToMm(p.Z)) >= 9999.5 ? 7 : 6;
+                AnnotationLayout.TextExtent(chars, AnnotationExtents.SizeMm(type), AnnotationExtents.WidthFactor(type), out var w, out var h);
+                var slots = AnnotationLayout.SpotSlots(f.X(p), f.Y(p), top, w, h);
+                int i = AnnotationLayout.PickSlot(slots, taken, out var blocker, out bool free);
+                if (i <= 0 && free) return null;   // the default is clear
+                if (i < 0) return null;
+                note = "text " + slots[i].Name + (blocker != null ? " (" + slots[0].Name + " taken by " + blocker.Word + " " + blocker.Id + ")" : "") +
+                       (free ? "" : " — no slot is fully clear; this is the least crowded, check 'annolayout'");
+                return slots[i];
+            }
+            catch (Exception ex)
+            {
+                VibeModel.Infrastructure.Logger.Info("spot: slot search skipped (" + ex.Message + ")");
+                return null;
+            }
+        }
 
         private static string WhereText(View view, bool plan, XYZ p)
         {
@@ -319,6 +364,10 @@ namespace VibeModel.Services.Claude.Commands
                             host = e;
                             continue;
                         }
+                        // The section's cut surface itself (the hatch, lying in the view plane — measured: a
+                        // wall's cut face, reference "…:-9999:SURFACE") cannot carry a spot (plan 21).
+                        if (g.Face is PlanarFace cut && Math.Abs(cut.FaceNormal.DotProduct(vdir)) > 0.999 &&
+                            Math.Abs((cut.Origin - view.Origin).DotProduct(vdir)) < RevitUnitHelper.MmToFeet(1)) continue;
                         if (!CutByView(g.Face, view, p)) continue;   // beyond the cut plane: the edge is what the view shows
                         var rs = g.Face.Project(p);
                         if (rs == null) continue;

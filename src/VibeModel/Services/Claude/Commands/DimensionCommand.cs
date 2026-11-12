@@ -64,6 +64,8 @@ namespace VibeModel.Services.Claude.Commands
             List<Cand> refs;
             List<Cand> faceRefs = null;   // element mode: the faces themselves, before levels/grids replaced them
             Line line;
+            string rowNote = null;        // plan 21: "row 2 (16 mm …; row 1 taken by dimension …)"
+            double? rowMm = null;
             var notes = new List<string>();
 
             if (a.Levels)
@@ -153,6 +155,23 @@ namespace VibeModel.Services.Claude.Commands
                 }
                 if (far == double.MinValue) far = 0;
                 double q = far + offsetFt;
+                if (!a.Offset.HasValue)
+                {
+                    // Plan 21: a string already on this row (same direction, overlapping span) would
+                    // print over this one — take the first free row, 8 paper mm further each time.
+                    double toPaper = 1.0 / Math.Max(1, view.Scale);
+                    double a0 = RevitUnitHelper.FeetToMm(refs.First().Pos) * toPaper, a1 = RevitUnitHelper.FeetToMm(refs.Last().Pos) * toPaper;
+                    var existing = ParallelDimensions(doc, view, d, perp, o, toPaper);
+                    var obstacles = TextObstacles(doc, view, d, perp, o, toPaper);
+                    int row = AnnotationLayout.ChooseRow(RevitUnitHelper.FeetToMm(far) * toPaper, a0, a1, existing, out var takenBy, PaperOffsetMm, obstacles: obstacles);
+                    if (row > 1)
+                    {
+                        q = far + RevitUnitHelper.MmToFeet(PaperOffsetMm * row * Math.Max(1, view.Scale));
+                        rowNote = "row " + row + " (" + Mm.F(PaperOffsetMm * row) + " mm on paper from the elements; " +
+                                  string.Join(", ", takenBy.Select((what, i) => "row " + (i + 1) + " taken by " + what)) + ")";
+                    }
+                    rowMm = PaperOffsetMm * row;
+                }
                 line = Line.CreateBound(o + d * (refs.First().Pos - 1) + perp * q, o + d * (refs.Last().Pos + 1) + perp * q);
             }
 
@@ -187,6 +206,7 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("View: " + view.Name + " (1:" + view.Scale + ")");
             sb.AppendLine("Direction: " + DirWord(d, right, up));
             sb.AppendLine("Segments (" + values.Count + "): " + DimensionMath.Segments(values));
+            if (rowNote != null) sb.AppendLine("Placed: " + rowNote);
             sb.AppendLine("References:");
             foreach (var c in refs) sb.AppendLine("  " + c.ElementId + " " + c.What + (a.Points != null ? " (" + Mm.F(RevitUnitHelper.FeetToMm(c.Dist)) + " mm from the point)" : ""));
             var attached = refs.Select(c => Attached(doc, c)).ToList();
@@ -207,7 +227,71 @@ namespace VibeModel.Services.Claude.Commands
                     { { "element", c.ElementId }, { "what", c.What }, { "stable", c.Stable }, { "vibeModelCreated", attached[i].VibeModelCreated } }).ToList() },
                 { "notes", notes.Cast<object>().ToList() }
             };
+            if (rowMm.HasValue) data["rowMm"] = rowMm.Value;
             return CommandResult.Ok(sb.ToString(), data);
+        }
+
+        /// <summary>
+        /// Plan 21: the linear dimensions already in the view that run parallel to <paramref name="d"/>
+        /// (within 1°), as paper mm: their offset across (along <paramref name="perp"/>) and their span
+        /// along the direction, both from <paramref name="o"/>.
+        /// </summary>
+        private static List<AnnotationLayout.DimLine> ParallelDimensions(Document doc, View view, XYZ d, XYZ perp, XYZ o, double toPaper)
+        {
+            var list = new List<AnnotationLayout.DimLine>();
+            double cos1 = Math.Cos(Math.PI / 180);
+            foreach (var dim in new FilteredElementCollector(doc, view.Id).OfClass(typeof(Dimension)).Cast<Dimension>())
+            {
+                if (dim is SpotDimension || dim.OwnerViewId != view.Id) continue;
+                Line l;
+                try { l = dim.Curve as Line; } catch { continue; }
+                if (l == null || Math.Abs(l.Direction.Normalize().DotProduct(d)) < cos1) continue;
+                double cross = RevitUnitHelper.FeetToMm((l.Origin - o).DotProduct(perp)) * toPaper;
+                double s0 = double.MaxValue, s1 = double.MinValue;
+                try
+                {
+                    if (dim.NumberOfSegments > 1)
+                        foreach (DimensionSegment sg in dim.Segments)
+                        {
+                            double c = (sg.Origin - o).DotProduct(d), h = Math.Abs(sg.Value ?? 0) / 2;
+                            s0 = Math.Min(s0, c - h); s1 = Math.Max(s1, c + h);
+                        }
+                    else
+                    {
+                        double c = (dim.Origin - o).DotProduct(d), h = Math.Abs(dim.Value ?? 0) / 2;
+                        s0 = c - h; s1 = c + h;
+                    }
+                }
+                catch { continue; }
+                if (s0 > s1) continue;
+                list.Add(new AnnotationLayout.DimLine(dim.Id.IntegerValue, cross, RevitUnitHelper.FeetToMm(s0) * toPaper, RevitUnitHelper.FeetToMm(s1) * toPaper));
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Plan 21: the texts of the other annotations in the view (spot values, tags, notes, other
+        /// dimensions' texts) in (along, across) paper mm from <paramref name="o"/> — a new row must
+        /// not print over them.
+        /// </summary>
+        private static List<AnnotationLayout.Obstacle> TextObstacles(Document doc, View view, XYZ d, XYZ perp, XYZ o, double toPaper)
+        {
+            var list = new List<AnnotationLayout.Obstacle>();
+            List<AnnoBox> boxes;
+            try { boxes = AnnotationExtents.OccupiedBoxes(doc, view); } catch { return list; }
+            var f = new PaperFrame(view);
+            foreach (var b in boxes.Where(x => x.IsText && x.Kind != AnnoKind.DimensionText))
+            {
+                double s0 = double.MaxValue, s1 = double.MinValue, c0 = double.MaxValue, c1 = double.MinValue;
+                foreach (var pt in new[] { new[] { b.Rect.X0, b.Rect.Y0 }, new[] { b.Rect.X1, b.Rect.Y0 }, new[] { b.Rect.X0, b.Rect.Y1 }, new[] { b.Rect.X1, b.Rect.Y1 } })
+                {
+                    var m = f.O + f.R * f.Feet(pt[0]) + f.U * f.Feet(pt[1]);
+                    double al = RevitUnitHelper.FeetToMm((m - o).DotProduct(d)) * toPaper, cr = RevitUnitHelper.FeetToMm((m - o).DotProduct(perp)) * toPaper;
+                    s0 = Math.Min(s0, al); s1 = Math.Max(s1, al); c0 = Math.Min(c0, cr); c1 = Math.Max(c1, cr);
+                }
+                list.Add(new AnnotationLayout.Obstacle(b.Word + " " + b.Id + (b.Kind == AnnoKind.SpotText ? " text" : ""), new MmRect(s0, c0, s1, c1)));
+            }
+            return list;
         }
 
         private static string Create(Document doc, View view, Line line, List<Cand> refs, out Dimension dim)
