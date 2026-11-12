@@ -666,9 +666,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
 - **Quantities follow the model** (interview Ruben Wolbers, 2026-11-12: m² no field gave ended up as computed numbers in
   new parameters). `schedule --takeoff` makes a Material Takeoff (`ViewSchedule.CreateMaterialTakeoff`; default fields
   `Family and Type, Material: Name, Material: Area, Material: Volume`, else `--fields` from the takeoff's own list); every
-  Material: Name empty, or no rows while no element of the category has a material → `Note: no materials on these elements …`
-  (JSON `noMaterials`; no rows with materials present is the phase/filter, said by the `Empty:` line) — it never assigns
-  materials. Measured on the demo model: walls 16 m² / 4.80 m³ (Beton_300); piles empty, no materials.
+  row read and none with a Material: Name, or no rows while the category has elements and none carries a material →
+  `Note: no materials on these elements …` (JSON `noMaterials`; no rows with materials present is the phase/filter, said by
+  the `Empty:` line; a category without elements gets no note) — it never assigns materials. Measured on the demo model: walls 16 m² / 4.80 m³ (Beton_300); piles empty, no materials.
   `schedule --calc "<Name>=<formula>"`: measured in Revit 2023, the API cannot add a calculated field
   (`AddField(ScheduleFieldType.Formula)` → "fieldType is not a schedulable field type"; `IsCalculatedField` is read-only), so
   the command builds the rest, adds every field the formula names (exact names, never a substring) that is not in the
