@@ -6,7 +6,7 @@
 - Licht thema zoals Revit; donker blijft beschikbaar. The chat pane, Settings, History, Diagnose, the approval window and the
   update banner now default to Revit's own light look (light-grey surfaces, black text, Autodesk blue). Settings → *Thema*:
   **Revit volgen** (default: light on Revit 2023; on Revit 2024 and newer the light or dark theme Revit itself uses, also when it
-  is switched while Revit runs), **Licht** or **Donker** (the previous look). Switching repaints at once, the conversation stays.
+  is switched while Revit runs), **Licht** or **Donker** (the previous look; text on blue buttons is now white everywhere). Switching repaints at once, the conversation stays.
   Revit-beheer can fix it in `managed.json` (`Theme`).
 
 ### Fixed
