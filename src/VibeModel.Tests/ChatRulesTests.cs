@@ -147,6 +147,13 @@ namespace VibeModel.Tests
             Assert.Contains("GIVEN", rule);
             Assert.Contains("FROM A SOURCE", rule);
             Assert.Contains("INVENTED", rule);
+            // The TODO item (interview 2026-11-12) names phase, type and level next to the sizes.
+            int invented = rule.IndexOf("INVENTED (", System.StringComparison.Ordinal);
+            int close = rule.IndexOf("). When 2", invented, System.StringComparison.Ordinal);
+            var inventedList = rule.Substring(invented, close - invented);
+            foreach (var kind in new[] { "size", "position", "phase", "type", "level" })
+                Assert.Contains(kind, inventedList);
+            Assert.Contains("the active view's level or a type picked from several is a choice you made, not a source", rule);
             Assert.Contains("2 or more values are invented", rule);
             Assert.Contains("typed in by hand", rule);
             Assert.Contains("DirectShape", rule);

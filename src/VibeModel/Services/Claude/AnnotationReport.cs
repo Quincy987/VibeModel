@@ -213,6 +213,14 @@ namespace VibeModel.Services.Claude
         /// <summary>The radius (mm) around the old reference in which replacement elements are looked for.</summary>
         public const double SearchRadiusMm = 50.0;
 
+        /// <summary>
+        /// The leader a re-hosted spot gets when the old one had none (or its end could not be read):
+        /// shoulder this far above the point, text this far to the side (paper mm). Its own constant,
+        /// not `AnnotationLayout.SpotLeaderMm`: a new default for placing spots must not move the
+        /// spots the guard re-hosts.
+        /// </summary>
+        public const double RehostSpotLeaderMm = 12;
+
         /// <summary>A spot elevation's new reference: the same height (±tolerance), mm.</summary>
         public static bool SameHeight(double zMmA, double zMmB, double tolMm = RehostToleranceMm) => System.Math.Abs(zMmA - zMmB) <= tolMm + 1e-9;
 

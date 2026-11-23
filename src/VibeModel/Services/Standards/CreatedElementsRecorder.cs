@@ -166,5 +166,17 @@ namespace VibeModel.Services.Standards
         }
 
         public static List<long> Values(IEnumerable<ElementId> ids) => ids.Select(i => (long)i.IntegerValue).ToList();
+
+        /// <summary>
+        /// One change set for two recordings in a row (the command, then the annotation guard's own
+        /// commits): the same rules as one recording — added then deleted is deleted, an added or
+        /// deleted element is not also modified. A null side is empty.
+        /// </summary>
+        public static RecordedChanges Merge(RecordedChanges first, RecordedChanges then)
+        {
+            if (first == null) return then;
+            if (then == null) return first;
+            return new RecordedChanges(first.Added.Concat(then.Added), first.Modified.Concat(then.Modified), first.Deleted.Concat(then.Deleted));
+        }
     }
 }

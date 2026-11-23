@@ -6,6 +6,12 @@
 - Instellingen → *Standaarden* noemt het nu ook binnen het tabblad *Standaardenpakket* in plaats van *Kantoorstandaard*, en
   Diagnose en de tooltip van de modus-chip noemen een onthouden keuze `settings.json` in plaats van `settings` (het venster
   Instellingen heeft die keuze niet meer).
+### Fixed
+- De regel "eerst de aannames" telt nu ook een fase, type of niveau dat niemand noemde als aanname (het niveau van de
+  actieve view of een gekozen type uit meerdere is een keuze, geen bron).
+- Peilmaten, maatketens en labels die VibeModel na een vervanging opnieuw plaatst, staan nu in de `-- changed:`-regel
+  (en in het journaal en de goedkeuringsvraag), net als de oude die verdwenen.
+- Een opnieuw geplaatste peilmaat zonder eigen leider krijgt een vaste afstand, los van de standaard voor nieuwe peilmaten.
 
 ## v1.2.21 — Instellingen in tabbladen (2026-11-12)
 

@@ -9,6 +9,14 @@ namespace VibeModel.Tests
     /// <summary>Annotations survive replacements: the guard's report, matching maths, scope, and `spot` arguments.</summary>
     public class AnnotationReportTests
     {
+        // A re-hosted spot without a leader of its own gets this one; it is a constant apart from
+        // the placing default (AnnotationLayout.SpotLeaderMm), so retuning `spot` never moves re-hosts.
+        [Fact]
+        public void RehostedSpotLeader_IsPinned()
+        {
+            Assert.Equal(12.0, AnnotationMatch.RehostSpotLeaderMm);
+        }
+
         private static RehostedAnnotation Rehost(long from, long to, AnnotationKind kind, long host, string cat, string view = "Doorsnede 1-1")
             => new RehostedAnnotation { From = from, To = to, Kind = kind, View = view, Hosts = { new KeyValuePair<long, string>(host, cat) } };
 
