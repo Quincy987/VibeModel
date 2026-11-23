@@ -89,7 +89,7 @@ namespace VibeModel.Tests
         public void Describe_NamesTheSource()
         {
             Assert.Equal("auto (default)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Auto, ChangeApprovalSource.Default, false));
-            Assert.Equal("ask (settings)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Ask, ChangeApprovalSource.Settings, false));
+            Assert.Equal("ask (settings.json)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Ask, ChangeApprovalSource.Settings, false));
             Assert.Equal("readonly (VIBEMODEL_APPROVAL)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.ReadOnly, ChangeApprovalSource.Environment, false));
             Assert.Equal("ask (managed.json)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Ask, ChangeApprovalSource.Managed, false));
             Assert.Contains("not asking", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Ask, ChangeApprovalSource.Settings, true));

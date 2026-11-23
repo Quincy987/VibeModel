@@ -37,6 +37,8 @@ namespace VibeModel.Services.Claude
             /// <summary>Members: a bare name (<c>NewLabel</c>) or <c>Type.Member</c> (<c>ViewType.Legend</c>).</summary>
             public IReadOnlyList<string> MemberKeys { get; internal set; }
             public string Title { get; internal set; }
+            /// <summary>A few words for apilookup's description in the tool list (<see cref="Summary"/>); null = <see cref="Title"/>.</summary>
+            public string Short { get; internal set; }
             public string Cannot { get; internal set; }
             public IReadOnlyList<string> Works { get; internal set; }
             public string Manual { get; internal set; }
@@ -51,6 +53,7 @@ namespace VibeModel.Services.Claude
                 TypeKeys = new[] { "Label", "Labels", "TextElement", "LabelType" },
                 MemberKeys = new[] { "NewLabel", "CreateLabel", "FamilyItemFactory.NewLabel", "TAG_TAG" },
                 Title = "labels in annotation families (tags, generic annotations, title blocks)",
+                Short = "labels in annotation families",
                 Cannot = "the Revit API cannot create a label or change which parameter it shows: there is no Label class and no FamilyItemFactory.NewLabel. " +
                          "A label is a TextElement without a category (not a TextNote); what it shows is readable only through its read-only Sample Text (BuiltInParameter.TAG_SAMPLE_TEXT). " +
                          "Trap: its 'Label' parameter (TAG_TAG, StorageType.None) accepts Set(…) and returns true, but setting it to a family parameter's id or name changes nothing.",
@@ -103,6 +106,7 @@ namespace VibeModel.Services.Claude
                 TypeKeys = new string[0],
                 MemberKeys = new[] { "ScheduleFieldType.Formula", "IsCalculatedField", "ScheduleField.IsCalculatedField", "AddCalculatedField", "ScheduleDefinition.AddCalculatedField" },
                 Title = "calculated (formula) schedule fields",
+                Short = "calculated schedule fields",
                 Cannot = "the Revit API cannot create a calculated schedule field: AddField(ScheduleFieldType.Formula) throws \"fieldType is not a schedulable field type\" and ScheduleField.IsCalculatedField is read-only; no member sets a formula. Do not fall back to computing the quantity into a parameter: a fixed number does not follow model changes.",
                 Works = new[]
                 {
@@ -115,6 +119,12 @@ namespace VibeModel.Services.Claude
                          "schedule --calc prints this with the Type filled in."
             },
         };
+
+        /// <summary>
+        /// Every gap in a few words, for apilookup's description: "labels in annotation families, legend views, …".
+        /// Built from <see cref="All"/>, so a new gap shows up in the tool list by itself.
+        /// </summary>
+        public static string Summary => string.Join(", ", All.Select(g => string.IsNullOrEmpty(g.Short) ? g.Title : g.Short));
 
         private static readonly Dictionary<string, Gap> ByType = Index(g => g.TypeKeys);
         private static readonly Dictionary<string, Gap> ByMember = Index(g => g.MemberKeys);

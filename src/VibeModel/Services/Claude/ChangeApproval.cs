@@ -67,7 +67,7 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// "Deze Revit-sessie niet meer vragen": the window's checkbox. A plain static, so it ends
-        /// with the Revit process; Settings shows it and can clear it.
+        /// with the Revit process; choosing Vragen in the mode chip clears it.
         /// </summary>
         public static bool DontAskThisSession
         {
@@ -255,7 +255,7 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        /// <summary>"ask (settings)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)", "ask (this session)".</summary>
+        /// <summary>"ask (settings.json)", "auto (default)", "readonly (VIBEMODEL_APPROVAL)", "ask (managed.json)", "ask (this session)".</summary>
         public static string Describe(ChangeApprovalMode configured, ChangeApprovalSource source, bool dontAskThisSession)
         {
             string from;
@@ -263,7 +263,8 @@ namespace VibeModel.Services.Claude
             {
                 case ChangeApprovalSource.Managed: from = "managed.json"; break;
                 case ChangeApprovalSource.Environment: from = EnvVar; break;
-                case ChangeApprovalSource.Settings: from = "settings"; break;
+                // The chip's remembered pick (or a hand edit): named as the file, since the Settings window has no such section.
+                case ChangeApprovalSource.Settings: from = "settings.json"; break;
                 case ChangeApprovalSource.Session: from = "this session"; break;
                 default: from = "default"; break;
             }

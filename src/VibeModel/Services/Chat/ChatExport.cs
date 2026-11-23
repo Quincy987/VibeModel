@@ -611,7 +611,8 @@ namespace VibeModel.Services.Chat
 
     /// <summary>
     /// The session facade the command and the buttons share: read the chats, write the export
-    /// to %LOCALAPPDATA%\VibeModel\exports\, all on its own thread under a deadline.
+    /// to %LOCALAPPDATA%\VibeModel\exports\, all on its own thread under a deadline (<c>PathProbe.Run</c>,
+    /// the helper every project-folder read uses).
     /// </summary>
     public static class ChatExportService
     {
