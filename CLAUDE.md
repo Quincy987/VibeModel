@@ -446,6 +446,9 @@ curl -s http://localhost:18884/approvals                                  # This
   modified:{…},deleted:{…}}`, ≤ 50 ids per group (`idsTruncated:true` beyond; the counts stay complete). A batch has one line and one
   object for the whole batch. Never after a preview, Discard, READ_ONLY or a rolled-back atomic batch. The pre-read of deleted
   elements' categories now runs for every modifying command with named ids; an `exec` names none, so what it deletes counts as `other`.
+  What the annotation guard re-creates or removes after the command (below) is recorded too and merged in (`RecordedChanges.Merge`;
+  the guard's recorded annotations are pre-read, `ApprovalRun.ReadAlso`): measured, replacing a floor with a spot on it →
+  `-- changed: added 1 (Spot Elevations 1), modified 0, deleted 2 (Floors 1, Spot Elevations 1)`. The approval summary and the journal count it too.
 - **Change sets**: added/modified are read live, deleted ones from categories pre-read for the ids the
   command names AND their `GetDependentElements` (≤ 5000). Internal elements, sketch lines and automatic
   sketch dimensions are never shown (measured: a new wall adds two plain Element objects; a floor's
@@ -687,7 +690,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   `revit` when Revit's failure policy deleted it — marked `(Revit)` in text). The re-host is in the same
   undo step (a TransactionGroup) — except `exec`, whose snippet may save, open or close documents (not
   allowed inside a group), so there it is its own undo step. A rolled-back atomic batch is not
-  reconciled. Nothing is touched when no recorded annotation changed. Pure parts (wording, tolerances,
+  reconciled. Nothing is touched when no recorded annotation changed. A re-hosted spot keeps its old leader (moved
+  with the point); one without a readable leader gets `AnnotationMatch.RehostSpotLeaderMm` (12 paper mm, pinned by a test),
+  a constant apart from `spot`'s placing default `AnnotationLayout.SpotLeaderMm`. Pure parts (wording, tolerances,
   scope): `AnnotationReport.cs`; Revit side: `AnnotationGuard.cs`.
 - **`tag`** (plan 21): the category's own tag family, else a multi-category tag (`Type: … — multi-category tag (no Walls tag
   loaded)`); rebar (`OST_RebarTags`) and parts are tagged too — a rebar through its sub-element reference
@@ -799,7 +804,7 @@ curl -s http://localhost:18884/standards                        # Active pack, t
 curl -s "http://localhost:18884/standards?args=phasing"         # One topic sheet (verbatim)
 curl -s "http://localhost:18884/standards?args=core"            # The always-on rules block
 curl -s "http://localhost:18884/standards?args=--refresh"       # Re-read packs after editing them
-curl -s "http://localhost:18884/standards?args=--prompt"        # Exactly what the chat receives this turn
+curl -s "http://localhost:18884/standards?args=--prompt"        # The TEMPLATE + STANDARDS blocks the chat receives this turn (not the RULES block)
 curl -s "http://localhost:18884/standards?args=--index"         # Index the office source documents (PDF/txt) in the background
 curl -s "http://localhost:18884/standards?args=docs"            # Indexed documents + chapters
 curl -s "http://localhost:18884/standards?args=leidraad 4.2"    # One chapter of a source document (+ its subchapters)
@@ -1057,7 +1062,8 @@ run, every other tool is denied, never prompted) — narrower than `bypassPermis
 VibeModel modification is one Ctrl+Z, which the prompt tells the model. The turn prompt ends with
 the shared **RULES** block (`ChatBackendBase.BuildBehaviourRules(language, approval)` — reply language,
 undo (worded per change-approval policy), ask-first for sheets/shared resources, compact answers, what is never allowed); edit the wording there, both
-backends use it. Settings → *Algemeen* → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
+backends use it. It is built per turn (the CLI's turn prompt, the direct backend's system prompt): the CLI's prompt file and `standards --prompt` (TEMPLATE + STANDARDS)
+do not hold it, so check a rule through `BuildBehaviourRules` / `ClaudeCodeBackend.BuildTurnPrompt` (`ChatRulesTests`). Settings → *Algemeen* → *Taal / Language* (`Language`: `nl` default, `en`) sets the fallback
 reply language and the pane's fixed texts (`Services/Chat/Strings.cs`, `StatusVerbs.cs`) —
 the only language source and the only Dutch/English tables; `UI/UiText.cs` just composes them.
 
@@ -1119,7 +1125,8 @@ assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `
 `DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
-`AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values, or a choice weaker than asked (hand-typed quantities,
+`AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values (sizes and positions, and also a phase, type or level
+nobody named and no source settles — the active view's level or a type picked from several counts), or a choice weaker than asked (hand-typed quantities,
 DirectShape, new type), the chat shows an assumptions table and asks first; one element or one invented value is built at once and
 reported in the closing line (interview 2026-11-12).
 

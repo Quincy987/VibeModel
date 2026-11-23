@@ -292,6 +292,8 @@ namespace VibeModel.Services.Claude
             // Read for every modifying command, not only under a run group: the "-- changed" line
             // needs the deleted elements' categories too, and they cannot be read afterwards.
             var preRead = modifying ? ApprovalRun.PreRead(doc, targets) : null;
+            // The annotations the guard may delete and re-create: their categories, for the change line.
+            if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             TransactionGroup group = null;
             AnnotationOutcome annotations = null;
@@ -328,7 +330,7 @@ namespace VibeModel.Services.Claude
                 {
                     if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
                 }
-                if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, changes, revit);
+                if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
                 if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                 if (runControl)
                     run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
@@ -378,14 +380,17 @@ namespace VibeModel.Services.Claude
         }
 
         /// <summary>
-        /// Plan 21: the annotations the layout line checks — what the run added, plus what the
-        /// annotation guard re-hosted (created after the recorder stopped).
+        /// Plan 21: the annotations the layout line checks — what the run added, which includes what
+        /// the annotation guard re-hosted (merged into the change set); a shown re-host the recorder
+        /// missed is added once.
         /// </summary>
         private static IEnumerable<ElementId> LayoutIds(RecordedChanges changes, AnnotationOutcome annotations)
         {
             var ids = new List<ElementId>(changes.Added);
+            var seen = new HashSet<int>(ids.Select(i => i.IntegerValue));
             if (annotations != null)
-                ids.AddRange(annotations.Rehosted.Where(r => r.To > 0).Select(r => new ElementId((int)r.To)));
+                foreach (var r in annotations.Rehosted.Where(r => r.To > 0))
+                    if (seen.Add((int)r.To)) ids.Add(new ElementId((int)r.To));
             return ids;
         }
 
@@ -677,9 +682,15 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        /// <summary>Null when nothing happened (or the guard failed — logged, the command's result stands).</summary>
-        private static AnnotationOutcome GuardReconcile(AnnotationSnapshot snapshot, RecordedChanges changes, FailureReport revit)
+        /// <summary>
+        /// Null when nothing happened (or the guard failed — logged, the command's result stands).
+        /// What the guard itself commits (re-created spots, dimensions and tags, the annotations it
+        /// deletes) is recorded too and merged into <paramref name="changes"/>, so the "-- changed"
+        /// line, the approval summary and the journal count it with the command's own work.
+        /// </summary>
+        private static AnnotationOutcome GuardReconcile(AnnotationSnapshot snapshot, ref RecordedChanges changes, FailureReport revit)
         {
+            CreatedElementsRecorder.Arm();
             try
             {
                 var outcome = AnnotationGuard.Reconcile(snapshot, changes, revit);
@@ -689,6 +700,11 @@ namespace VibeModel.Services.Claude
             {
                 Logger.Warn("Annotation guard: reconcile failed — " + ex.Message);
                 return null;
+            }
+            finally
+            {
+                var own = CreatedElementsRecorder.DisarmChanges();
+                if (!own.IsEmpty) changes = RecordedChanges.Merge(changes, own);
             }
         }
 
@@ -818,6 +834,7 @@ namespace VibeModel.Services.Claude
             bool batchModifies = req.Batch.Any(i => _registry.IsModification(i.Command));
             bool runControl = ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, batchModifies, options.Preview, options.ReadOnly);
             var preRead = batchModifies ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
+            if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
             long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             var run = new RunOutcome();
 
@@ -878,7 +895,7 @@ namespace VibeModel.Services.Claude
                         if (anyModified)
                         {
                             changes = CreatedElementsRecorder.DisarmChanges();
-                            if (snapshot != null) annotations = GuardReconcile(snapshot, changes, batchRevit);
+                            if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                             if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                         }
                         // Nothing modified (every command failed or only read): an empty change set.
@@ -895,7 +912,7 @@ namespace VibeModel.Services.Claude
                     else if (anyModified)
                     {
                         changes = CreatedElementsRecorder.DisarmChanges();
-                        if (snapshot != null) annotations = GuardReconcile(snapshot, changes, batchRevit);
+                        if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                         if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                         tg.Assimilate(); // merge all committed child transactions into one undo entry
                     }

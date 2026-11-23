@@ -51,6 +51,20 @@ namespace VibeModel.Services.Claude
 
         private const int MaxPreRead = 5000;
 
+        /// <summary>
+        /// Adds these elements themselves (no dependents) to a pre-read — the annotations the guard
+        /// recorded, which it may delete and re-create after the command (their category is gone by then).
+        /// </summary>
+        public static void ReadAlso(Document doc, IEnumerable<int> ids, Dictionary<int, PreReadElement> map)
+        {
+            if (doc == null || ids == null || map == null) return;
+            foreach (var id in ids)
+            {
+                if (map.Count >= MaxPreRead) break;
+                Read(doc, new ElementId(id), map, named: true);
+            }
+        }
+
         /// <summary>What a command's element was before it ran: a deleted element can no longer be read.</summary>
         public sealed class PreReadElement
         {

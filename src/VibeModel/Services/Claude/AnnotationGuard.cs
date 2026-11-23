@@ -462,7 +462,7 @@ namespace VibeModel.Services.Claude
                 end = rec.LeaderEnd + delta;
                 bend = rec.HasShoulder && rec.Shoulder != null ? rec.Shoulder + delta : (hit.Point + end) * 0.5;
             }
-            else AnnotationGeometry.DefaultLeader(view, hit.Point, true, out bend, out end);
+            else AnnotationGeometry.Leader(view, hit.Point, true, AnnotationMatch.RehostSpotLeaderMm, out bend, out end);
 
             var spot = doc.Create.NewSpotElevation(view, hit.Reference, hit.Point, bend, end, hit.Point, rec.HasLeader);
             if (spot == null) return null;
@@ -675,6 +675,9 @@ namespace VibeModel.Services.Claude
         internal List<AnnotationRecord> Records { get; }
         /// <summary>The ids the command named itself — an annotation among them was deleted on purpose.</summary>
         internal HashSet<int> Named { get; }
+
+        /// <summary>The recorded annotations' own ids.</summary>
+        public IEnumerable<int> AnnotationIds => Records.Select(r => r.Id);
 
         internal AnnotationSnapshot(Document doc, List<AnnotationRecord> records, HashSet<int> named)
         {
@@ -946,8 +949,12 @@ namespace VibeModel.Services.Claude
         /// (bottom) the point, the text 12 paper mm further to the view's right.
         /// </summary>
         public static void DefaultLeader(View view, XYZ p, bool top, out XYZ bend, out XYZ end)
+            => Leader(view, p, top, AnnotationLayout.SpotLeaderMm, out bend, out end);
+
+        /// <summary>A spot leader with the shoulder <paramref name="paperMm"/> above/below the point and the text as far to the right.</summary>
+        public static void Leader(View view, XYZ p, bool top, double paperMm, out XYZ bend, out XYZ end)
         {
-            double step = RevitUnitHelper.MmToFeet(AnnotationLayout.SpotLeaderMm * Math.Max(1, view.Scale));
+            double step = RevitUnitHelper.MmToFeet(paperMm * Math.Max(1, view.Scale));
             var up = view.UpDirection.Normalize();
             var right = view.RightDirection.Normalize();
             bend = p + up * (top ? step : -step);

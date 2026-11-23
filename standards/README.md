@@ -43,7 +43,8 @@ First occurrence of a pack `id` wins:
 
 `standards` lists every folder it looked at and why a pack was skipped or not active.
 After editing a pack, run `standards --refresh` (or reopen Settings and Save).
-`standards --prompt` shows exactly what the chat receives this turn.
+`standards --prompt` shows the office blocks the chat receives this turn (TEMPLATE and STANDARDS); the
+behaviour rules (the RULES block) are not part of it.
 
 Derived data (library index, document index, generated core, check log, additions copy) is cached per pack in
 `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack id>\`.

@@ -214,6 +214,41 @@ namespace VibeModel.Tests
             Assert.Equal(0, stats.ChatsWithoutRecord);
         }
 
+        // A turn that ended in an error has no answer: the pane stores its steps on the error
+        // message (ChatPane onError → AppendTurnRecord, RoleSystem), and the export reads them there.
+        [Fact]
+        public void Render_FailedTurn_KeepsItsCommandsOnTheErrorMessage()
+        {
+            var s = new ChatSession { Id = "20261112-140000-abcdef13", Project = "Kade demo", Backend = "claude-cli", CreatedUtc = T0, UpdatedUtc = T0.AddMinutes(1) };
+            s.Messages.Add(new ChatSessionMessage { Role = ChatSession.RoleUser, Content = "Maak een kademuur", TimestampUtc = T0 });
+            s.Messages.Add(new ChatSessionMessage
+            {
+                Role = ChatSession.RoleSystem,
+                Content = "Error: connection lost",
+                TimestampUtc = T0.AddSeconds(20),
+                Steps = new List<ChatSessionStep>
+                {
+                    new ChatSessionStep { Command = "wall", Args = "0 0 5000 0 3000", Ok = true, DurationMs = 300 },
+                    new ChatSessionStep { Command = "floor", Args = "0,0 5000,0 5000,2000 0,2000", Ok = false, Error = "not finished" }
+                }
+            });
+            s.Title = "Maak een kademuur";
+
+            var store = new ChatSessionStore(_dir);
+            store.SaveSession(s);
+            var loaded = store.LoadSession(s.Id);
+            Assert.Equal(2, loaded.Messages[1].Steps.Count);
+
+            ChatExportStats stats;
+            var md = ChatExportDocument.Render(loaded, null, Strings.Dutch, out stats);
+            Assert.Contains("**Commands** (2, 1 mislukt)", md);
+            Assert.Contains("| 1 | wall | 0 0 5000 0 3000 | ✓ | 0.3 s |", md);
+            Assert.Contains("✗ not finished", md);
+            Assert.Contains("Error: connection lost", md);
+            Assert.Equal(2, stats.Commands);
+            Assert.Equal(0, stats.ChatsWithoutRecord);
+        }
+
         [Fact]
         public void Render_WithoutSteps_UsesTheDebugLogBetweenQuestionAndAnswer()
         {
