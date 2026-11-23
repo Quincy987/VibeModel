@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- Instellingen → *Standaarden* noemt het nu ook binnen het tabblad *Standaardenpakket* in plaats van *Kantoorstandaard*, en
+  Diagnose en de tooltip van de modus-chip noemen een onthouden keuze `settings.json` in plaats van `settings` (het venster
+  Instellingen heeft die keuze niet meer).
+
 ## v1.2.21 — Instellingen in tabbladen (2026-11-12)
 
 ### Changed — Instellingen in tabbladen

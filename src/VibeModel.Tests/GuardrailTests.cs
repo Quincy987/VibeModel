@@ -33,7 +33,7 @@ namespace VibeModel.Tests
         public void NameAndDescribe()
         {
             Assert.Equal("annotate", ChangeApprovalPolicy.Name(ChangeApprovalMode.Annotate));
-            Assert.Equal("annotate (settings)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Annotate, ChangeApprovalSource.Settings, false));
+            Assert.Equal("annotate (settings.json)", ChangeApprovalPolicy.Describe(ChangeApprovalMode.Annotate, ChangeApprovalSource.Settings, false));
         }
 
         [Theory]

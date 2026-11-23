@@ -466,11 +466,11 @@ namespace VibeModel.UI
             };
         }
 
-        // The approval window's "don't ask again" (or Settings) changed the session's policy.
+        // The approval window's "don't ask again" (or the mode chip) changed the session's policy.
         private void OnApprovalPolicyChanged(object sender, EventArgs e)
             => Dispatcher.BeginInvoke(new Action(RefreshModeChip));
 
-        // Plan 20: the chip re-reads the policy (Settings, the approval window's "don't ask again"
+        // Plan 20: the chip re-reads the policy (its own pick, the approval window's "don't ask again"
         // and managed.json can all change it); in Vragen the send arrow turns amber as a reminder.
         private void RefreshModeChip()
         {

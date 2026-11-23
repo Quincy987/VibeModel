@@ -485,7 +485,7 @@ curl -s http://localhost:18884/approvals                                  # This
   choosing *Vragen* clears "don't ask again"; the session override keeps a `build.ps1 -Approval` variable from
   overriding what the user just chose). Precedence: managed.json → chip →
   `VIBEMODEL_APPROVAL` → settings.json → auto (`WithSessionOverride` / `EffectiveOf` / `Chosen`;
-  Describe/Diagnose/`approvals` say `ask (this session)`, JSON `source: "session"`). Locked by
+  Describe/Diagnose/`approvals` and the chip's tooltip say `ask (this session)`, JSON `source: "session"`; after a restart the remembered pick reads `ask (settings.json)`). Locked by
   managed.json → greyed, no menu, tooltip "beheerd door Revit-beheer". `ChangeApprovalPolicy.Changed` (don't-ask or override changed)
   refreshes the chip, as do Settings closing, `ActiveDocumentTracker.Changed` and a turn ending.
   **Volgend bericht als preview**: the pane arms `ChangeApprovalPolicy.ArmNextTurn` on every send;
@@ -533,7 +533,7 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   nothing; an edited family goes back with `fd.LoadFamily(doc, new
   VibeModel.Services.Helpers.KeepValuesLoadOptions())` (public for exec — without options Revit
   answers "Family loading failed."); with the family open in the Family Editor, exec edits `doc` itself.
-  No prompt rule of its own (`DynamicQuantitiesRule` points at `--takeoff`/`--calc`); `apilookup`'s description (in the tool list) names the gaps.
+  No prompt rule of its own (`DynamicQuantitiesRule` points at `--takeoff`/`--calc`); `apilookup`'s description (in the tool list) names the gaps from the table (`KnownApiGaps.Summary`, each gap's `Short` name), so a new gap appears there by itself.
 - **Loop deadline** (plan 17): every `for/foreach/while/do` body written with `{ }` gets
   `__vm.Tick();` (same line); after 25 s (`?timeout=<s>`, 1–300) the snippet stops, its transaction is
   rolled back — also when it caught the exception — and exec answers `ERROR: exec stopped after 25 s at
@@ -843,7 +843,7 @@ curl -s "http://localhost:18884/activate?args=Werkview"               # Activate
   A network `StandardsPackPath` is mirrored to `%LOCALAPPDATA%\VibeModel\standards\_mirror\` in the
   background (startup, `--refresh`, Settings → Save) and only the mirror is read.
   Settings → *Standaarden* → source documents folder (`StandardsFolder`) is what `standards --index` reads.
-  Settings → *Standaarden* → *Kantoorstandaard toepassen* (`StandardsEnabled`) switches everything off.
+  Settings → *Standaarden* → *Standaardenpakket toepassen* (`StandardsEnabled`) switches everything off.
 - Network shares are never read on Revit's main thread without a deadline: the library and the
   source documents are indexed in the background and cached under
   `%LOCALAPPDATA%\VibeModel\standards\_cache\<pack>\`; PDF text comes from a separate helper

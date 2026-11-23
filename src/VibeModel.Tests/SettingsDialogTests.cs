@@ -97,6 +97,13 @@ namespace VibeModel.Tests
                 Assert.Contains(Strings.For(language, Strings.SettingsSave), texts);
                 Assert.Contains(Strings.For(language, Strings.SettingsProjectTitle, "Demo.rvt"), texts);
                 Assert.Contains(Strings.For(language, Strings.SettingsStandardsTitle), texts);
+                // The tab is "Standaarden" because "kantoor" was not the right name; the texts inside follow it.
+                foreach (var key in new[] { Strings.SettingsStandardsTitle, Strings.SettingsStandardsHint, Strings.SettingsStandardsEnabled })
+                {
+                    var text = Strings.For(language, key).ToLowerInvariant();
+                    Assert.DoesNotContain("kantoor", text);
+                    Assert.DoesNotContain("office", text);
+                }
 
                 // The other language's texts never leak in (the old hard-coded English included).
                 var other = language == "nl" ? "en" : "nl";

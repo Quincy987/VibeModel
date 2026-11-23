@@ -23,6 +23,17 @@ namespace VibeModel.Tests
 
         private static string[] LinesOf(string text) => text.Replace("\r\n", "\n").Split('\n');
 
+        [Fact]
+        public void ApiLookupDescription_NamesEveryGapFromTheTable()
+        {
+            var description = new VibeModel.Services.Claude.Commands.ApiLookupCommand().Description;
+            Assert.Contains(KnownApiGaps.Summary, description);
+            foreach (var gap in KnownApiGaps.All)
+                Assert.Contains(string.IsNullOrEmpty(gap.Short) ? gap.Title : gap.Short, KnownApiGaps.Summary);
+            Assert.Equal("labels in annotation families, legend views, creating phases and design options, calculated schedule fields",
+                KnownApiGaps.Summary);
+        }
+
         [Theory]
         [InlineData("TextElement")]                 // found type: block at the end
         [InlineData("FamilyItemFactory.NewLabel")]  // missing member: block after the first line

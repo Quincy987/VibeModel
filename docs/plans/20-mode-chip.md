@@ -6,6 +6,10 @@
 
 > **STATUS (built 2026-10-20, branch claude-bot/t-360, on top of plan 15's claude-bot/t-352).**
 > 1500 headless tests; compiles for Revit 2022/2023/2024; live in Revit 2023 — see "Verification".
+>
+> **Later (v1.2.21, tabbed Settings):** Settings lost its approval panel; the chip is the only place to choose
+> the mode and also stores the pick in settings.json (`ChangeApprovalPolicy.ChooseAndRemember`), so the next
+> Revit start begins in it. The "Settings" decision below describes the panel as it was.
 
 ## Decisions
 
