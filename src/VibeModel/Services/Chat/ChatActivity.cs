@@ -230,10 +230,36 @@ namespace VibeModel.Services.Chat
                 }
                 if (firstLine.StartsWith("curl: (", StringComparison.Ordinal))
                     return Cap(firstLine);
+                // exec's compile and run-time errors anywhere in the text: a response cut or piped by
+                // the shell, or one from a build before exec failed them itself. Not in a text batch
+                // (">>> cmd" blocks): a batch that partly failed is not a failed step.
+                if (!firstLine.StartsWith(">>> ", StringComparison.Ordinal))
+                {
+                    var execError = ExecErrorLine(text);
+                    if (execError != null) return Cap(execError);
+                }
             }
 
             if (isError)
                 return Cap(firstLine ?? "Error");
+            return null;
+        }
+
+        // "COMPILATION ERRORS:" → its first "Line N: …"; "ERROR in exec: msg" → "exec failed: msg".
+        private static string ExecErrorLine(string text)
+        {
+            var lines = text.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var l = lines[i].TrimEnd();
+                if (l.StartsWith(Claude.ExecOutcome.CompileHeader, StringComparison.Ordinal))
+                {
+                    var first = lines.Skip(i + 1).Select(x => x.Trim()).FirstOrDefault(x => x.StartsWith("Line ", StringComparison.Ordinal));
+                    return "exec did not compile" + (first != null ? ": " + first : "");
+                }
+                if (l.StartsWith(Claude.ExecOutcome.RuntimeMarker, StringComparison.Ordinal))
+                    return "exec failed: " + l.Substring(Claude.ExecOutcome.RuntimeMarker.Length).Trim();
+            }
             return null;
         }
 

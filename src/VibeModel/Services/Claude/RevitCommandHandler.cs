@@ -330,7 +330,8 @@ namespace VibeModel.Services.Claude
                 {
                     if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
                 }
-                if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
+                // A failed exec can have kept transactions of its own: what they did is reconciled too.
+                if (KeptWork(request.Command, cr, changes) && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
                 if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                 if (runControl)
                     run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
@@ -357,10 +358,10 @@ namespace VibeModel.Services.Claude
             var forbiddenKept = !rolledBack ? forbidden : null;
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
 
-            var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
+            var findings = KeptWork(request.Command, cr, changes) ? PostCommandCheck.Run(app, changes.Added) : null;
             // New elements an existing schedule / a sheet view of this session leaves out. A rolled-back
             // run (preview, Discard, READ_ONLY, ANNOTATION_ONLY) has no change set here, so never reports.
-            var coverage = cr.Success && changes != null ? DerivedCoverage.Check(doc, changes) : null;
+            var coverage = KeptWork(request.Command, cr, changes) ? DerivedCoverage.Check(doc, changes) : null;
             // Plan 21: the annotations this run added (re-hosted ones are new elements too), against their neighbours.
             var layout = kept != null && changes != null ? AnnotationExtents.ForAdded(doc, LayoutIds(changes, ShownAnnotations(annotations, runControl, run))) : null;
             if (cr.Success && changes != null)
@@ -378,6 +379,14 @@ namespace VibeModel.Services.Claude
 
             return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage);
         }
+
+        /// <summary>
+        /// The run left work in the model that the after-run checks must see: a succeeded command
+        /// with a change set, or a FAILED exec whose snippet committed transactions of its own (exec's
+        /// compile and run-time errors are failures since phase 1; before, they read as succeeded).
+        /// </summary>
+        private static bool KeptWork(string command, CommandResult cr, RecordedChanges changes) =>
+            changes != null && (cr.Success || (IsExec(command) && !changes.IsEmpty));
 
         /// <summary>
         /// Plan 21: the annotations the layout line checks — what the run added, which includes what
@@ -881,7 +890,10 @@ namespace VibeModel.Services.Claude
                         entries.Add(entry);
 
                         if (!cr.Success) anyError = true;
-                        else if (_registry.IsModification(item.Command)) anyModified = true;
+                        if (cr.Success && _registry.IsModification(item.Command)) anyModified = true;
+                        // A failed exec whose snippet committed transactions of its own changed the model:
+                        // the batch asks, reports, checks and journals it like the single-command path.
+                        else if (!cr.Success && IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore) anyModified = true;
                     }
 
                     if (req.Atomic && anyError)
