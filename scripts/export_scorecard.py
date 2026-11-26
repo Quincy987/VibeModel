@@ -145,6 +145,8 @@ def json_to_md(path: str) -> str:
             tok = sum(int(u.get(k) or 0) for k in ("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"))
             ctx = int(u.get("contextTokens") or 0)
             lines += [f"_{tok} tokens" + (f" · conversation length {ctx} tokens" if ctx else "") + "_", ""]
+        if any(k in a for k in ("version", "mode", "pack")):
+            lines += [f"_VibeModel {a.get('version') or '?'} · mode: {a.get('mode') or '?'} · pack: {a.get('pack') or 'none'}_", ""]
     return "\n".join(lines)
 
 

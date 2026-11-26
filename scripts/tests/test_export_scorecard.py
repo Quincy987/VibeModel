@@ -189,10 +189,12 @@ class ScorecardTest(unittest.TestCase):
                 {"role": "assistant", "content": "Klaar.", "timestampUtc": "2026-11-18T10:00:10Z",
                  "steps": [{"command": "wall", "args": "0 0 5000 0", "ok": True},
                            {"command": "exec", "args": "x", "ok": False, "error": "Exit code 3"}],
-                 "usage": {"inputTokens": 1000, "outputTokens": 500, "contextTokens": 900}},
+                 "usage": {"inputTokens": 1000, "outputTokens": 500, "contextTokens": 900},
+                 "version": "1.2.22", "mode": "readonly", "pack": ""},
             ]}, f)
         c = self.card(path)
         self.assertEqual((c["turns"], c["commands"], c["failed"], c["medianTokensPerTurn"]), (1, 2, 1, 1500))
+        self.assertEqual(c["builds"], [{"version": "1.2.22", "mode": "readonly", "pack": "none"}])
 
     def test_main_writes_md_and_json(self):
         base = os.path.join(self.tmp.name, "card")
