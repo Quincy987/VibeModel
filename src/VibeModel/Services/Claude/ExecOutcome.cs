@@ -47,6 +47,9 @@ namespace VibeModel.Services.Claude
             if (text.StartsWith("ERROR: Runtime exception:", StringComparison.Ordinal) ||
                 text.StartsWith("ERROR: Execution failed:", StringComparison.Ordinal))
                 return CommandResult.TextError(RuntimeCode, text, FirstLine(text).Substring("ERROR: ".Length), Join(RuntimeSuggestion, extraHint));
+            // The compiler itself threw (no error list): still a compile failure.
+            if (text.StartsWith("ERROR: Compilation failed:", StringComparison.Ordinal))
+                return CommandResult.TextError(CompileCode, text, FirstLine(text).Substring("ERROR: ".Length), CompileSuggestion);
             return CommandResult.Legacy(text);
         }
 
@@ -92,15 +95,29 @@ namespace VibeModel.Services.Claude
         {
             if (string.IsNullOrEmpty(text)) return null;
             var lines = Lines(text);
+            var continuation = new List<string>();
             for (int i = lines.Length - 1; i >= 0; i--)
             {
                 var l = lines[i].TrimEnd();
-                if (l.StartsWith(RuntimeMarker, StringComparison.Ordinal)) return l.Substring(RuntimeMarker.Length).Trim();
-                if (l.Length == 0 || l.StartsWith("Hint:", StringComparison.Ordinal) || l.StartsWith("-- ", StringComparison.Ordinal)) continue;
+                if (l.StartsWith(RuntimeMarker, StringComparison.Ordinal))
+                {
+                    continuation.Reverse();
+                    return string.Join(" ", new[] { l.Substring(RuntimeMarker.Length).Trim() }.Concat(continuation));
+                }
+                if (continuation.Count == 0 &&
+                    (l.Length == 0 || l.StartsWith("Hint:", StringComparison.Ordinal) || l.StartsWith("-- ", StringComparison.Ordinal)))
+                    continue;
+                // .NET puts the parameter of an argument exception on a line of its own
+                // ("Value cannot be null.\r\nParameter name: source"), in the Windows language.
+                if (MessageContinuation.IsMatch(l) && continuation.Count < 2) { continuation.Add(l.Trim()); continue; }
                 break;
             }
             return null;
         }
+
+        private static readonly System.Text.RegularExpressions.Regex MessageContinuation = new System.Text.RegularExpressions.Regex(
+            @"^\s*(?:Parameter ?name|Parameternaam|Parametername|Nom du paramètre|Actual value was|Werkelijke waarde was|De werkelijke waarde was)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
         private static string[] Lines(string text) => text.Replace("\r\n", "\n").Split('\n');
 

@@ -136,6 +136,7 @@ namespace VibeModel.Tests
 
         [Theory]
         [InlineData("var n = s?.Length;", "?.")]
+        [InlineData("var c = s?[0];", "?[]")]
         [InlineData("if (o is string t) { }", "is T x")]
         [InlineData("var t = $\"n={s}\";", "$\"")]
         [InlineData("int.TryParse(s, out var n);", "out var")]
@@ -156,9 +157,32 @@ namespace VibeModel.Tests
         {
             var errors = new List<ApiLookup.CompileError>
             {
-                new ApiLookup.CompileError { Number = "CS1002", Line = "sb.AppendLine(\"a?.b $\\\"x\\\"\") x", Column = 30, Message = "; expected" }
+                new ApiLookup.CompileError { Number = "CS1002", Line = "sb.AppendLine(\"a?.b $\\\"x\\\"\") x", Column = 30, Message = "; expected" },
+                // A comment's words and a nullable array type are no C# 6 constructs either.
+                new ApiLookup.CompileError { Number = "CS0103", Line = "x = y; // y is a wall", Column = 5, Message = "y does not exist" },
+                new ApiLookup.CompileError { Number = "CS1002", Line = "int?[] heights = new int?[3] /* is T x */ z", Column = 40, Message = "; expected" },
             };
             Assert.Empty(ExecDialect.CSharp5Advice(errors));
+        }
+
+        [Fact]
+        public void ArgumentExceptionOverTwoLines_IsStillARunTimeError()
+        {
+            // .NET Framework: "Value cannot be null.\r\nParameter name: source" (Dutch: "Parameternaam: source").
+            var text = "partial\nERROR in exec: Value cannot be null.\r\nParameter name: source\n";
+            var cr = ExecOutcome.FromText(text);
+            Assert.Equal(ExecOutcome.RuntimeCode, cr.ErrorCode);
+            Assert.Equal("exec failed: Value cannot be null. Parameter name: source", cr.Message);
+            Assert.Equal("Waarde mag niet null zijn. Parameternaam: source",
+                ExecOutcome.RuntimeError("ERROR in exec: Waarde mag niet null zijn.\nParameternaam: source\n-- model #3 | view: L1 | selected: 0"));
+            Assert.Equal(ExecOutcome.CompileCode, ExecOutcome.FromText("ERROR: Compilation failed: boom").ErrorCode);
+        }
+
+        [Theory]
+        [InlineData("-- forbidden: base point changed; press Ctrl+Z to undo\n>>> exec x\nERROR in exec: boom\n\n>>> wall 0 0 1 0\nok\n-- changed: added 1")]
+        public void Pane_ATextBatchOpeningWithAForbiddenLine_IsNoFailedStep(string result)
+        {
+            Assert.Null(ToolCallDescriber.ErrorLine(result));
         }
 
         [Fact]

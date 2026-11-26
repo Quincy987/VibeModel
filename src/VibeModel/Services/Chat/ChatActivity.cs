@@ -233,7 +233,10 @@ namespace VibeModel.Services.Chat
                 // exec's compile and run-time errors further down: a response the shell cut or piped
                 // so that exec's own ERROR first line was lost. Not in a text batch (">>> cmd"
                 // blocks): a batch that partly failed is not a failed step.
-                if (!firstLine.StartsWith(">>> ", StringComparison.Ordinal))
+                // A batch may open with a "-- forbidden:" line, so look for its ">>> " blocks anywhere.
+                bool textBatch = firstLine.StartsWith(">>> ", StringComparison.Ordinal) ||
+                                 text.IndexOf("\n>>> ", StringComparison.Ordinal) >= 0;
+                if (!textBatch)
                 {
                     var execError = ExecErrorLine(text);
                     if (execError != null) return Cap(execError);

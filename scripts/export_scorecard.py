@@ -115,11 +115,24 @@ def split_md(name: str, text: str) -> list[tuple[str, str]]:
     return [(f"{name}#{i + 1}", d) for i, d in enumerate(docs)]
 
 
+def pair_like_export(messages: list[dict]) -> list[dict]:
+    """Each question with the next message that is not a question - as ChatExport.Turns pairs them, so
+    an error turn (role "system", which keeps its steps) counts the same from JSON as from markdown.
+    successcase.pair_turns takes only assistant replies, which is right for case files, not here."""
+    turns: list[dict] = []
+    for m in messages:
+        if (m.get("role") or "").lower() == "user":
+            turns.append({"question": m, "answer": None})
+        elif turns and turns[-1]["answer"] is None:
+            turns[-1]["answer"] = m
+    return turns
+
+
 def json_to_md(path: str) -> str:
     """A raw chat log as the export would render it (only what the scorecard reads)."""
     chat = sc.load_chat(path)
     lines = [f"# {chat.get('title') or chat.get('id') or 'chat'}", ""]
-    for i, t in enumerate(sc.pair_turns(chat["messages"]), 1):
+    for i, t in enumerate(pair_like_export(chat["messages"]), 1):
         lines += [f"## Turn {i} — ?", "", "**Question**", "", (t["question"].get("content") or "").strip(), ""]
         a = t["answer"] or {}
         steps = a.get("steps")

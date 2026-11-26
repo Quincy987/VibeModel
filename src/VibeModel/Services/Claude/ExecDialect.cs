@@ -44,7 +44,8 @@ namespace VibeModel.Services.Claude
 
         private static readonly Construct[] Constructs =
         {
-            new Construct { Pattern = new Regex(@"\?\.|\?\[", RegexOptions.Compiled),
+            // "x?[0]" is null-conditional indexing; "int?[]" and "new int?[3]" are valid C# 5 (nullable arrays).
+            new Construct { Pattern = new Regex(@"\?\.|(?<!\bnew\s+[\w.]+)\?\[(?!\s*\])", RegexOptions.Compiled),
                 Advice = "no ?. / ?[] — write `x != null ? x.Y : null` or an if" },
             new Construct { Pattern = new Regex(@"\bis\s+[A-Za-z_][\w.<>,\[\]]*\s+[a-z_]\w*\b", RegexOptions.Compiled),
                 Advice = "no `is T x` — `var x = o as T; if (x != null) …`" },
@@ -169,8 +170,8 @@ namespace VibeModel.Services.Claude
             return sb.ToString().TrimEnd();
         }
 
-        // "a ?. b" stays, "\"x?.y\"" becomes "\"\"". Verbatim and regular strings and char literals;
-        // the $ before an interpolated string is kept (it is the construct itself).
+        // "a ?. b" stays, "\"x?.y\"" becomes "\"\"". Verbatim and regular strings, char literals and
+        // comments go; the $ before an interpolated string is kept (it is the construct itself).
         internal static string StripStrings(string line)
         {
             if (string.IsNullOrEmpty(line)) return line ?? "";
@@ -198,6 +199,16 @@ namespace VibeModel.Services.Claude
                 {
                     int end = line.IndexOf('\'', i + (i + 1 < line.Length && line[i + 1] == '\\' ? 3 : 2));
                     if (end > i && end - i <= 8) { sb.Append("' '"); i = end + 1; continue; }
+                }
+                // Comments are words, not code: "x = y; // y is a wall" holds no `is T x`.
+                if (c == '/' && i + 1 < line.Length && line[i + 1] == '/') break;
+                if (c == '/' && i + 1 < line.Length && line[i + 1] == '*')
+                {
+                    int close = line.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    if (close < 0) break;
+                    sb.Append(' ');
+                    i = close + 2;
+                    continue;
                 }
                 sb.Append(c);
                 i++;

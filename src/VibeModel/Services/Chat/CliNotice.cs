@@ -25,10 +25,14 @@ namespace VibeModel.Services.Chat
             @"^Claude AI usage limit reached(?:\|(?<epoch>\d{9,11}))?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // Only the CLI's own openings: an answer that explains some other login ("your Autodesk login
-        // has expired") must stay an answer.
+        // Only the CLI's own openings, and only about Claude's own login (OAuth, /login, the API key):
+        // an answer that explains some other login ("your Autodesk login has expired", "Failed to
+        // authenticate with the server (401)") must stay an answer.
         private static readonly Regex Login = new Regex(
             @"^(?:Failed to authenticate\b|Invalid API key\b|OAuth (?:session|token) (?:has )?expired\b|Not logged in\b|Please run /login\b|API Error: 401\b)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex ClaudeLogin = new Regex(@"\bOAuth\b|/login\b|\bAPI key\b|authentication_error",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex Unavailable = new Regex(
@@ -55,7 +59,7 @@ namespace VibeModel.Services.Chat
                         .ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
                 return Kind.UsageLimit;
             }
-            if (Login.IsMatch(t)) return Kind.LoginExpired;
+            if (Login.IsMatch(t) && ClaudeLogin.IsMatch(t)) return Kind.LoginExpired;
             if (Unavailable.IsMatch(t)) return Kind.CommandUnavailable;
             return Kind.None;
         }

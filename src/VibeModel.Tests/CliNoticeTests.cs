@@ -33,6 +33,8 @@ namespace VibeModel.Tests
         [InlineData("Je kunt /permissions gebruiken in een terminal.")]
         [InlineData("Your Autodesk login has expired, so the cloud model could not be opened; log in again in Revit.")]
         [InlineData("De link gaf: OAuth token expired. Log in BIM 360 opnieuw in.")]
+        [InlineData("Failed to authenticate with the server (401); ik probeer het via de lokale kopie.")]
+        [InlineData("Not logged in to BIM 360, so the linked cloud model stays unloaded.")]
         [InlineData("")]
         [InlineData(null)]
         public void AnswersThatMentionIt_AreNot(string text)

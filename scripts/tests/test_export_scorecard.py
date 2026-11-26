@@ -191,9 +191,13 @@ class ScorecardTest(unittest.TestCase):
                            {"command": "exec", "args": "x", "ok": False, "error": "Exit code 3"}],
                  "usage": {"inputTokens": 1000, "outputTokens": 500, "contextTokens": 900},
                  "version": "1.2.22", "mode": "readonly", "pack": ""},
+                # An error turn: the pane stores it as a system message that keeps its steps.
+                {"role": "user", "content": "nog een", "timestampUtc": "2026-11-18T10:01:00Z"},
+                {"role": "system", "content": "Error: limiet bereikt", "timestampUtc": "2026-11-18T10:01:30Z",
+                 "steps": [{"command": "info", "args": "", "ok": True}]},
             ]}, f)
         c = self.card(path)
-        self.assertEqual((c["turns"], c["commands"], c["failed"], c["medianTokensPerTurn"]), (1, 2, 1, 1500))
+        self.assertEqual((c["turns"], c["commands"], c["failed"], c["medianTokensPerTurn"]), (2, 3, 1, 1500))
         self.assertEqual(c["builds"], [{"version": "1.2.22", "mode": "readonly", "pack": "none"}])
 
     def test_main_writes_md_and_json(self):

@@ -550,18 +550,21 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   journal, the approval flow and the pane — 10 of them in a colleague's 45-chat export. Now text mode starts with
   `ERROR: exec did not compile, nothing ran (2 errors).` / `ERROR: exec failed: <msg>` + `Hint:` and keeps the whole
   original text below it (`CommandResult.TextError`); JSON `ok:false`, `EXEC_COMPILE` / `EXEC_RUNTIME` (also for
-  `ERROR: Runtime exception: …`). A failed exec whose snippet committed transactions of its own still counts as
-  modified: the single path reconciles annotations, checks, coverage and journals it (`KeptWork`), and in a batch it
-  sets `anyModified` (`CreatedElementsRecorder.RecordedCount` grew) — measured live: under `ask` the approval window
+  `ERROR: Runtime exception: …`; `ERROR: Compilation failed: …` is `EXEC_COMPILE`). A .NET argument exception's second
+  line ("Parameter name: source", in the Windows language) is part of the message. A failed exec whose snippet
+  committed transactions of its own still counts as modified: the single path reconciles annotations, checks, coverage
+  and journals it (`KeptWork`), shows its `-- revit` lines and, in a preview, the preview line; in a batch it sets
+  `anyModified` (`CreatedElementsRecorder.RecordedCount` grew) and keeps its `-- revit` lines — measured live: under `ask` the approval window
   opens and Keep gives `-- changed: added 1 (Levels 1) …`; an atomic batch with such an exec rolls back. The pane
   reads the same markers (`ExecOutcome.CompileErrors` / `RuntimeError`) further down a single response whose ERROR first
   line the shell lost: a compiler block with at least one `Line N:` error, or a CLOSING "ERROR in exec:" line (only
-  `Hint:` and `-- ` status/stamp lines may follow it) — a quoted marker mid-text is not a failure; never in a `>>> ` text
-  batch. Inside a run group the save/close hint is not added to a compile failure (nothing ran).
+  `Hint:` and `-- ` status/stamp lines may follow it) — a quoted marker mid-text is not a failure; never in a text
+  batch (`>>> ` blocks anywhere — a batch can open with a `-- forbidden:` line). Inside a run group the save/close hint
+  is not added to a compile failure (nothing ran).
 - **Dialect hints** (`ExecDialect`, pure): exec compiles **C# 5** (the Framework's CodeDom compiler) against the
   running Revit's API — its description and the prompt file say `C# 5, Revit <year> API` (`UpdateService.RevitYear`).
   A compile error whose source line holds a C# 6+ construct (`?.`/`?[`, `is T x`, `$"…"`, `out var`/`out T x`,
-  `nameof`; string literals stripped first; matched by the syntax-error numbers measured on this compiler — CS1525,
+  `nameof`; string literals and comments stripped first, `int?[]` / `new int?[3]` are no `?[`; matched by the syntax-error numbers measured on this compiler — CS1525,
   CS1003, CS1026, CS1002, CS1056, CS0103 …) and a Revit-year gap (`new ElementId(long)` / `ElementId.Value` /
   `Floor.GetSlabShapeEditor()` are 2024+, confirmed on the SDK DLLs; shown only when `ExecCommand.ApiHas` finds the
   running RevitAPI lacks them) append `Hint: exec compiles C# 5, Revit 2023 API:` + one line each, after the plan-16
@@ -1094,7 +1097,7 @@ pool thread. The server drops a leading U+FEFF from `args` and POST bodies (`Rev
 token out on its first call, hence the literal header in both rules.
 **CLI notices** (`CliNotice`, pure): the CLI's own "You've hit your session limit · resets 2pm (Europe/Amsterdam)",
 "Failed to authenticate: OAuth session expired…" (also a block OPENING with "Invalid API key", "OAuth token expired", "Not
-logged in", "Please run /login" or "API Error: 401"), an older CLI's "Claude AI usage limit reached|<unix seconds>" (the reset
+logged in", "Please run /login" or "API Error: 401" that also names OAuth, /login, an API key or authentication_error), an older CLI's "Claude AI usage limit reached|<unix seconds>" (the reset
 shown as local HH:mm) and "/permissions isn't available in this environment." (straight or typographic apostrophe; anchored
 on the start of the text block, a limit on the whole block — an answer that mentions a limit or another login is never
 caught) are never streamed
@@ -1259,7 +1262,7 @@ python -I -m unittest discover -s scripts/tests -v                     # tests
 python -I scripts/export_scorecard.py <export.zip|folder|chats-*.md|chat.json> [--out <base>]   # the same numbers from every chat export
 ```
 Cases go to `demo_out/successcases/` (gitignored — they contain colleagues' names).
-**Scorecard** (`scripts/export_scorecard.py`, stdlib, reuses `successcase.pair_turns` for raw chat JSON): reads the
+**Scorecard** (`scripts/export_scorecard.py`, stdlib, raw chat JSON through `successcase.load_chat`, turns paired as the export pairs them (an error turn counts)): reads the
 markdown export (nl and en labels) and writes `<base>.md` + `.json` stamped `countingVersion` (raise it whenever a
 counting rule changes): chats/turns/commands, failed and their share, failures with only "Exit code N", failure
 classes (PowerShell inline, pipe, timeout, missing tool, file not found, exec compile, exec run time, Revit/VibeModel
