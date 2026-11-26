@@ -48,6 +48,11 @@ namespace VibeModel.Services.Chat
         private string _scratchKey;
         private static int _scratchSequence;
 
+        // This turn's CLI notice (CliNotice: limit, login, unavailable command) and the result
+        // event's error text; both reset per run, read on the read-loop thread only.
+        private string _cliNotice;
+        private string _resultError;
+
         // Set by the idle-timer callback (other thread) -> must be volatile.
         // _lastBlockWasToolUse is touched only on the read-loop thread, no volatile needed.
         private volatile bool _killedByIdleTimeout;
@@ -547,6 +552,8 @@ namespace VibeModel.Services.Chat
             _killedByIdleTimeout = false;
             _lastBlockWasToolUse = false;
             _turnContextTokens = 0;
+            _cliNotice = null;
+            _resultError = null;
 
             // Pre-flight: if our own server is down, surface a clear message instead of
             // spawning the CLI and letting the model flail on connection-refused curls.
@@ -708,6 +715,16 @@ namespace VibeModel.Services.Chat
                     return;
                 }
 
+                // 1b. The CLI said a limit was reached or the login expired: one plain notice,
+                //     stored as an error (no half answer as the model's reply, no quick replies),
+                //     and never a "stale session" retry, which would only hit the same wall.
+                if (_cliNotice != null)
+                {
+                    Logger.Warn("Claude Code stopped the turn: " + _cliNotice);
+                    onError(_cliNotice);
+                    return;
+                }
+
                 // 2. Idle-kill notice - emit via BOTH onToken (so the streaming chat
                 //    bubble shows it; ChatPane prefers _streamingContent over fullText)
                 //    AND fullResponse (so chat history captures it).
@@ -754,10 +771,11 @@ namespace VibeModel.Services.Chat
                 }
 
                 // 4. Exit-code error (no output at all)
-                if (process.ExitCode != 0 && fullResponse.Length == 0)
+                if ((process.ExitCode != 0 || _resultError != null) && fullResponse.Length == 0)
                 {
-                    onError(!string.IsNullOrEmpty(stderr)
-                        ? stderr
+                    // The result event's own error text first: it says more than an exit code.
+                    onError(!string.IsNullOrEmpty(_resultError) ? _resultError
+                        : !string.IsNullOrEmpty(stderr) ? stderr
                         : Strings.Get(Strings.ProcessExitCode, process.ExitCode));
                     return;
                 }
@@ -819,6 +837,12 @@ namespace VibeModel.Services.Chat
                     }
                     var usage = UsageFromResult(obj, _lastSeenModel, _turnContextTokens);
                     if (usage != null) ReportActivity(ChatActivityEvent.ForUsage(usage));
+                    // The result's error flag: a limit or an expired login also lands here.
+                    if (obj.TryGetValue("is_error", out var isErrorObj) && isErrorObj is bool resultIsError && resultIsError &&
+                        obj.TryGetValue("result", out var resultObj) && resultObj is string resultText)
+                    {
+                        if (!NoteCliNotice(resultText)) _resultError = resultText.Trim();
+                    }
                     return;
                 }
 
@@ -933,6 +957,9 @@ namespace VibeModel.Services.Chat
                                 object textObj;
                                 if (block.TryGetValue("text", out textObj) && textObj is string text)
                                 {
+                                    // The CLI's own "usage limit" / "login expired" message is no
+                                    // answer: never streamed raw, the turn ends with a plain notice.
+                                    if (NoteCliNotice(text)) continue;
                                     if (fullResponse.Length > 0)
                                     {
                                         fullResponse.Append("\n\n");
@@ -961,6 +988,16 @@ namespace VibeModel.Services.Chat
             {
                 Logger.Error("Failed to parse NDJSON line: " + line, ex);
             }
+        }
+
+        // True (and the notice kept) when the text is the CLI's own limit / login / command message.
+        private bool NoteCliNotice(string text)
+        {
+            var kind = CliNotice.Classify(text, out var reset);
+            if (kind == CliNotice.Kind.None) return false;
+            if (_cliNotice == null) _cliNotice = CliNotice.Message(kind, reset, Strings.Current);
+            Logger.Info("CLI notice (" + kind + "): " + text.Trim());
+            return true;
         }
 
         /// <summary>

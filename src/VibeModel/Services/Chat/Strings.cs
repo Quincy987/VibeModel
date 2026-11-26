@@ -26,6 +26,10 @@ namespace VibeModel.Services.Chat
         public const string ProcessExitCode = "ProcessExitCode";               // {0} = exit code
         public const string CliTooOld = "CliTooOld";
         public const string StaleResume = "StaleResume";
+        public const string CliUsageLimit = "CliUsageLimit";
+        public const string CliUsageLimitResets = "CliUsageLimitResets";   // {0} = "2pm (Europe/Amsterdam)"
+        public const string CliLoginExpired = "CliLoginExpired";
+        public const string CliCommandUnavailable = "CliCommandUnavailable";
         public const string IdleStoppedMidTool = "IdleStoppedMidTool";
         public const string IdleStopped = "IdleStopped";
         public const string ApiKeyMissing = "ApiKeyMissing";
@@ -312,6 +316,10 @@ namespace VibeModel.Services.Chat
                 { ProcessExitCode, "Claude Code exited with code {0}" },
                 { CliTooOld, "This Claude Code version does not support the permission mode VibeModel needs (--permission-mode dontAsk). Update it with: claude update" },
                 { StaleResume, "[Resumed session was stale - starting fresh chat.]" },
+                { CliUsageLimit, "Your Claude usage limit has been reached, so Claude Code stopped this question. Ask it again once the limit has reset." },
+                { CliUsageLimitResets, "Your Claude usage limit has been reached, so Claude Code stopped this question. The limit resets at {0}; ask it again after that." },
+                { CliLoginExpired, "Your Claude login has expired, so Claude Code could not answer. Log in again: open PowerShell, type claude and follow the steps (/login), then ask your question again." },
+                { CliCommandUnavailable, "That cannot be changed from the chat: Claude Code runs without its own menus here. Ask what you want done instead." },
                 { IdleStoppedMidTool, "[Stopped: task went idle for 3 min mid-tool. Session was reset to avoid a broken transcript - please rephrase your request.]" },
                 { IdleStopped, "[Stopped: task went idle for 3 min. Say \"continue\" to resume.]" },
                 { ApiKeyMissing, "Not connected to Claude yet. Use the Connect to Claude card in the chat (New Chat shows it), or Settings → AI connection → Anthropic API." },
@@ -582,6 +590,10 @@ namespace VibeModel.Services.Chat
                 { ProcessExitCode, "Claude Code is gestopt met code {0}" },
                 { CliTooOld, "Deze versie van Claude Code kent de permissiemodus niet die VibeModel nodig heeft (--permission-mode dontAsk). Werk hem bij met: claude update" },
                 { StaleResume, "[De vorige sessie was verlopen - er is een nieuwe chat gestart.]" },
+                { CliUsageLimit, "Je gebruikslimiet van Claude is bereikt, dus Claude Code heeft deze vraag gestopt. Stel hem opnieuw zodra de limiet weer vrij is." },
+                { CliUsageLimitResets, "Je gebruikslimiet van Claude is bereikt, dus Claude Code heeft deze vraag gestopt. De limiet gaat weer open om {0}; stel je vraag daarna opnieuw." },
+                { CliLoginExpired, "Je aanmelding bij Claude is verlopen, dus Claude Code kon niet antwoorden. Log opnieuw in: open PowerShell, typ claude en volg de stappen (/login), en stel daarna je vraag opnieuw." },
+                { CliCommandUnavailable, "Dat kan niet vanuit de chat worden aangepast: Claude Code draait hier zonder zijn eigen menu's. Vraag liever wat je gedaan wilt hebben." },
                 { IdleStoppedMidTool, "[Gestopt: de taak stond 3 minuten stil midden in een stap. De sessie is opnieuw gestart om een kapot gesprek te voorkomen - formuleer je vraag opnieuw.]" },
                 { IdleStopped, "[Gestopt: de taak stond 3 minuten stil. Typ \"ga door\" om verder te gaan.]" },
                 { ApiKeyMissing, "Nog niet verbonden met Claude. Gebruik de kaart Verbind met Claude in de chat (New Chat toont hem), of Settings → AI-verbinding → Anthropic API." },
