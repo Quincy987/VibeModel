@@ -1086,7 +1086,8 @@ multi-line text ALWAYS go through a file in the chat's **scratch folder** — a 
 `Select-Object`/`Select-String` on a response (drops `-- changed`/`-- revit`, `-First` exits 255), no short `-m` (the
 server answers within its own deadline; never below 40), no Write tool, no Python. The scratch folder
 (`ScratchFolder`, `%LOCALAPPDATA%\VibeModel\scratch\<yyyyMMdd-HHmmss-pid-n>\`, per chat — kept across its turns, a
-New Chat gets a new one) is the CLI's `VIBEMODEL_SCRATCH` and an `--add-dir`; images go there too (`$env:TEMP` is a
+New Chat gets a new one; when it cannot be created, Revit's own temp folder — never unset, the rules always use it) is the
+CLI's `VIBEMODEL_SCRATCH` and an `--add-dir`; images go there too (`$env:TEMP` is a
 different folder per call inside the CLI's PowerShell); folders older than 7 days are pruned once per session on a
 pool thread. The server drops a leading U+FEFF from `args` and POST bodies (`RevitHttpServer.CommandArgs` /
 `StripBom`): Set-Content's byte-order mark. Live: with the example header written as a placeholder the CLI left the

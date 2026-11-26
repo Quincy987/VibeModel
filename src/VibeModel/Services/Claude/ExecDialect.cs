@@ -38,22 +38,21 @@ namespace VibeModel.Services.Claude
 
         private sealed class Construct
         {
-            public string Key;
             public Regex Pattern;
             public string Advice;
         }
 
         private static readonly Construct[] Constructs =
         {
-            new Construct { Key = "?.", Pattern = new Regex(@"\?\.|\?\[", RegexOptions.Compiled),
+            new Construct { Pattern = new Regex(@"\?\.|\?\[", RegexOptions.Compiled),
                 Advice = "no ?. / ?[] — write `x != null ? x.Y : null` or an if" },
-            new Construct { Key = "is T x", Pattern = new Regex(@"\bis\s+[A-Za-z_][\w.<>,\[\]]*\s+[a-z_]\w*\b", RegexOptions.Compiled),
+            new Construct { Pattern = new Regex(@"\bis\s+[A-Za-z_][\w.<>,\[\]]*\s+[a-z_]\w*\b", RegexOptions.Compiled),
                 Advice = "no `is T x` — `var x = o as T; if (x != null) …`" },
-            new Construct { Key = "$\"", Pattern = new Regex(@"\$@?""", RegexOptions.Compiled),
+            new Construct { Pattern = new Regex(@"\$@?""", RegexOptions.Compiled),
                 Advice = "no $\"…\" — `string.Format(\"{0} {1}\", a, b)` or `+`" },
-            new Construct { Key = "out var", Pattern = new Regex(@"\bout\s+(?:var|[A-Za-z_][\w.<>]*)\s+[A-Za-z_]\w*\s*[,)]", RegexOptions.Compiled),
+            new Construct { Pattern = new Regex(@"\bout\s+(?:var|[A-Za-z_][\w.<>]*)\s+[A-Za-z_]\w*\s*[,)]", RegexOptions.Compiled),
                 Advice = "no out var / out T x — declare first: `int n; int.TryParse(s, out n)`" },
-            new Construct { Key = "nameof", Pattern = new Regex(@"\bnameof\s*\(", RegexOptions.Compiled),
+            new Construct { Pattern = new Regex(@"\bnameof\s*\(", RegexOptions.Compiled),
                 Advice = "no nameof(…) — write the name as a string" },
         };
 
@@ -69,7 +68,7 @@ namespace VibeModel.Services.Claude
             {
                 if (e == null || string.IsNullOrEmpty(e.Line)) continue;
                 if (!SyntaxNumbers.Contains((e.Number ?? "").Trim())) continue;
-                var code = StripStrings(e.Line, keepInterpolationMarker: true);
+                var code = StripStrings(e.Line);
                 foreach (var c in Constructs)
                     if (c.Pattern.IsMatch(code) && !found.Contains(c.Advice)) found.Add(c.Advice);
             }
@@ -86,12 +85,19 @@ namespace VibeModel.Services.Claude
         public sealed class YearGap
         {
             public string Probe { get; set; }
+            /// <summary>What the snippet used ("Floor.GetSlabShapeEditor()").</summary>
+            public string Member { get; set; }
+            /// <summary>The first Revit year that has it.</summary>
             public string Since { get; set; }
+            /// <summary>What works before that year.</summary>
+            public string Instead { get; set; }
             /// <summary>Error numbers this gap produces (CS1061 missing member, CS1503/CS1502 argument types…).</summary>
             public string[] Numbers { get; set; }
             /// <summary>Matched against the error's source line (and its message).</summary>
             public Regex Trigger { get; set; }
-            public string Advice { get; set; }
+
+            public string Advice(string revitYear) =>
+                Member + " is Revit " + Since + "+; " + Instead + " (this is Revit " + (string.IsNullOrEmpty(revitYear) ? "?" : revitYear) + ")";
         }
 
         public const string ProbeElementIdLong = "ElementId(long)";
@@ -102,24 +108,24 @@ namespace VibeModel.Services.Claude
         {
             new YearGap
             {
-                Probe = ProbeElementIdLong, Since = "2024",
+                Probe = ProbeElementIdLong, Member = "new ElementId(long)", Since = "2024",
+                Instead = "here ids are int: `new ElementId(123)` / `(int)n`, read them with `id.IntegerValue`",
                 Numbers = new[] { "CS1503", "CS1502", "CS1501", "CS1729", "CS0029", "CS0266", "CS1950" },
                 Trigger = new Regex(@"ElementId\b.*(?:\blong\b|\d+L\b|Int64)|(?:\blong\b|Int64).*ElementId\b", RegexOptions.Compiled),
-                Advice = "new ElementId(long) is Revit 2024+; here ids are int: `new ElementId(123)` / `(int)n`, read them with `id.IntegerValue`"
             },
             new YearGap
             {
-                Probe = ProbeElementIdValue, Since = "2024",
+                Probe = ProbeElementIdValue, Member = "ElementId.Value", Since = "2024",
+                Instead = "use `id.IntegerValue` (an int)",
                 Numbers = new[] { "CS1061", "CS0117" },
                 Trigger = new Regex(@"(?:\bId|ElementId|\bid)\b[\w()\[\]]*\.Value\b|ElementId\b.*\bValue\b", RegexOptions.Compiled),
-                Advice = "ElementId.Value is Revit 2024+; use `id.IntegerValue` (an int)"
             },
             new YearGap
             {
-                Probe = ProbeGetSlabShapeEditor, Since = "2024",
+                Probe = ProbeGetSlabShapeEditor, Member = "Floor.GetSlabShapeEditor()", Since = "2024",
+                Instead = "use the floor's `SlabShapeEditor` property",
                 Numbers = new[] { "CS1061", "CS0117" },
                 Trigger = new Regex(@"GetSlabShapeEditor\s*\(", RegexOptions.Compiled),
-                Advice = "Floor.GetSlabShapeEditor() is Revit 2024+; use the floor's `SlabShapeEditor` property"
             },
         };
 
@@ -135,13 +141,13 @@ namespace VibeModel.Services.Claude
             {
                 if (e == null) continue;
                 var number = (e.Number ?? "").Trim();
-                var text = StripStrings(e.Line ?? "", keepInterpolationMarker: false) + "\n" + (e.Message ?? "");
+                var text = StripStrings(e.Line ?? "") + "\n" + (e.Message ?? "");
                 foreach (var g in YearGaps)
                 {
                     if (!g.Numbers.Contains(number, StringComparer.OrdinalIgnoreCase)) continue;
                     if (!g.Trigger.IsMatch(text)) continue;
                     if (apiHas != null && apiHas(g.Probe)) continue;
-                    var line = g.Advice + " (this is Revit " + (string.IsNullOrEmpty(revitYear) ? "?" : revitYear) + ")";
+                    var line = g.Advice(revitYear);
                     if (!found.Contains(line)) found.Add(line);
                 }
             }
@@ -165,7 +171,7 @@ namespace VibeModel.Services.Claude
 
         // "a ?. b" stays, "\"x?.y\"" becomes "\"\"". Verbatim and regular strings and char literals;
         // the $ before an interpolated string is kept (it is the construct itself).
-        internal static string StripStrings(string line, bool keepInterpolationMarker)
+        internal static string StripStrings(string line)
         {
             if (string.IsNullOrEmpty(line)) return line ?? "";
             var sb = new StringBuilder(line.Length);
@@ -193,7 +199,6 @@ namespace VibeModel.Services.Claude
                     int end = line.IndexOf('\'', i + (i + 1 < line.Length && line[i + 1] == '\\' ? 3 : 2));
                     if (end > i && end - i <= 8) { sb.Append("' '"); i = end + 1; continue; }
                 }
-                if (c == '$' && !keepInterpolationMarker) { i++; continue; }
                 sb.Append(c);
                 i++;
             }

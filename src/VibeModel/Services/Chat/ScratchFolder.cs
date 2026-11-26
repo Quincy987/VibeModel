@@ -30,7 +30,7 @@ namespace VibeModel.Services.Chat
             nowLocal.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" +
             processId.ToString(CultureInfo.InvariantCulture) + "-" + sequence.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>The folder of a session, created; null when it cannot be (the CLI then runs without one).</summary>
+        /// <summary>The folder of a session, created; null when it cannot be (the backend then falls back to Revit's temp folder).</summary>
         public static string Ensure(string root, string key)
         {
             try

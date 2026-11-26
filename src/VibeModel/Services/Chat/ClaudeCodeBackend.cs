@@ -128,13 +128,17 @@ namespace VibeModel.Services.Chat
             ScratchFolder.PruneInBackgroundOnce();
         }
 
-        /// <summary>This chat's scratch folder, created on first use; null when it cannot be made.</summary>
+        /// <summary>
+        /// This chat's scratch folder, created on first use. Never null: when it cannot be made, Revit's
+        /// own temp folder (one fixed path) — the rules always point the CLI at $env:VIBEMODEL_SCRATCH,
+        /// and an unset variable would put "\q1.cs" in the root of the drive.
+        /// </summary>
         internal string ScratchDirectory()
         {
             if (_scratchKey == null)
                 _scratchKey = ScratchFolder.NewKey(DateTime.Now, Process.GetCurrentProcess().Id,
                     Interlocked.Increment(ref _scratchSequence));
-            return ScratchFolder.Ensure(ScratchFolder.Root, _scratchKey);
+            return ScratchFolder.Ensure(ScratchFolder.Root, _scratchKey) ?? Path.GetTempPath().TrimEnd('\\');
         }
 
         internal static string GetSystemPromptPath(int httpPort)
@@ -609,13 +613,10 @@ namespace VibeModel.Services.Chat
             AppendOfficeContext(appendPrompt, ProjectMemory.BuildPromptBlockForActiveDocument());
             // The chat's scratch folder: snippets, batch bodies and images (the PowerShell rule).
             var scratch = ScratchDirectory();
-            if (projectFolder.IsSet || scratch != null)
-            {
-                // One --add-dir with every folder: the option is variadic.
-                args.Append(" --add-dir");
-                if (projectFolder.IsSet) args.Append(' ').Append(EscapeArg(projectFolder.Path));
-                if (scratch != null) args.Append(' ').Append(EscapeArg(scratch));
-            }
+            // One --add-dir with every folder: the option is variadic.
+            args.Append(" --add-dir");
+            if (projectFolder.IsSet) args.Append(' ').Append(EscapeArg(projectFolder.Path));
+            args.Append(' ').Append(EscapeArg(scratch));
 
             args.Append(" --append-system-prompt ");
             args.Append(EscapeArg(appendPrompt.ToString()));
@@ -636,8 +637,7 @@ namespace VibeModel.Services.Chat
             // where that variable comes from (the session token, or the user's own when they set one).
             if (_authToken != null)
                 psi.EnvironmentVariables[RevitHttpServer.TokenEnvVar] = _authToken;
-            if (scratch != null)
-                psi.EnvironmentVariables[ScratchFolder.EnvVar] = scratch;
+            psi.EnvironmentVariables[ScratchFolder.EnvVar] = scratch;
 
             Logger.Info("Starting claude: " + _claudePath + " " + args);
 

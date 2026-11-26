@@ -170,6 +170,9 @@ def parse_tokens(s: str) -> int:
 def table_rows(block: str) -> list[dict]:
     rows = []
     for line in block.splitlines():
+        # The table ends where the full arguments begin: a code line there may look like a row.
+        if FULL_ARGS_RE.match(line):
+            break
         if not line.startswith("| ") or line.startswith("| # ") or line.startswith("|---"):
             continue
         cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip())[1:-1]]

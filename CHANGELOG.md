@@ -11,9 +11,9 @@ zonder dat iemand het zag.
   wijziging: in *Vragen* verschijnt het goedkeuringsvenster, en de `-- changed:`-regel en het journaal noemen het.
 - De compilerfout zegt nu welke C# en welke Revit `exec` spreekt (C# 5, Revit 2023) en wat je in plaats van `?.`,
   `is T x`, `$"…"`, `out var`, `nameof`, `new ElementId(long)`, `.Value` en `GetSlabShapeEditor()` schrijft.
-- Op een laptop zonder Git Bash stuurt Claude Code scripts nu via een bestand in een eigen map per chat
-  (`%LOCALAPPDATA%\VibeModel\scratch\`), in plaats van in de opdrachtregel. Daar braken PowerShell's aanhalingstekens
-  het script (14 keer in de export). De instructies voor de AI zeggen daarnaast: antwoorden niet door `Select-Object`
+- Op een laptop zonder Git Bash krijgt Claude Code nu de instructie om scripts via een bestand in een eigen map per chat
+  (`%LOCALAPPDATA%\VibeModel\scratch\`) te sturen, in plaats van in de opdrachtregel. Daar braken PowerShell's
+  aanhalingstekens het script (14 keer in de export); in een echte chatbeurt deed Claude Code het meteen zo. De instructies voor de AI zeggen daarnaast: antwoorden niet door `Select-Object`
   filteren (dan vielen de `-- changed`-regels weg), schermafbeeldingen in die map bewaren, en curl geen korte wachttijd
   geven.
 - Een bestand dat PowerShell met `Set-Content -Encoding utf8` schrijft, begint met een onzichtbaar teken; de server
