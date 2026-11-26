@@ -20,7 +20,10 @@ namespace VibeModel.Services.Claude
         public static string Short(string revitYear) =>
             "C# 5, Revit " + (string.IsNullOrEmpty(revitYear) ? "?" : revitYear) + " API";
 
-        /// <summary>The constructs exec's compiler refuses, for the prompt file and the description.</summary>
+        /// <summary>The C# 6+ constructs exec's compiler refuses, in a few words (exec's description).</summary>
+        public const string NotInCSharp5 = "no ?., is T x, $\"\", out var, nameof";
+
+        /// <summary>The same in full, with what to write instead (the prompt file).</summary>
         public const string CSharp5Rule =
             "exec compiles C# 5: no ?. or ?[], no pattern matching (is T x), no $\"…\" string interpolation, " +
             "no expression-bodied members (=> on a member), no out var, no nameof — write if/as + null checks, " +

@@ -554,7 +554,10 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   modified: the single path reconciles annotations, checks, coverage and journals it (`KeptWork`), and in a batch it
   sets `anyModified` (`CreatedElementsRecorder.RecordedCount` grew) — measured live: under `ask` the approval window
   opens and Keep gives `-- changed: added 1 (Levels 1) …`; an atomic batch with such an exec rolls back. The pane
-  flags "COMPILATION ERRORS:" / "ERROR in exec:" anywhere in a single response (not in a `>>> ` text batch).
+  reads the same markers (`ExecOutcome.CompileErrors` / `RuntimeError`) further down a single response whose ERROR first
+  line the shell lost: a compiler block with at least one `Line N:` error, or a CLOSING "ERROR in exec:" line (only
+  `Hint:` and `-- ` status/stamp lines may follow it) — a quoted marker mid-text is not a failure; never in a `>>> ` text
+  batch. Inside a run group the save/close hint is not added to a compile failure (nothing ran).
 - **Dialect hints** (`ExecDialect`, pure): exec compiles **C# 5** (the Framework's CodeDom compiler) against the
   running Revit's API — its description and the prompt file say `C# 5, Revit <year> API` (`UpdateService.RevitYear`).
   A compile error whose source line holds a C# 6+ construct (`?.`/`?[`, `is T x`, `$"…"`, `out var`/`out T x`,
@@ -1089,8 +1092,10 @@ pool thread. The server drops a leading U+FEFF from `args` and POST bodies (`Rev
 `StripBom`): Set-Content's byte-order mark. Live: with the example header written as a placeholder the CLI left the
 token out on its first call, hence the literal header in both rules.
 **CLI notices** (`CliNotice`, pure): the CLI's own "You've hit your session limit · resets 2pm (Europe/Amsterdam)",
-"Failed to authenticate: OAuth session expired…" / "Please run /login" and "/permissions isn't available in this
-environment." (anchored on the whole text block, so an answer that mentions a limit is never caught) are never streamed
+"Failed to authenticate: OAuth session expired…" (also a block OPENING with "Invalid API key", "OAuth token expired", "Not
+logged in", "Please run /login" or "API Error: 401") and "/permissions isn't available in this environment." (anchored
+on the start of the text block, a limit on the whole block — an answer that mentions a limit or another login is never
+caught) are never streamed
 raw: the turn ends through `onError` with `Strings.CliUsageLimit[Resets]` / `CliLoginExpired` (PowerShell → `claude` →
 `/login`) / `CliCommandUnavailable` — no half answer stored as the reply, no quick replies, no stale-resume retry. The
 result event's `is_error` + `result` text are read too (an exit with no output reports that text first).

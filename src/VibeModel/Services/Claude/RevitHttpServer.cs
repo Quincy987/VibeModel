@@ -556,9 +556,11 @@ namespace VibeModel.Services.Claude
             return args;
         }
 
+        private const char ByteOrderMark = (char)0xFEFF;
+
         /// <summary>The text without a leading byte-order mark (U+FEFF).</summary>
         internal static string StripBom(string text) =>
-            string.IsNullOrEmpty(text) || text[0] != '﻿' ? text : text.Substring(1);
+            string.IsNullOrEmpty(text) || text[0] != ByteOrderMark ? text : text.Substring(1);
 
         internal static string ParseQueryArgs(string query)
         {

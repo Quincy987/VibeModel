@@ -18,9 +18,11 @@ namespace VibeModel.Services.Chat
             @"^(?:You've|You have) (?:hit|reached) your (?:session|usage|weekly|daily|5-hour|opus|monthly)?\s*limit\b(?:.*?\bresets?\s+(?<reset>[^\r\n]+?))?\s*\.?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
+        // Only the CLI's own openings: an answer that explains some other login ("your Autodesk login
+        // has expired") must stay an answer.
         private static readonly Regex Login = new Regex(
-            @"^(?:Failed to authenticate\b.*|.*\bOAuth (?:session|token) (?:has )?expired\b.*|Invalid API key\b.*|.*\bPlease run /login\b.*|.*\b(?:not logged in|login (?:has )?expired)\b.*)$",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+            @"^(?:Failed to authenticate\b|Invalid API key\b|OAuth (?:session|token) (?:has )?expired\b|Not logged in\b|Please run /login\b|API Error: 401\b)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex Unavailable = new Regex(
             @"^/[\w-]+ (?:isn't|is not) available in this environment\.?\s*$",

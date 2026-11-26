@@ -42,6 +42,7 @@ COUNTING_VERSION = 1
 
 # ---------------------------------------------------------------- the export's own words (nl + en)
 
+CHAT_HEAD_RE = re.compile(r"^# .+\n\n- (?:Datum|Date): ", re.M)
 TURN_RE = re.compile(r"^## (?:Beurt|Turn) (\d+) — ", re.M)
 QUESTION_LABELS = ("**Vraag**", "**Question**")
 ANSWER_RE = re.compile(r"^\*\*(?:Antwoord|Answer)\*\*(?: \((?P<dur>[\d.]+) s\))?\s*$", re.M)
@@ -104,11 +105,13 @@ def read_text(path: str) -> str:
 
 
 def split_md(name: str, text: str) -> list[tuple[str, str]]:
-    """A single-file export holds a README and several chats, separated by '---' lines."""
-    parts = re.split(r"^---\s*$", text, flags=re.M)
-    docs = [x for x in parts if TURN_RE.search(x)]
-    if len(docs) <= 1:
+    """A single-file export holds a README and several chats. Split at each chat's own heading
+    (a '# title' line followed by its '- Datum:' / '- Date:' line), never at '---': an answer can
+    contain a markdown rule of its own. The separator the writer puts between chats is dropped."""
+    starts = [m.start() for m in CHAT_HEAD_RE.finditer(text)]
+    if len(starts) <= 1:
         return [(name, text)]
+    docs = [re.sub(r"\n---\s*$", "\n", text[a:b].rstrip()) for a, b in zip(starts, starts[1:] + [len(text)])]
     return [(f"{name}#{i + 1}", d) for i, d in enumerate(docs)]
 
 
@@ -266,7 +269,9 @@ def failure_class(step: dict) -> str:
         return "pipe"
     if re.search(r"Exit code (?:49|26)\b", err) or re.search(r"Permission to use|is blocked|not recognized|command not found", err, re.I):
         return "missing tool"
-    if re.search(r"does not exist|not found", err, re.I) and not err.startswith("Revit"):
+    # The CLI's own file tools ("File does not exist. Note: your current working directory…"); a
+    # VibeModel "Element 999 not found" is a server answer, counted below.
+    if re.search(r"^(?:File|Path) does not exist|No such file|cannot find (?:the )?(?:file|path)", err, re.I):
         return "file not found"
     if EXIT_ONLY_RE.match(err) and re.search(r"--data-urlencode\s+\"args=", args) and not re.search(r"args@", args):
         return "PowerShell inline"
@@ -275,7 +280,7 @@ def failure_class(step: dict) -> str:
         return "exec compile"
     if re.search(r"^exec failed:", err):
         return "exec run time"
-    if re.search(r"Revit rolled|^in exec:|ERROR|snippet changed|Pick one of|Missing or invalid token|Discarded|refused|Refused", err):
+    if re.search(r"Revit rolled|^in exec:|ERROR|snippet changed|Pick one of|Missing or invalid token|Discarded|refused|not found|Unknown command", err, re.I):
         return "Revit/VibeModel error"
     if EXIT_ONLY_RE.match(err):
         return "other exit code"

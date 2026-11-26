@@ -13,7 +13,7 @@ namespace VibeModel.Services.Claude.Commands
     {
         public string Name => "exec";
         public string Description => "Execute C# code at runtime (use 'doc', 'uiDoc', 'uiApp'); " + ExecDialect.Short(VibeModel.Services.Update.UpdateService.RevitYear) +
-            " (no ?., is T x, $\"\", out var, nameof); loops with { } bodies stop after 25 s (?timeout=<s>, max 300)";
+            " (" + ExecDialect.NotInCSharp5 + "); loops with { } bodies stop after 25 s (?timeout=<s>, max 300)";
         public string Usage => "exec <csharp_code>";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -34,8 +34,9 @@ namespace VibeModel.Services.Claude.Commands
             // close or synchronize — say why instead of leaving Revit's bare message. Decided on the
             // snippet's own calls, not on the message text, which Revit words per UI language.
             string runGroupHint = null;
+            // A compile failure never ran, so Revit refused nothing: no such hint there.
             if (RunContext.InRunGroup && text != null && text.IndexOf("ERROR", StringComparison.Ordinal) >= 0 &&
-                ChangeApprovalPolicy.SavesOrCloses(args))
+                ExecOutcome.CompileErrors(text) == null && ChangeApprovalPolicy.SavesOrCloses(args))
             {
                 runGroupHint = ChangeApprovalPolicy.InRunGroupHint;
                 text = text.TrimEnd() + "\nHint: " + runGroupHint;

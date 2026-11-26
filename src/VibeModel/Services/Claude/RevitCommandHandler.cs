@@ -890,10 +890,12 @@ namespace VibeModel.Services.Claude
                         entries.Add(entry);
 
                         if (!cr.Success) anyError = true;
-                        if (cr.Success && _registry.IsModification(item.Command)) anyModified = true;
-                        // A failed exec whose snippet committed transactions of its own changed the model:
+                        // A failed exec whose snippet committed transactions of its own changed the model too:
                         // the batch asks, reports, checks and journals it like the single-command path.
-                        else if (!cr.Success && IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore) anyModified = true;
+                        bool keptWork = cr.Success
+                            ? _registry.IsModification(item.Command)
+                            : IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore;
+                        if (keptWork) anyModified = true;
                     }
 
                     if (req.Atomic && anyError)

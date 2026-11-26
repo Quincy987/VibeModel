@@ -172,6 +172,15 @@ class ScorecardTest(unittest.TestCase):
         self.assertEqual(self.card(z), self.card(self.dir))
         self.assertEqual(self.card(single), self.card(self.dir))
 
+    def test_a_markdown_rule_inside_an_answer_does_not_split_the_chat(self):
+        with_rule = CHAT_NL.replace("Gedaan.\n", "Gedaan.\n\n---\n\nNog een alinea.\n")
+        single = os.path.join(self.tmp.name, "chats-2.md")
+        with io.open(single, "w", encoding="utf-8") as f:
+            f.write("# README\n\ntext\n\n---\n\n" + with_rule + "\n---\n\n" + CHAT_OLD_EN)
+        c = self.card(single)
+        self.assertEqual((c["chats"], c["turns"], c["commands"]), (2, 3, 6))
+        self.assertEqual(c["answersOfferingNextStep"], 1)
+
     def test_raw_chat_json(self):
         path = os.path.join(self.tmp.name, "chat.json")
         with io.open(path, "w", encoding="utf-8") as f:

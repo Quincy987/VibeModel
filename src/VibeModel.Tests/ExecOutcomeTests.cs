@@ -77,6 +77,15 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void CompileErrors_StopAtExecsOwnNote_NotAtHintLines()
+        {
+            Assert.Equal(new[] { "Line 21: Ongeldige expressieterm .", "Line 21: Syntaxisfout, : wordt verwacht" },
+                ExecOutcome.CompileErrors(CompileText).ToArray());
+            Assert.Null(ExecOutcome.CompileErrors("COMPILATION ERRORS:\n\nYour code was wrapped in a method"));
+            Assert.Null(ExecOutcome.CompileErrors("12 walls"));
+        }
+
+        [Fact]
         public void ExistingErrorTexts_KeepTheirMeaning()
         {
             var rollback = ExecOutcome.FromText("ERROR: Revit rolled the change back: Can't keep elements joined.\nHint: x");
@@ -97,6 +106,9 @@ namespace VibeModel.Tests
         [InlineData("half output\nERROR in exec: boom\n-- model #3 | view: L1 | selected: 0", "exec failed: boom")]
         [InlineData(">>> exec x\nERROR in exec: boom\n\n>>> wall 0 0 1 0\nok", null)]
         [InlineData("12 walls\n-- model #3 | view: L1 | selected: 0", null)]
+        // An answer or log that merely quotes the markers in the middle is no failed step.
+        [InlineData("chat 3: ERROR in exec: boom\nERROR in exec: quoted\nlater line\n-- model #3 | view: L1 | selected: 0", null)]
+        [InlineData("log says COMPILATION ERRORS: none here\nall fine", null)]
         public void Pane_FlagsExecErrorsAnywhere_NotInATextBatch(string result, string expected)
         {
             Assert.Equal(expected, ToolCallDescriber.ErrorLine(result));

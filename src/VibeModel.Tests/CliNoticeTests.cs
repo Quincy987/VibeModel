@@ -15,6 +15,7 @@ namespace VibeModel.Tests
         [InlineData("You've hit your weekly limit", CliNotice.Kind.UsageLimit, null)]
         [InlineData("Failed to authenticate: OAuth session expired and could not be refreshed", CliNotice.Kind.LoginExpired, null)]
         [InlineData("Invalid API key · Please run /login", CliNotice.Kind.LoginExpired, null)]
+        [InlineData("API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"OAuth token has expired.\"}} · Please run /login", CliNotice.Kind.LoginExpired, null)]
         [InlineData("/permissions isn't available in this environment.", CliNotice.Kind.CommandUnavailable, null)]
         public void RawCliTexts_AreRecognised(string raw, CliNotice.Kind kind, string reset)
         {
@@ -26,6 +27,8 @@ namespace VibeModel.Tests
         [InlineData("De wand is 300 mm dik. You've hit your session limit is a sentence that does not start the text.")]
         [InlineData("Ik heb de limiet van 20 rijen bereikt; de rest staat in het schema.")]
         [InlineData("Je kunt /permissions gebruiken in een terminal.")]
+        [InlineData("Your Autodesk login has expired, so the cloud model could not be opened; log in again in Revit.")]
+        [InlineData("De link gaf: OAuth token expired. Log in BIM 360 opnieuw in.")]
         [InlineData("")]
         [InlineData(null)]
         public void AnswersThatMentionIt_AreNot(string text)

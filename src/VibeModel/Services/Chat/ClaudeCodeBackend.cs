@@ -363,7 +363,7 @@ namespace VibeModel.Services.Chat
             "If your shell tool is PowerShell (no Git Bash on this machine): call curl.exe, not curl (an alias of Invoke-WebRequest there), with the same URLs. " +
             "Code and any multi-line text ALWAYS go through a file, never inline in a double-quoted argument (PowerShell 5.1 breaks embedded quotes: curl exit 3, or a snippet that silently lost its quotes): " +
             "$f = \"$env:" + ScratchFolder.EnvVar + "\\q1.cs\"; a single-quoted here-string (@' on its own line, the code, '@ at the start of its own line) piped to Set-Content -Encoding utf8 $f; " +
-            "then curl.exe -s -X POST \"<url>/exec?readonly=1\" -H \"" + RevitHttpServer.TokenHeader + ": $env:" + RevitHttpServer.TokenEnvVar + "\" --data-binary \"@$f\" (the body is the snippet as it is; options such as readonly=1, preview=1, timeout=120, format=json go in the URL). " +
+            "then curl.exe -s -X POST \"<url>/exec?readonly=1\"" + TokenHeaderExample + " --data-binary \"@$f\" (the body is the snippet as it is; options such as readonly=1, preview=1, timeout=120, format=json go in the URL). " +
             "A batch the same way: --data-binary \"@$f\" to /batch. To fix a snippet, rewrite or patch that file and send it again. " +
             "Read the whole response: never pipe it through Select-Object or Select-String (that drops the -- changed / -- revit lines, and -First ends with exit 255). " +
             "Save and read copies of screenshots and other files in $env:" + ScratchFolder.EnvVar + " ($env:TEMP is a different folder per call here). There is no Write tool and no Python here. " +
@@ -371,8 +371,9 @@ namespace VibeModel.Services.Chat
 
         /// <summary>The PowerShell rule in one line, repeated in every turn prompt (a resumed session may not re-read the file).</summary>
         internal const string PowerShellTurnRule =
-            "PowerShell (no Bash): code goes in a file in $env:" + ScratchFolder.EnvVar + " (single-quoted here-string, Set-Content -Encoding utf8), sent with curl.exe -X POST <url>/exec -H \"" + RevitHttpServer.TokenHeader + ": $env:" + RevitHttpServer.TokenEnvVar + "\" --data-binary \"@<file>\"; never inline, never piped through Select-Object/Select-String.";
+            "PowerShell (no Bash): code goes in a file in $env:" + ScratchFolder.EnvVar + " (single-quoted here-string, Set-Content -Encoding utf8), sent with curl.exe -X POST <url>/exec" + TokenHeaderExample + " --data-binary \"@<file>\"; never inline, never piped through Select-Object/Select-String.";
 
+        // The token header as the PowerShell examples write it; dropped on an open server (ForAuth).
         private const string TokenHeaderExample = " -H \"" + RevitHttpServer.TokenHeader + ": $env:" + RevitHttpServer.TokenEnvVar + "\"";
 
         /// <summary>A rule as written (with the token header in its examples), or without that header on an open server.</summary>
