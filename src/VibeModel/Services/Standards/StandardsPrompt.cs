@@ -11,14 +11,19 @@ namespace VibeModel.Services.Standards
     {
         private static volatile string _template = "";
         private static volatile string _standards = "";
+        private static volatile string _activePackId;
 
         public static string TemplateBlock => _template;
         public static string StandardsBlock => _standards;
 
-        public static void Publish(string template, string standards)
+        /// <summary>The id of the pack in force when the blocks were published; null = none (no match, disabled, no document).</summary>
+        public static string ActivePackId => _activePackId;
+
+        public static void Publish(string template, string standards, string activePackId = null)
         {
             _template = template ?? "";
             _standards = standards ?? "";
+            _activePackId = string.IsNullOrWhiteSpace(activePackId) ? null : activePackId;
         }
 
         /// <summary>Both blocks joined (empty string when there is nothing to inject).</summary>

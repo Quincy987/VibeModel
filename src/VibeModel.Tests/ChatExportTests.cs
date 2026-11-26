@@ -188,6 +188,51 @@ namespace VibeModel.Tests
             Assert.DoesNotContain("usage", json);
         }
 
+        [Fact]
+        public void Store_RoundTripsVersionModeAndPack_OldFilesHaveNone()
+        {
+            var store = new ChatSessionStore(_dir);
+            var s = SessionWithSteps();
+            s.Messages[1].Build = new ChatSessionBuild { Version = "1.2.22", Mode = "ask", Pack = null };
+            store.SaveSession(s);
+            var json = File.ReadAllText(Path.Combine(_dir, s.Id + ".json"));
+            Assert.Contains("\"version\":\"1.2.22\"", json);
+            Assert.Contains("\"mode\":\"ask\"", json);
+            var b = store.LoadSession(s.Id).Messages[1].Build;
+            Assert.Equal("1.2.22", b.Version);
+            Assert.Equal("ask", b.Mode);
+            Assert.Null(b.Pack);
+            Assert.Null(store.LoadSession(s.Id).Messages[0].Build);
+
+            var plain = ChatSession.Start("P", "anthropic");
+            plain.Append(ChatSession.RoleUser, "vraag");
+            plain.Append(ChatSession.RoleAssistant, "antwoord");
+            store.SaveSession(plain);
+            Assert.DoesNotContain("\"mode\"", File.ReadAllText(Path.Combine(_dir, plain.Id + ".json")));
+        }
+
+        [Fact]
+        public void Render_NamesVersionModeAndPack_OnlyWhenRecorded()
+        {
+            var s = SessionWithSteps();
+            ChatExportStats stats;
+            Assert.DoesNotContain("_VibeModel ", ChatExportDocument.Render(s, null, Strings.Dutch, out stats));
+            s.Messages[1].Build = new ChatSessionBuild { Version = "1.2.22", Mode = "ask+preview", Pack = null };
+            var nl = ChatExportDocument.Render(s, null, Strings.Dutch, out stats);
+            Assert.Contains("_VibeModel 1.2.22 · modus: ask+preview · pakket: geen_", nl);
+            s.Messages[1].Build.Pack = "example-office";
+            Assert.Contains("_VibeModel 1.2.22 · mode: ask+preview · pack: example-office_",
+                ChatExportDocument.Render(s, null, Strings.English, out stats));
+        }
+
+        [Fact]
+        public void CurrentBuild_HasTheRunningVersionAndAMode()
+        {
+            var b = ChatSessionBuild.Current(previewTurn: true);
+            Assert.Matches(@"^\d+\.\d+\.\d+", b.Version);
+            Assert.EndsWith("+preview", b.Mode);
+        }
+
         // --- the document -----------------------------------------------------------------
 
         [Fact]

@@ -261,7 +261,8 @@ namespace VibeModel.Services.Chat
                             Steps = StepsFrom(m.steps),
                             Usage = UsageFrom(m.usage),
                             Model = string.IsNullOrEmpty(m.model) ? null : m.model,
-                            DurationMs = m.durationMs
+                            DurationMs = m.durationMs,
+                            Build = BuildFrom(m)
                         });
                     }
                 }
@@ -312,6 +313,23 @@ namespace VibeModel.Services.Chat
             }
             if (!string.IsNullOrEmpty(m.Model)) entry["model"] = m.Model;
             if (m.DurationMs.HasValue) entry["durationMs"] = m.DurationMs.Value;
+            if (m.Build != null && !m.Build.IsEmpty)
+            {
+                if (!string.IsNullOrEmpty(m.Build.Version)) entry["version"] = m.Build.Version;
+                if (!string.IsNullOrEmpty(m.Build.Mode)) entry["mode"] = m.Build.Mode;
+                entry["pack"] = m.Build.Pack ?? "";
+            }
+        }
+
+        private static ChatSessionBuild BuildFrom(MessageDto m)
+        {
+            if (m == null || (m.version == null && m.mode == null && m.pack == null)) return null;
+            return new ChatSessionBuild
+            {
+                Version = string.IsNullOrEmpty(m.version) ? null : m.version,
+                Mode = string.IsNullOrEmpty(m.mode) ? null : m.mode,
+                Pack = string.IsNullOrEmpty(m.pack) ? null : m.pack
+            };
         }
 
         private static List<ChatSessionStep> StepsFrom(List<StepDto> dtos)
@@ -385,6 +403,9 @@ namespace VibeModel.Services.Chat
             public UsageDto usage { get; set; }
             public string model { get; set; }
             public long? durationMs { get; set; }
+            public string version { get; set; }
+            public string mode { get; set; }
+            public string pack { get; set; }
         }
 
         private class StepDto

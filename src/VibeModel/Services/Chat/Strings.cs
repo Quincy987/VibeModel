@@ -297,6 +297,8 @@ namespace VibeModel.Services.Chat
         public const string ChatExportResult = "ChatExportResult";
         public const string ChatExportDuration = "ChatExportDuration";
         public const string ChatExportContext = "ChatExportContext";           // {0} = tokens ("50.0k")
+        public const string ChatExportBuild = "ChatExportBuild";               // {0} = version, {1} = mode, {2} = pack
+        public const string ChatExportNoPack = "ChatExportNoPack";
         public const string ChatExportFullArgs = "ChatExportFullArgs";         // {0} = step, {1} = command
         public const string ChatExportFromLog = "ChatExportFromLog";
         public const string ChatExportNoLogLines = "ChatExportNoLogLines";
@@ -570,13 +572,15 @@ namespace VibeModel.Services.Chat
                 { ChatExportResult, "result" },
                 { ChatExportDuration, "time" },
                 { ChatExportContext, "conversation length {0} tokens" },
+                { ChatExportBuild, "VibeModel {0} · mode: {1} · pack: {2}" },
+                { ChatExportNoPack, "none" },
                 { ChatExportFullArgs, "Full arguments of step {0} ({1}):" },
                 { ChatExportFromLog, "from the debug log — indicative: every client on this computer logs into it" },
                 { ChatExportNoLogLines, "no commands in the debug log between question and answer" },
                 { ChatExportNotRecorded, "no commands recorded — a chat from before this version, and debug logging was off" },
                 { ChatExportIndexTitle, "VibeModel chats" },
                 { ChatExportIndexHeader, "| date | chat | project | turns | commands | failed | tokens |" },
-                { ChatExportReadme, "# VibeModel chat export\n\nExported {0} · {1} chats · {2} turns · {3} commands.\n\nPer chat: the questions, the answers (as stored, including the notes between steps), the commands each turn ran with their arguments, whether they failed, and the tokens. Commands are recorded per turn since this export exists; {5} older chats take them from the debug log (indicative, counted with ~); for {4} they are missing.\n\nNo server token and no API key is in this export. Questions, answers, project names and file paths are — read it through before you send it.\n\nTip: upload it to Claude and ask for patterns — commands retried after a failure, errors that keep coming back, questions that needed many steps, what the instructions should say differently.\n" },
+                { ChatExportReadme, "# VibeModel chat export\n\nExported {0} · {1} chats · {2} turns · {3} commands.\n\nPer chat: the questions, the answers (as stored, including the notes between steps), the commands each turn ran with their arguments, whether they failed, and the tokens. Commands are recorded per turn since this export exists; {5} older chats take them from the debug log (indicative, counted with ~); for {4} they are missing. Since VibeModel 1.2.22 each answer also names the VibeModel version, the change mode it ran in and the active standards pack.\n\nNo server token and no API key is in this export. Questions, answers, project names and file paths are — read it through before you send it.\n\nTip: upload it to Claude and ask for patterns — commands retried after a failure, errors that keep coming back, questions that needed many steps, what the instructions should say differently.\n" },
             };
 
         private static readonly Dictionary<string, string> Nl =
@@ -844,13 +848,15 @@ namespace VibeModel.Services.Chat
                 { ChatExportResult, "resultaat" },
                 { ChatExportDuration, "duur" },
                 { ChatExportContext, "gesprekslengte {0} tokens" },
+                { ChatExportBuild, "VibeModel {0} · modus: {1} · pakket: {2}" },
+                { ChatExportNoPack, "geen" },
                 { ChatExportFullArgs, "Volledige argumenten van stap {0} ({1}):" },
                 { ChatExportFromLog, "uit de debuglog — indicatief: elke client op deze pc logt hierin" },
                 { ChatExportNoLogLines, "geen commands in de debuglog tussen vraag en antwoord" },
                 { ChatExportNotRecorded, "geen commands vastgelegd — chat van vóór deze versie, debuglog stond uit" },
                 { ChatExportIndexTitle, "VibeModel-chats" },
                 { ChatExportIndexHeader, "| datum | chat | project | beurten | commands | mislukt | tokens |" },
-                { ChatExportReadme, "# VibeModel-chatexport\n\nGeëxporteerd {0} · {1} chats · {2} beurten · {3} commands.\n\nPer chat: de vragen, de antwoorden (zoals opgeslagen, met de notities tussen de stappen), de commands die elke beurt uitvoerde met hun argumenten, of ze mislukten, en de tokens. Commands worden per beurt vastgelegd sinds deze export bestaat; {5} oudere chats halen ze uit de debuglog (indicatief, geteld met ~); bij {4} ontbreken ze.\n\nEr staat geen servertoken en geen API-sleutel in deze export. Vragen, antwoorden, projectnamen en bestandspaden wel — lees hem door voordat je hem opstuurt.\n\nTip: upload hem in Claude en vraag naar patronen — commands die na een fout opnieuw werden geprobeerd, fouten die terugkomen, vragen die veel stappen nodig hadden, wat de instructies anders moeten zeggen.\n" },
+                { ChatExportReadme, "# VibeModel-chatexport\n\nGeëxporteerd {0} · {1} chats · {2} beurten · {3} commands.\n\nPer chat: de vragen, de antwoorden (zoals opgeslagen, met de notities tussen de stappen), de commands die elke beurt uitvoerde met hun argumenten, of ze mislukten, en de tokens. Commands worden per beurt vastgelegd sinds deze export bestaat; {5} oudere chats halen ze uit de debuglog (indicatief, geteld met ~); bij {4} ontbreken ze. Sinds VibeModel 1.2.22 noemt elk antwoord ook de VibeModel-versie, de wijzigingsmodus en het actieve standaardenpakket.\n\nEr staat geen servertoken en geen API-sleutel in deze export. Vragen, antwoorden, projectnamen en bestandspaden wel — lees hem door voordat je hem opstuurt.\n\nTip: upload hem in Claude en vraag naar patronen — commands die na een fout opnieuw werden geprobeerd, fouten die terugkomen, vragen die veel stappen nodig hadden, wat de instructies anders moeten zeggen.\n" },
             };
 
         /// <summary>"en" for anything that names English; "nl" for everything else (the default).</summary>

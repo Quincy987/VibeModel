@@ -270,6 +270,12 @@ namespace VibeModel.Services.Chat
                     sb.Append('_').Append(usageLine).AppendLine("_");
                     sb.AppendLine();
                 }
+                var buildLine = BuildLine(reply, language);
+                if (buildLine != null)
+                {
+                    sb.Append('_').Append(buildLine).AppendLine("_");
+                    sb.AppendLine();
+                }
             }
             return sb.ToString();
         }
@@ -368,6 +374,16 @@ namespace VibeModel.Services.Chat
             var euro = ModelPricing.EstimateEuro(usage, language);
             if (euro != null) text += " · ≈ € " + euro;
             return text;
+        }
+
+        /// <summary>"VibeModel 1.2.22 · modus: ask · pakket: geen" for a turn that recorded it; null for older ones.</summary>
+        public static string BuildLine(ChatSessionMessage reply, string language)
+        {
+            var b = reply?.Build;
+            if (b == null || b.IsEmpty) return null;
+            return Strings.For(language, Strings.ChatExportBuild, string.IsNullOrEmpty(b.Version) ? "?" : b.Version,
+                string.IsNullOrEmpty(b.Mode) ? "?" : b.Mode,
+                string.IsNullOrEmpty(b.Pack) ? Strings.For(language, Strings.ChatExportNoPack) : b.Pack);
         }
 
         // Secrets out; never anything else (paths and names stay — see ChatExportRedaction).

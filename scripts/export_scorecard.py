@@ -51,9 +51,9 @@ NOT_RECORDED_RE = re.compile(r"geen commands vastgelegd|no commands recorded", r
 FROM_LOG_RE = re.compile(r"uit de debuglog|from the debug log", re.I)
 USAGE_RE = re.compile(r"^_(?P<tok>[\d.]+[kM]?) tokens(?P<rest>.*)_\s*$", re.M)
 CONTEXT_RE = re.compile(r"(?:gesprekslengte|conversation length) ([\d.]+[kM]?) tokens")
-# Since counting version 1 the export can carry the build, mode and pack per turn (step 5 of the
-# phase-1 plan): "_VibeModel 1.2.22 · modus: ask · pakket: ib-amsterdam_".
-BUILD_RE = re.compile(r"^_VibeModel (?P<ver>\S+) · (?:modus|mode): (?P<mode>[^·]+?) · (?:pakket|pack): (?P<pack>[^_]+?)_\s*$", re.M)
+# Since VibeModel 1.2.22 the export carries the build, change mode and standards pack per turn:
+# "_VibeModel 1.2.22 · modus: ask · pakket: ib-amsterdam_" ("geen" / "none" = no pack).
+BUILD_RE = re.compile(r"^_VibeModel (?P<ver>\S+) · (?:modus|mode): (?P<mode>[^·]+?) · (?:pakket|pack): (?P<pack>.+?)_\s*$", re.M)
 
 SERVER_CALL_RE = re.compile(r"(?:127\.0\.0\.1|localhost|\[::1\]):\d+/(\w+)")
 SNIPPET_FILE_RE = re.compile(r"[\w.\-]+\.cs\b", re.I)
