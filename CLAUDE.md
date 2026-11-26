@@ -544,6 +544,25 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   interrupted: brace-less loop bodies, recursion, one long Revit call (the HTTP timeout says so).
   Measured: `while(true){}` stopped at 25.1 s and Revit answered at once; no overhead over a loop
   across every element of the test model (9–11 ms either way). Pure: `Services/Claude/ExecDeadline.cs`.
+- **Compile and run-time errors fail** (phase 1, `ExecOutcome.FromText`, pure): a compile failure ("COMPILATION ERRORS:")
+  and a run-time error the wrapper appended after the snippet's output ("ERROR in exec: …") used to pass
+  `CommandResult.Legacy` (which fails only text that STARTS with ERROR) and read as succeeded to the server, the
+  journal, the approval flow and the pane — 10 of them in a colleague's 45-chat export. Now text mode starts with
+  `ERROR: exec did not compile, nothing ran (2 errors).` / `ERROR: exec failed: <msg>` + `Hint:` and keeps the whole
+  original text below it (`CommandResult.TextError`); JSON `ok:false`, `EXEC_COMPILE` / `EXEC_RUNTIME` (also for
+  `ERROR: Runtime exception: …`). A failed exec whose snippet committed transactions of its own still counts as
+  modified: the single path reconciles annotations, checks, coverage and journals it (`KeptWork`), and in a batch it
+  sets `anyModified` (`CreatedElementsRecorder.RecordedCount` grew) — measured live: under `ask` the approval window
+  opens and Keep gives `-- changed: added 1 (Levels 1) …`; an atomic batch with such an exec rolls back. The pane
+  flags "COMPILATION ERRORS:" / "ERROR in exec:" anywhere in a single response (not in a `>>> ` text batch).
+- **Dialect hints** (`ExecDialect`, pure): exec compiles **C# 5** (the Framework's CodeDom compiler) against the
+  running Revit's API — its description and the prompt file say `C# 5, Revit <year> API` (`UpdateService.RevitYear`).
+  A compile error whose source line holds a C# 6+ construct (`?.`/`?[`, `is T x`, `$"…"`, `out var`/`out T x`,
+  `nameof`; string literals stripped first; matched by the syntax-error numbers measured on this compiler — CS1525,
+  CS1003, CS1026, CS1002, CS1056, CS0103 …) and a Revit-year gap (`new ElementId(long)` / `ElementId.Value` /
+  `Floor.GetSlabShapeEditor()` are 2024+, confirmed on the SDK DLLs; shown only when `ExecCommand.ApiHas` finds the
+  running RevitAPI lacks them) append `Hint: exec compiles C# 5, Revit 2023 API:` + one line each, after the plan-16
+  lookup hint.
 
 ### Sheet Assembly (section / crop / viewport / dimension / spot / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
@@ -1051,9 +1070,30 @@ Built for modellers without admin rights or a terminal; IT rollout is in `docs/d
 
 ### Chat Pane (in-Revit chat)
 The pane's **Claude Code** backend spawns the CLI headless per turn:
-`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,PowerShell,Read,Grep,Glob [--resume <id>] [--add-dir <project folder>] --append-system-prompt <turn prompt>`.
+`claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk --allowedTools Bash,PowerShell,Read,Grep,Glob [--resume <id>] [--add-dir <project folder> <scratch folder>] --append-system-prompt <turn prompt>`.
 `PowerShell`: on a laptop without Git for Windows the CLI has no Bash and shells out through its
-PowerShell tool; the prompt file says to call `curl.exe` there (`ClaudeCodeBackend.PowerShellRule`).
+PowerShell tool (measured: the CLI on this PC chose PowerShell too); the prompt file says to call `curl.exe` there
+(`ClaudeCodeBackend.PowerShellRule`, one line of it in every turn prompt as `PowerShellTurnRule`). Phase 1, from a
+colleague's export: PowerShell 5.1 does not escape embedded quotes for curl.exe, so code sent inline
+(`--data-urlencode "args=$code"`) failed 14 times (curl exit 3, or a snippet that silently lost its quotes); so code and
+multi-line text ALWAYS go through a file in the chat's **scratch folder** — a single-quoted here-string piped to
+`Set-Content -Encoding utf8 $f`, then `curl.exe -s -X POST "<url>/exec?readonly=1" -H "X-VibeModel-Token: $env:VIBEMODEL_TOKEN"
+--data-binary "@$f"` (a raw POST: only `?args=` is URL-decoded and the head is capped at 64 KB, the body at 1 MB — a
+19 kB snippet passed live; `--data-urlencode "args@file"` WITHOUT `-G` would post a form body exec never decodes). No
+`Select-Object`/`Select-String` on a response (drops `-- changed`/`-- revit`, `-First` exits 255), no short `-m` (the
+server answers within its own deadline; never below 40), no Write tool, no Python. The scratch folder
+(`ScratchFolder`, `%LOCALAPPDATA%\VibeModel\scratch\<yyyyMMdd-HHmmss-pid-n>\`, per chat — kept across its turns, a
+New Chat gets a new one) is the CLI's `VIBEMODEL_SCRATCH` and an `--add-dir`; images go there too (`$env:TEMP` is a
+different folder per call inside the CLI's PowerShell); folders older than 7 days are pruned once per session on a
+pool thread. The server drops a leading U+FEFF from `args` and POST bodies (`RevitHttpServer.CommandArgs` /
+`StripBom`): Set-Content's byte-order mark. Live: with the example header written as a placeholder the CLI left the
+token out on its first call, hence the literal header in both rules.
+**CLI notices** (`CliNotice`, pure): the CLI's own "You've hit your session limit · resets 2pm (Europe/Amsterdam)",
+"Failed to authenticate: OAuth session expired…" / "Please run /login" and "/permissions isn't available in this
+environment." (anchored on the whole text block, so an answer that mentions a limit is never caught) are never streamed
+raw: the turn ends through `onError` with `Strings.CliUsageLimit[Resets]` / `CliLoginExpired` (PowerShell → `claude` →
+`/login`) / `CliCommandUnavailable` — no half answer stored as the reply, no quick replies, no stale-resume retry. The
+result event's `is_error` + `result` text are read too (an exit with no output reports that text first).
 `--permission-mode dontAsk` is deliberate: without it the CLI inherits the user's `defaultMode`,
 and in `auto` mode the safety classifier refused approved `delete`/`select` curls as
 "Irreversible Local Destruction". `dontAsk` makes `--allowedTools` the whole policy (Bash, Read and the read-only Grep/Glob
@@ -1092,8 +1132,11 @@ below it, `csharp` for exec), the answer as stored (with the notes between steps
 line (+ context, `≈ €`). The button exports every chat and opens Explorer on the file (`UI/ChatExportUi.cs`).
 - **Turn record** (additive, since the chat export): each answer in `chats\<id>.json` carries `steps:[{command, args,
   ok, error, durationMs}]`, `usage:{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
-  contextTokens, costUsd}`, `model`, `durationMs` (`ChatSession.Append(role, content, steps, usage, model,
-  durationMs)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). `args` is the full call
+  contextTokens, costUsd}`, `model`, `durationMs` and (phase 1) `version`, `mode` (`auto|ask|annotate|readonly`, `+preview`
+  for a preview turn), `pack` (the active pack id, "" = none; `StandardsPrompt.ActivePackId`, published with the
+  blocks) — taken when the question is sent (`ChatSessionBuild.Current`) — (`ChatSession.Append(role, content, steps,
+  usage, model, durationMs, build)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). The export prints
+  `_VibeModel 1.2.22 · modus: ask · pakket: geen_` under the token line (`ChatExportDocument.BuildLine`). `args` is the full call
   (`ToolCallInfo.FullArgs`: the args string, a curl's decoded `?args=`, else the whole shell command — an
   exec sent with `--data-urlencode` or a heredoc), capped at 4000 chars (`… (+N tekens)`); a message
   without a record is written exactly as before, and older builds ignore the keys. Never sent to a model.
@@ -1206,8 +1249,19 @@ python -I scripts/successcase_mail.py "<subject>" --chat <chat-id>     # link th
 python -I scripts/successcase.py <chat-id>                             # case from a chat only
 python -I scripts/successcase.py --index-only                          # rebuild INDEX.md
 python -I -m unittest discover -s scripts/tests -v                     # tests
+python -I scripts/export_scorecard.py <export.zip|folder|chats-*.md|chat.json> [--out <base>]   # the same numbers from every chat export
 ```
 Cases go to `demo_out/successcases/` (gitignored — they contain colleagues' names).
+**Scorecard** (`scripts/export_scorecard.py`, stdlib, reuses `successcase.pair_turns` for raw chat JSON): reads the
+markdown export (nl and en labels) and writes `<base>.md` + `.json` stamped `countingVersion` (raise it whenever a
+counting rule changes): chats/turns/commands, failed and their share, failures with only "Exit code N", failure
+classes (PowerShell inline, pipe, timeout, missing tool, file not found, exec compile, exec run time, Revit/VibeModel
+error), hidden failures (heuristic: an ok exec directly followed by the same snippet re-sent — ≥ 85 % the same, or its
+file patched to remove a construct C# 5 rejects; a dry run → real run excluded), steps with several server calls,
+correction turns (heuristic Dutch/English phrase pattern on follow-up questions), offer / question endings, median
+tokens per turn, peak context, and the builds/modes/packs seen. Baseline (a colleague's 45-chat export, counting
+version 1): 251 commands, 43 failed (17.1 %), 22 with only an exit code, 10 hidden, 34 multi-call steps, 13 correction
+turns of 111 follow-ups, median 1.15M tokens per turn, peak context 199k. Exports stay out of git (names).
 
 ### Fallback: File-Based (if HTTP unavailable)
 If the HTTP server cannot start (port blocked), VibeModel falls back to file-based polling:

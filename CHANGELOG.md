@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Fixed — opdrachten die slagen en eerlijk geteld worden
+Uit de export van 45 echte chats van een collega: 43 van de 251 opdrachten mislukten, en nog 10 scripts mislukten
+zonder dat iemand het zag.
+- Een `exec`-script dat niet compileert of halverwege een fout geeft, is nu een mislukte opdracht. Voorheen stond het
+  als gelukt in de chat, het journaal, de export en de goedkeuringsvraag. Het antwoord begint met `ERROR` en houdt de
+  hele uitvoer van het script eronder. Een mislukt script dat al iets in het model had vastgelegd, telt nog steeds als
+  wijziging: in *Vragen* verschijnt het goedkeuringsvenster, en de `-- changed:`-regel en het journaal noemen het.
+- De compilerfout zegt nu welke C# en welke Revit `exec` spreekt (C# 5, Revit 2023) en wat je in plaats van `?.`,
+  `is T x`, `$"…"`, `out var`, `nameof`, `new ElementId(long)`, `.Value` en `GetSlabShapeEditor()` schrijft.
+- Op een laptop zonder Git Bash stuurt Claude Code scripts nu via een bestand in een eigen map per chat
+  (`%LOCALAPPDATA%\VibeModel\scratch\`), in plaats van in de opdrachtregel. Daar braken PowerShell's aanhalingstekens
+  het script (14 keer in de export). Ook: geen antwoorden meer door `Select-Object` filteren (dan vielen de
+  `-- changed`-regels weg), schermafbeeldingen in die map, en geen korte wachttijd op curl.
+- Een bestand dat PowerShell met `Set-Content -Encoding utf8` schrijft, begint met een onzichtbaar teken; de server
+  negeert dat nu.
+- "You've hit your session limit · resets 2pm", een verlopen aanmelding en "/permissions isn't available" komen niet
+  meer als Engels antwoord in de chat: je krijgt één zin met wanneer de limiet weer vrij is of hoe je opnieuw inlogt, en
+  het wordt niet als antwoord van de AI opgeslagen.
+### Added
+- Elk antwoord legt vast met welke VibeModel-versie, in welke wijzigingsmodus en met welk standaardenpakket het
+  gemaakt is; de chat-export toont dat onder de tokenregel.
+- `scripts/export_scorecard.py` maakt van elke chat-export steeds dezelfde cijfers (opdrachten, mislukt, verborgen
+  mislukt, correcties, tokens), zodat een volgende export vergelijkbaar is.
+
 ### Changed
 - Instellingen → *Standaarden* noemt het nu ook binnen het tabblad *Standaardenpakket* in plaats van *Kantoorstandaard*, en
   Diagnose en de tooltip van de modus-chip noemen een onthouden keuze `settings.json` in plaats van `settings` (het venster

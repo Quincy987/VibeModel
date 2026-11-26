@@ -95,6 +95,16 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void OpenServer_RulesCarryNoTokenHeader()
+        {
+            var text = ClaudeCodeBackend.BuildSystemPromptText(new ClaudeCommandRegistry().GetCommands(), 18884, null);
+            Assert.DoesNotContain("X-VibeModel-Token", text);
+            Assert.Contains("--data-binary \"@$f\"", text);
+            var turn = ClaudeCodeBackend.BuildTurnPrompt(@"C:\x.txt", 18884, "", "nl", tokenRequired: false);
+            Assert.DoesNotContain("X-VibeModel-Token", turn);
+        }
+
+        [Fact]
         public void TurnPrompt_RepeatsThePowerShellLine()
         {
             var prompt = ClaudeCodeBackend.BuildTurnPrompt(@"C:\x\p.txt", 18884, "", "nl");

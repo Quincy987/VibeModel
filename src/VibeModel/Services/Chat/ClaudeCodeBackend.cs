@@ -373,6 +373,12 @@ namespace VibeModel.Services.Chat
         internal const string PowerShellTurnRule =
             "PowerShell (no Bash): code goes in a file in $env:" + ScratchFolder.EnvVar + " (single-quoted here-string, Set-Content -Encoding utf8), sent with curl.exe -X POST <url>/exec -H \"" + RevitHttpServer.TokenHeader + ": $env:" + RevitHttpServer.TokenEnvVar + "\" --data-binary \"@<file>\"; never inline, never piped through Select-Object/Select-String.";
 
+        private const string TokenHeaderExample = " -H \"" + RevitHttpServer.TokenHeader + ": $env:" + RevitHttpServer.TokenEnvVar + "\"";
+
+        /// <summary>A rule as written (with the token header in its examples), or without that header on an open server.</summary>
+        internal static string ForAuth(string rule, bool tokenRequired) =>
+            tokenRequired ? rule : rule.Replace(TokenHeaderExample, "");
+
         // Phase 1: the dialect exec compiles (measured: ?., is T x, $"", ElementId(long) and
         // GetSlabShapeEditor() failed again and again in real chats).
         internal const string ExecDialectRule = ExecDialect.CSharp5Rule +
@@ -422,7 +428,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (Bash: curl encodes ?args= for you - a one-line snippet or free text; on PowerShell use a file, see below)");
             sb.AppendLine("    cat > \"$" + ScratchFolder.EnvVar + "/q1.cs\" <<'EOF' (the code) EOF, then curl -s -X POST \"" + baseUrl + "/exec\" --data-binary \"@$" + ScratchFolder.EnvVar + "/q1.cs\"   (Bash: a longer snippet from a file; the POST body is the snippet as it is)");
             sb.AppendLine("    curl -s -X POST \"" + baseUrl + "/batch\" --data-binary $'wall 0 0 5000 0\\nwall 5000 0 5000 5000'   (plain text, one command per line, one undo step)");
-            sb.AppendLine("- " + PowerShellRule);
+            sb.AppendLine("- " + ForAuth(PowerShellRule, authToken != null));
             sb.AppendLine("- " + PreviewRule);
             sb.AppendLine();
             sb.AppendLine("Available commands (ARGS = what goes in ?args=, before encoding; [..] optional, a | b alternatives):");
@@ -588,7 +594,7 @@ namespace VibeModel.Services.Chat
 
             var appendPrompt = new StringBuilder(
                 BuildTurnPrompt(_systemPromptPath, _httpPort, context, Strings.Current, ChangeApprovalPolicy.EffectiveMode,
-                    ChangeApprovalPolicy.PreviewTurn));
+                    ChangeApprovalPolicy.PreviewTurn, tokenRequired: _authToken != null));
 
             // Office standards (plan 11): live template facts + the active pack's core rules go
             // into the per-turn system prompt — not into the prompt FILE, which the model reads
@@ -1007,7 +1013,7 @@ namespace VibeModel.Services.Chat
         /// applies from the next message on — also in a resumed session.
         /// </summary>
         internal static string BuildTurnPrompt(string systemPromptPath, int httpPort, string context, string language,
-            ChangeApprovalMode approval = ChangeApprovalMode.Auto, bool preview = false)
+            ChangeApprovalMode approval = ChangeApprovalMode.Auto, bool preview = false, bool tokenRequired = true)
         {
             var sb = new StringBuilder();
             sb.Append("You are inside Revit. Read " + systemPromptPath +
@@ -1015,7 +1021,7 @@ namespace VibeModel.Services.Chat
                 "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
             sb.AppendLine();
             sb.AppendLine(ArgsRule);
-            sb.AppendLine(PowerShellTurnRule);
+            sb.AppendLine(ForAuth(PowerShellTurnRule, tokenRequired));
             // Heals resumed sessions whose history mentions a dead port (e.g. after a
             // fallback-port instance closed): the live port always wins.
             sb.Append(BuildPortDirective(httpPort));
