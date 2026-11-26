@@ -270,6 +270,11 @@ def failure_class(step: dict) -> str:
         return "file not found"
     if EXIT_ONLY_RE.match(err) and re.search(r"--data-urlencode\s+\"args=", args) and not re.search(r"args@", args):
         return "PowerShell inline"
+    # Since VibeModel 1.2.22 exec fails its own compile and run-time errors (they read as ok before).
+    if re.search(r"did not compile|COMPILATION ERRORS", err):
+        return "exec compile"
+    if re.search(r"^exec failed:", err):
+        return "exec run time"
     if re.search(r"Revit rolled|^in exec:|ERROR|snippet changed|Pick one of|Missing or invalid token|Discarded|refused|Refused", err):
         return "Revit/VibeModel error"
     if EXIT_ONLY_RE.match(err):
@@ -433,6 +438,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("sources", nargs="+", help="export zip, unpacked export folder, chats-*.md, or chat JSON files")
     ap.add_argument("--out", help="output base path without extension (default: next to the first source)")
     a = ap.parse_args(argv)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     docs = read_sources(a.sources)
     if not docs:
         print("Geen chats gevonden in " + ", ".join(a.sources), file=sys.stderr)

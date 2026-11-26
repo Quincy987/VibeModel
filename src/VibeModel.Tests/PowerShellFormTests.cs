@@ -86,6 +86,9 @@ namespace VibeModel.Tests
             Assert.Contains("Set-Content -Encoding utf8", rule);
             Assert.Contains("no Python", rule);
             Assert.Contains("never below 40", rule);
+            // The live pane turn left the token out when the example said "<token header>".
+            Assert.Contains("-H \"X-VibeModel-Token: $env:VIBEMODEL_TOKEN\"", rule);
+            Assert.Contains("X-VibeModel-Token: $env:VIBEMODEL_TOKEN", ClaudeCodeBackend.PowerShellTurnRule);
             // The taught form is a raw POST, never --data-urlencode without -G (a form body exec never decodes).
             Assert.DoesNotContain("--data-urlencode \"args@", rule);
             Assert.Contains("C# 5", text);
