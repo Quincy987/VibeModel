@@ -43,6 +43,11 @@ namespace VibeModel.Services.Chat
         private string _sessionId;
         private Process _currentProcess;
 
+        // The chat's scratch folder (ScratchFolder): kept across the turns of one chat, so a later
+        // turn can patch a snippet file an earlier one wrote; a New Chat gets a new one.
+        private string _scratchKey;
+        private static int _scratchSequence;
+
         // Set by the idle-timer callback (other thread) -> must be volatile.
         // _lastBlockWasToolUse is touched only on the read-loop thread, no volatile needed.
         private volatile bool _killedByIdleTimeout;
@@ -115,6 +120,16 @@ namespace VibeModel.Services.Chat
             DetectClaude();
             CleanUpLegacyPromptFile();
             WriteSystemPrompt();
+            ScratchFolder.PruneInBackgroundOnce();
+        }
+
+        /// <summary>This chat's scratch folder, created on first use; null when it cannot be made.</summary>
+        internal string ScratchDirectory()
+        {
+            if (_scratchKey == null)
+                _scratchKey = ScratchFolder.NewKey(DateTime.Now, Process.GetCurrentProcess().Id,
+                    Interlocked.Increment(ref _scratchSequence));
+            return ScratchFolder.Ensure(ScratchFolder.Root, _scratchKey);
         }
 
         internal static string GetSystemPromptPath(int httpPort)
@@ -332,9 +347,31 @@ namespace VibeModel.Services.Chat
 
         // A laptop without Git for Windows has no Bash: the CLI shells out through PowerShell, where
         // plain `curl` is an alias of Invoke-WebRequest and $'..' strings do not exist.
+        // Measured in a colleague's export (45 chats): PowerShell 5.1 does not escape embedded quotes
+        // for curl.exe, so code sent inline (--data-urlencode "args=$code") failed 14 times with curl
+        // exit 3 (or arrived without its quotes and failed to compile); piping a response through
+        // Select-Object dropped the -- changed / -- revit lines and -First ended with exit 255;
+        // $env:TEMP is a different folder per call there, so screenshots were "not found"; Write and
+        // Python are absent. The file is POSTed raw: only ?args= is URL-decoded, a POST body is the
+        // args as it is, and the server takes 1 MB of body but only 64 KB of request head.
         internal const string PowerShellRule =
-            "If your shell tool is PowerShell (no Git Bash on this machine): call curl.exe, not curl (an alias of Invoke-WebRequest there), with the same URLs; " +
-            "for a POST body write it to a file with Set-Content first, then curl.exe -s -X POST <url> --data-binary \"@C:\\path\\file.txt\".";
+            "If your shell tool is PowerShell (no Git Bash on this machine): call curl.exe, not curl (an alias of Invoke-WebRequest there), with the same URLs. " +
+            "Code and any multi-line text ALWAYS go through a file, never inline in a double-quoted argument (PowerShell 5.1 breaks embedded quotes: curl exit 3, or a snippet that silently lost its quotes): " +
+            "$f = \"$env:" + ScratchFolder.EnvVar + "\\q1.cs\"; a single-quoted here-string (@' on its own line, the code, '@ at the start of its own line) piped to Set-Content -Encoding utf8 $f; " +
+            "then curl.exe -s -X POST \"<url>/exec?readonly=1\" -H \"<token header>\" --data-binary \"@$f\" (the body is the snippet as it is; options such as readonly=1, preview=1, timeout=120, format=json go in the URL). " +
+            "A batch the same way: --data-binary \"@$f\" to /batch. To fix a snippet, rewrite or patch that file and send it again. " +
+            "Read the whole response: never pipe it through Select-Object or Select-String (that drops the -- changed / -- revit lines, and -First ends with exit 255). " +
+            "Save and read copies of screenshots and other files in $env:" + ScratchFolder.EnvVar + " ($env:TEMP is a different folder per call here). There is no Write tool and no Python here. " +
+            "Do not give curl.exe a short -m: the server answers within its own deadline (30 s; exec up to its timeout + 10 s; a change waiting for the user's approval up to 10 min) - if you set one, never below 40.";
+
+        /// <summary>The PowerShell rule in one line, repeated in every turn prompt (a resumed session may not re-read the file).</summary>
+        internal const string PowerShellTurnRule =
+            "PowerShell (no Bash): code goes in a file in $env:" + ScratchFolder.EnvVar + " (single-quoted here-string, Set-Content -Encoding utf8), sent with curl.exe -X POST <url>/exec --data-binary \"@<file>\"; never inline, never piped through Select-Object/Select-String.";
+
+        // Phase 1: the dialect exec compiles (measured: ?., is T x, $"", ElementId(long) and
+        // GetSlabShapeEditor() failed again and again in real chats).
+        internal const string ExecDialectRule = ExecDialect.CSharp5Rule +
+            " The API is the running Revit's (the exec line below names the year); members new in a later Revit (ElementId(long), ElementId.Value, Floor.GetSlabShapeEditor()) do not exist there - apilookup tells.";
 
         /// <summary>
         /// The argument part of a command's Usage: "wall &lt;x1&gt; … | wall …" → "&lt;x1&gt; … | …".
@@ -377,7 +414,8 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("    curl -s \"" + baseUrl + "/info\"");
             sb.AppendLine("    curl -s \"" + baseUrl + "/wall?args=0%200%206000%200\"");
             sb.AppendLine("    curl -s \"" + baseUrl + "/color?args=12345%20255%200%200\"");
-            sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (curl encodes ?args= for you - use this for code and free text)");
+            sb.AppendLine("    curl -s -G \"" + baseUrl + "/exec\" --data-urlencode \"args=sb.AppendLine(doc.Title);\"   (Bash: curl encodes ?args= for you - a one-line snippet or free text; on PowerShell use a file, see below)");
+            sb.AppendLine("    cat > \"$" + ScratchFolder.EnvVar + "/q1.cs\" <<'EOF' (the code) EOF, then curl -s -X POST \"" + baseUrl + "/exec\" --data-binary \"@$" + ScratchFolder.EnvVar + "/q1.cs\"   (Bash: a longer snippet from a file; the POST body is the snippet as it is)");
             sb.AppendLine("    curl -s -X POST \"" + baseUrl + "/batch\" --data-binary $'wall 0 0 5000 0\\nwall 5000 0 5000 5000'   (plain text, one command per line, one undo step)");
             sb.AppendLine("- " + PowerShellRule);
             sb.AppendLine("- " + PreviewRule);
@@ -403,6 +441,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- Use /selected to inspect what the user has selected");
             sb.AppendLine("- You can SEE the model: run /screenshot, then Read the returned Path (PNG). Decide on your own when looking helps — after changing visible geometry to verify it, when asked how something looks, or when a layout decision needs visual context. Skip it for pure data queries or when nothing changed visually.");
             sb.AppendLine("- For complex operations, use /exec to run arbitrary C# code against the Revit API");
+            sb.AppendLine("- " + ExecDialectRule);
             sb.AppendLine("- " + ApiLookupRule);
             sb.AppendLine("- " + ExecTimeoutRule);
             sb.AppendLine();
@@ -554,10 +593,14 @@ namespace VibeModel.Services.Chat
             AppendOfficeContext(appendPrompt, ProjectDocs.BuildPromptBlockForActiveDocument(true, out var projectFolder));
             // Project memory (plan 08): saved facts + the rule to save more (nothing when off).
             AppendOfficeContext(appendPrompt, ProjectMemory.BuildPromptBlockForActiveDocument());
-            if (projectFolder.IsSet)
+            // The chat's scratch folder: snippets, batch bodies and images (the PowerShell rule).
+            var scratch = ScratchDirectory();
+            if (projectFolder.IsSet || scratch != null)
             {
-                args.Append(" --add-dir ");
-                args.Append(EscapeArg(projectFolder.Path));
+                // One --add-dir with every folder: the option is variadic.
+                args.Append(" --add-dir");
+                if (projectFolder.IsSet) args.Append(' ').Append(EscapeArg(projectFolder.Path));
+                if (scratch != null) args.Append(' ').Append(EscapeArg(scratch));
             }
 
             args.Append(" --append-system-prompt ");
@@ -579,6 +622,8 @@ namespace VibeModel.Services.Chat
             // where that variable comes from (the session token, or the user's own when they set one).
             if (_authToken != null)
                 psi.EnvironmentVariables[RevitHttpServer.TokenEnvVar] = _authToken;
+            if (scratch != null)
+                psi.EnvironmentVariables[ScratchFolder.EnvVar] = scratch;
 
             Logger.Info("Starting claude: " + _claudePath + " " + args);
 
@@ -933,6 +978,7 @@ namespace VibeModel.Services.Chat
                 "After a visual change, run /screenshot and Read the returned PNG path to verify the result.");
             sb.AppendLine();
             sb.AppendLine(ArgsRule);
+            sb.AppendLine(PowerShellTurnRule);
             // Heals resumed sessions whose history mentions a dead port (e.g. after a
             // fallback-port instance closed): the live port always wins.
             sb.Append(BuildPortDirective(httpPort));
@@ -1078,6 +1124,7 @@ namespace VibeModel.Services.Chat
         public override void ResetSession()
         {
             _sessionId = null;
+            _scratchKey = null;
             Logger.Info("Chat session reset");
         }
 
