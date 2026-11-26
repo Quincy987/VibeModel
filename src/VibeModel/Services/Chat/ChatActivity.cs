@@ -230,11 +230,32 @@ namespace VibeModel.Services.Chat
                 }
                 if (firstLine.StartsWith("curl: (", StringComparison.Ordinal))
                     return Cap(firstLine);
+                // exec's compile and run-time errors further down: a response the shell cut or piped
+                // so that exec's own ERROR first line was lost. Not in a text batch (">>> cmd"
+                // blocks): a batch that partly failed is not a failed step.
+                // A batch may open with a "-- forbidden:" line, so look for its ">>> " blocks anywhere.
+                bool textBatch = firstLine.StartsWith(">>> ", StringComparison.Ordinal) ||
+                                 text.IndexOf("\n>>> ", StringComparison.Ordinal) >= 0;
+                if (!textBatch)
+                {
+                    var execError = ExecErrorLine(text);
+                    if (execError != null) return Cap(execError);
+                }
             }
 
             if (isError)
                 return Cap(firstLine ?? "Error");
             return null;
+        }
+
+        // A compiler block → "exec did not compile: Line N: …"; a closing "ERROR in exec: msg" → "exec failed: msg".
+        // The same markers the server reads (ExecOutcome), so the two never disagree.
+        private static string ExecErrorLine(string text)
+        {
+            var compile = Claude.ExecOutcome.CompileErrors(text);
+            if (compile != null) return "exec did not compile: " + compile[0];
+            var runtime = Claude.ExecOutcome.RuntimeError(text);
+            return runtime != null ? "exec failed: " + runtime : null;
         }
 
         /// <summary>A CLI tool_result's content: a string, or an array of {type:text,text} blocks.</summary>

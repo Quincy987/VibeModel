@@ -1186,6 +1186,8 @@ namespace VibeModel.UI
 
             // Plan 20: "next message as preview" applies to this turn only.
             ChangeApprovalPolicy.ArmNextTurn(_modeChip.PreviewNext);
+            // Which build, mode and pack this turn ran with: stored with the answer for the export.
+            var buildForTurn = ChatSessionBuild.Current(_modeChip.PreviewNext);
             _modeChip.PreviewNext = false;
 
             _backend.SendMessage(
@@ -1224,7 +1226,7 @@ namespace VibeModel.UI
                             EndTurnDisplay(turn, answer);
 
                             ChatHistory.Add("Claude", content);
-                            AppendTurnRecord(sessionForTurn, ChatSession.RoleAssistant, content, turn.Model);
+                            AppendTurnRecord(sessionForTurn, ChatSession.RoleAssistant, content, turn.Model, buildForTurn);
                             ChatSessionStore.Default.SaveSession(sessionForTurn);
                             // Quick replies: a separate cheap call, never on the token stream.
                             if (ReferenceEquals(sessionForTurn, _session))
@@ -1248,7 +1250,7 @@ namespace VibeModel.UI
                         var errorMsg = "Error: " + error;
                         AddMessage(new ChatMessage(ChatRole.System, errorMsg));
                         ChatHistory.Add("System", errorMsg);
-                        AppendTurnRecord(sessionForTurn, ChatSession.RoleSystem, errorMsg, turn.Model);
+                        AppendTurnRecord(sessionForTurn, ChatSession.RoleSystem, errorMsg, turn.Model, buildForTurn);
                         ChatSessionStore.Default.SaveSession(sessionForTurn);
                         SetGenerating(false);
                         ScrollToBottomIfNeeded();
@@ -1259,12 +1261,12 @@ namespace VibeModel.UI
 
         // The stored message carries what the turn ran (steps, usage, model, duration) for the
         // chat export; the content — the only part a model or History ever reads — is unchanged.
-        private void AppendTurnRecord(ChatSession session, string role, string content, TurnActivity activity)
+        private void AppendTurnRecord(ChatSession session, string role, string content, TurnActivity activity, ChatSessionBuild build)
         {
             var usage = activity.Usage;
             var modelName = !string.IsNullOrWhiteSpace(usage?.Model) ? usage.Model : (_backend as ChatBackendBase)?.ModelName;
             var elapsed = (long)activity.Elapsed(DateTime.UtcNow).TotalMilliseconds;
-            session.Append(role, content, ChatSessionStep.FromTurn(activity), ChatSessionUsage.From(usage), modelName, elapsed);
+            session.Append(role, content, ChatSessionStep.FromTurn(activity), ChatSessionUsage.From(usage), modelName, elapsed, build);
         }
 
         // The turn ended: collapse the activity block to its summary line (or drop it when the

@@ -243,7 +243,7 @@ namespace VibeModel.Tests
         {
             var text = ClaudeCodeBackend.BuildSystemPromptText(new ClaudeCommandRegistry().GetCommands(), 18884, null);
             Assert.Contains("curl.exe", text);
-            Assert.Contains(ClaudeCodeBackend.PowerShellRule, text);
+            Assert.Contains(ClaudeCodeBackend.ForAuth(ClaudeCodeBackend.PowerShellRule, tokenRequired: false), text);
         }
 
         [Fact]

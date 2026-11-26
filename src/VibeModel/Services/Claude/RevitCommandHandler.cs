@@ -330,7 +330,8 @@ namespace VibeModel.Services.Claude
                 {
                     if (modifying) changes = CreatedElementsRecorder.DisarmChanges();
                 }
-                if (cr.Success && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
+                // A failed exec can have kept transactions of its own: what they did is reconciled too.
+                if (KeptWork(request.Command, cr, changes) && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
                 if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                 if (runControl)
                     run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
@@ -357,10 +358,10 @@ namespace VibeModel.Services.Claude
             var forbiddenKept = !rolledBack ? forbidden : null;
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
 
-            var findings = cr.Success && changes != null ? PostCommandCheck.Run(app, changes.Added) : null;
+            var findings = KeptWork(request.Command, cr, changes) ? PostCommandCheck.Run(app, changes.Added) : null;
             // New elements an existing schedule / a sheet view of this session leaves out. A rolled-back
             // run (preview, Discard, READ_ONLY, ANNOTATION_ONLY) has no change set here, so never reports.
-            var coverage = cr.Success && changes != null ? DerivedCoverage.Check(doc, changes) : null;
+            var coverage = KeptWork(request.Command, cr, changes) ? DerivedCoverage.Check(doc, changes) : null;
             // Plan 21: the annotations this run added (re-hosted ones are new elements too), against their neighbours.
             var layout = kept != null && changes != null ? AnnotationExtents.ForAdded(doc, LayoutIds(changes, ShownAnnotations(annotations, runControl, run))) : null;
             if (cr.Success && changes != null)
@@ -378,6 +379,14 @@ namespace VibeModel.Services.Claude
 
             return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage);
         }
+
+        /// <summary>
+        /// The run left work in the model that the after-run checks must see: a succeeded command
+        /// with a change set, or a FAILED exec whose snippet committed transactions of its own (exec's
+        /// compile and run-time errors are failures since phase 1; before, they read as succeeded).
+        /// </summary>
+        private static bool KeptWork(string command, CommandResult cr, RecordedChanges changes) =>
+            changes != null && (cr.Success || (IsExec(command) && !changes.IsEmpty));
 
         /// <summary>
         /// Plan 21: the annotations the layout line checks — what the run added, which includes what
@@ -460,8 +469,9 @@ namespace VibeModel.Services.Claude
 
             var text = cr.RenderText();
             // What Revit's failure processing did (warnings dismissed, annotations deleted). An
-            // error already carries Revit's reason, so its text stays as it is.
-            if (cr.Success && revit != null)
+            // error already carries Revit's reason, so its text stays as it is — unless the run kept
+            // work anyway (a failed exec's own transactions): then what Revit did there is reported.
+            if ((cr.Success || changed != null) && revit != null)
                 foreach (var line in revit.ToTextLines()) text = AppendLine(text, line);
             if (checkLine != null) text = AppendLine(text, checkLine);
             if (coverage != null) foreach (var line in coverage.TextLines()) text = AppendLine(text, line);
@@ -558,8 +568,9 @@ namespace VibeModel.Services.Claude
                 case RunDecision.Nothing:
                     break;
                 case RunDecision.Preview:
-                    // A failed command keeps its own error; there is nothing to preview.
-                    if (cr == null || cr.Success) run.Line = run.Summary.PreviewLine();
+                    // A failed command keeps its own error; there is nothing to preview — except a failed exec,
+                    // whose snippet committed transactions of its own (this decision only comes with a change set).
+                    if (cr == null || cr.Success || IsExec(request.Command)) run.Line = run.Summary.PreviewLine();
                     break;
                 case RunDecision.QueryModified:
                     run.Replace = CommandResult.Error(ChangeApprovalPolicy.QueryModifiedCode,
@@ -862,12 +873,15 @@ namespace VibeModel.Services.Claude
                         if (refused != null) { cr = refused; revit = new FailureReport(); }
                         else cr = FailureCollector.Collect(() => _registry.ExecuteCore(item.Command, item.Args, app), out revit);
                         batchRevit.Merge(revit);
-                        if (IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore) batchExecs.Add(item.Args);
+                        // An exec that committed transactions of its own, also when it failed afterwards.
+                        bool execKept = IsExec(item.Command) && CreatedElementsRecorder.RecordedCount > recordedBefore;
+                        if (execKept) batchExecs.Add(item.Args);
 
                         sb.AppendLine(">>> " + item.Command +
                                       (string.IsNullOrEmpty(item.Args) ? "" : " " + item.Args));
                         sb.AppendLine(cr.RenderText());
-                        if (cr.Success)
+                        // What Revit did in the kept transactions (a deleted annotation) is reported for a failed exec too.
+                        if (cr.Success || execKept)
                             foreach (var line in revit.ToTextLines()) sb.AppendLine(line);
                         sb.AppendLine();
 
@@ -881,7 +895,9 @@ namespace VibeModel.Services.Claude
                         entries.Add(entry);
 
                         if (!cr.Success) anyError = true;
-                        else if (_registry.IsModification(item.Command)) anyModified = true;
+                        // A failed exec whose snippet committed transactions of its own changed the model too:
+                        // the batch asks, reports, checks and journals it like the single-command path.
+                        if (cr.Success ? _registry.IsModification(item.Command) : execKept) anyModified = true;
                     }
 
                     if (req.Atomic && anyError)

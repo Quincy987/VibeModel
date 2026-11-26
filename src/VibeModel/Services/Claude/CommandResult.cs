@@ -38,6 +38,18 @@ namespace VibeModel.Services.Claude
         public static CommandResult Error(string code, string message, string suggestion = null)
             => new CommandResult { Success = false, ErrorCode = code, Message = message, Suggestion = suggestion };
 
+        /// <summary>
+        /// A failure whose text form is written by the command itself (it starts with "ERROR" and
+        /// carries more than one line — exec's compiler output, the snippet's partial output):
+        /// rendered verbatim in text mode, a normal error envelope in JSON.
+        /// </summary>
+        public static CommandResult TextError(string code, string text, string message, string suggestion = null)
+            => new CommandResult
+            {
+                Success = false, _rawText = text, _isLegacy = true,
+                ErrorCode = code, Message = message, Suggestion = suggestion
+            };
+
         // Wrap an unmigrated command's raw string. Detects the project-wide "ERROR" convention,
         // but always preserves the original text verbatim for text-mode rendering.
         public static CommandResult Legacy(string rawText)

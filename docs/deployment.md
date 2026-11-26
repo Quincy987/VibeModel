@@ -19,6 +19,7 @@ Measured on Revit 2023 / Windows 11 (2026-10-14). The verification report with s
 | `%LOCALAPPDATA%\VibeModel\settings.json` | The user's settings; an API key in it is DPAPI-encrypted (`AnthropicApiKeyProtected`) |
 | `%LOCALAPPDATA%\VibeModel\logs\` | `log_<date>.txt` (warnings/errors always; everything with `VIBEMODEL_DEBUG=1`), `install.log`, `loader.log` (one line per Revit start: which version, from where, why), saved Diagnose reports |
 | `%LOCALAPPDATA%\VibeModel\chats\`, `servers\`, … | Chat history, the live HTTP server's port file |
+| `%LOCALAPPDATA%\VibeModel\scratch\<chat>\` | Claude Code's own working files per chat (code snippets it sends to Revit, screenshot copies), given to it as `VIBEMODEL_SCRATCH`; folders older than 7 days are removed when Revit starts |
 | `%ProgramData%\VibeModel\managed.json` *(optional, yours)* | Office-wide settings, read-only for VibeModel — see below |
 | `%USERPROFILE%\.local\bin\claude.exe` *(optional)* | Claude Code, only if a user installs it |
 

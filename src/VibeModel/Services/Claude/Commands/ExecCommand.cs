@@ -12,7 +12,8 @@ namespace VibeModel.Services.Claude.Commands
     public class ExecCommand : IClaudeCommand, IModificationCommand, IStructuredCommand
     {
         public string Name => "exec";
-        public string Description => "Execute C# code at runtime (use 'doc', 'uiDoc', 'uiApp'); loops with { } bodies stop after 25 s (?timeout=<s>, max 300)";
+        public string Description => "Execute C# code at runtime (use 'doc', 'uiDoc', 'uiApp'); " + ExecDialect.Short(VibeModel.Services.Update.UpdateService.RevitYear) +
+            " (" + ExecDialect.NotInCSharp5 + "); loops with { } bodies stop after 25 s (?timeout=<s>, max 300)";
         public string Usage => "exec <csharp_code>";
 
         public string Execute(string args, UIApplication uiApp) => ExecuteStructured(args, uiApp).RenderText();
@@ -32,10 +33,16 @@ namespace VibeModel.Services.Claude.Commands
             // Plan 15: inside a run group (preview / read-only / approval) Revit refuses to save,
             // close or synchronize — say why instead of leaving Revit's bare message. Decided on the
             // snippet's own calls, not on the message text, which Revit words per UI language.
+            string runGroupHint = null;
+            // A compile failure never ran, so Revit refused nothing: no such hint there.
             if (RunContext.InRunGroup && text != null && text.IndexOf("ERROR", StringComparison.Ordinal) >= 0 &&
-                ChangeApprovalPolicy.SavesOrCloses(args))
-                text = text.TrimEnd() + "\nHint: " + ChangeApprovalPolicy.InRunGroupHint;
-            if (!clock.Fired) return CommandResult.Legacy(text);
+                ExecOutcome.CompileErrors(text) == null && ChangeApprovalPolicy.SavesOrCloses(args))
+            {
+                runGroupHint = ChangeApprovalPolicy.InRunGroupHint;
+                text = text.TrimEnd() + "\nHint: " + runGroupHint;
+            }
+            // A compile failure or a closing "ERROR in exec:" line is a failed command, not output.
+            if (!clock.Fired) return ExecOutcome.FromText(text, runGroupHint);
             // Transactions the snippet committed itself before the loop check fired are kept.
             bool kept = Standards.CreatedElementsRecorder.RecordedCount > recordedBefore;
             return CommandResult.Error(ExecDeadline.TimeoutCode, ExecDeadline.StoppedMessage(clock.Seconds, kept), ExecDeadline.StoppedHint);
@@ -162,6 +169,13 @@ public static class DynamicCommand
                     sb.AppendLine();
                     sb.AppendLine(hint);
                 }
+                // The C# 6+ constructs and Revit 2024+ members this compiler and this Revit lack.
+                var dialect = DialectHint(errors);
+                if (dialect != null)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(dialect);
+                }
                 return sb.ToString();
             }
 
@@ -199,6 +213,28 @@ public static class DynamicCommand
             }
         }
 
+
+        private static string DialectHint(System.Collections.Generic.List<ApiLookup.CompileError> errors)
+        {
+            try { return ExecDialect.Hint(errors, VibeModel.Services.Update.UpdateService.RevitYear, ApiHas); }
+            catch (Exception ex)
+            {
+                VibeModel.Infrastructure.Logger.Warn("exec dialect hint failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Does the running RevitAPI have this member (<see cref="ExecDialect.YearGaps"/>)?</summary>
+        internal static bool ApiHas(string probe)
+        {
+            switch (probe)
+            {
+                case ExecDialect.ProbeElementIdLong: return typeof(ElementId).GetConstructor(new[] { typeof(long) }) != null;
+                case ExecDialect.ProbeElementIdValue: return typeof(ElementId).GetProperty("Value") != null;
+                case ExecDialect.ProbeGetSlabShapeEditor: return typeof(Floor).GetMethod("GetSlabShapeEditor", Type.EmptyTypes) != null;
+                default: return true;
+            }
+        }
 
         // A snippet can commit several transactions; only the one Revit refused is gone.
         internal const string RollbackHint = "Revit rolled back the transaction that failed; anything the snippet committed in other transactions was kept. Fix the cause (or delete/re-host the dependent annotation first) and retry.";

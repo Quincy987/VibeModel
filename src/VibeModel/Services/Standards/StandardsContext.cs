@@ -133,7 +133,7 @@ namespace VibeModel.Services.Standards
 
                 var template = StandardsRender.RenderTemplateSummary(eval.Facts, av, eval.Active, eval.Match);
                 var standards = eval.Active != null ? StandardsRender.RenderCore(eval.Active) : null;
-                StandardsPrompt.Publish(template, standards);
+                StandardsPrompt.Publish(template, standards, eval.Active?.Id);
             }
             catch (Exception ex)
             {

@@ -79,7 +79,7 @@ namespace VibeModel.Services.Chat
         /// Only <see cref="ChatSessionMessage.Content"/> ever goes back to a model or the History view.
         /// </summary>
         public void Append(string role, string content, List<ChatSessionStep> steps, ChatSessionUsage usage,
-            string model, long? durationMs)
+            string model, long? durationMs, ChatSessionBuild build = null)
         {
             Append(role, content);
             var m = Messages[Messages.Count - 1];
@@ -87,6 +87,7 @@ namespace VibeModel.Services.Chat
             m.Usage = usage;
             m.Model = string.IsNullOrWhiteSpace(model) ? null : model;
             m.DurationMs = durationMs;
+            m.Build = build;
         }
 
         /// <summary>First-user-message title: single line, capped at 60 chars with ellipsis.</summary>
@@ -120,6 +121,37 @@ namespace VibeModel.Services.Chat
         public ChatSessionUsage Usage { get; set; }
         public string Model { get; set; }
         public long? DurationMs { get; set; }
+
+        /// <summary>Which VibeModel ran the turn, in which change mode, with which standards pack (phase 1); null in older chats.</summary>
+        public ChatSessionBuild Build { get; set; }
+    }
+
+    /// <summary>
+    /// The build, the change mode in force and the active standards pack of one turn: a scorecard
+    /// over an export can then tell builds apart and see which mode and pack the user worked in.
+    /// </summary>
+    public class ChatSessionBuild
+    {
+        /// <summary>"1.2.22".</summary>
+        public string Version { get; set; }
+        /// <summary>auto | ask | annotate | readonly (<see cref="Claude.ChangeApprovalPolicy.Name"/>), "+preview" for a preview turn.</summary>
+        public string Mode { get; set; }
+        /// <summary>The active pack's id; null = none.</summary>
+        public string Pack { get; set; }
+
+        public bool IsEmpty => string.IsNullOrEmpty(Version) && string.IsNullOrEmpty(Mode) && string.IsNullOrEmpty(Pack);
+
+        /// <summary>This session's: the running VibeModel, the mode in force (and a preview turn), the published pack.</summary>
+        public static ChatSessionBuild Current(bool previewTurn)
+        {
+            var v = typeof(ChatSessionBuild).Assembly.GetName().Version;
+            return new ChatSessionBuild
+            {
+                Version = Update.UpdateManifest.ShortVersion(v),
+                Mode = Claude.ChangeApprovalPolicy.Name(Claude.ChangeApprovalPolicy.EffectiveMode) + (previewTurn ? "+preview" : ""),
+                Pack = Standards.StandardsPrompt.ActivePackId
+            };
+        }
     }
 
     /// <summary>One tool call of a turn as stored: command, full args (capped, scrubbed), outcome, duration.</summary>

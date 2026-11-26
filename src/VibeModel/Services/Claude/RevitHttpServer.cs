@@ -383,15 +383,11 @@ namespace VibeModel.Services.Claude
 
             if (path == "batch" && request.Method == "POST")
             {
-                return HandleBatch(request.Body, rawQuery, fmt, request.Turn, options);
+                return HandleBatch(StripBom(request.Body), rawQuery, fmt, request.Turn, options);
             }
 
             // Single command — use POST body as args if no query args
-            var args = queryArgs;
-            if (string.IsNullOrEmpty(args) && request.Method == "POST" && !string.IsNullOrEmpty(request.Body))
-            {
-                args = request.Body.TrimEnd('\r', '\n');
-            }
+            var args = CommandArgs(request, queryArgs);
 
             var result = _commandHandler.EnqueueAndWait(path, args, fmt, request.Turn, options);
             return new HttpResponse(200, result,
@@ -546,6 +542,25 @@ namespace VibeModel.Services.Claude
             args = decoded.Substring(cut + 1).Trim();
             return true;
         }
+
+        /// <summary>
+        /// A single command's args: the decoded ?args=, else the POST body as it is. A file written by
+        /// Windows PowerShell 5.1's Set-Content -Encoding utf8 starts with a byte-order mark, sent as is
+        /// by --data-binary @file and as %EF%BB%BF by --data-urlencode args@file: never part of the args.
+        /// </summary>
+        internal static string CommandArgs(HttpRequest request, string queryArgs)
+        {
+            var args = StripBom(queryArgs);
+            if (string.IsNullOrEmpty(args) && request.Method == "POST" && !string.IsNullOrEmpty(request.Body))
+                args = StripBom(request.Body).TrimEnd('\r', '\n');
+            return args;
+        }
+
+        private const char ByteOrderMark = (char)0xFEFF;
+
+        /// <summary>The text without a leading byte-order mark (U+FEFF).</summary>
+        internal static string StripBom(string text) =>
+            string.IsNullOrEmpty(text) || text[0] != ByteOrderMark ? text : text.Substring(1);
 
         internal static string ParseQueryArgs(string query)
         {
