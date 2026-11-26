@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 
 namespace VibeModel.Services.Chat
@@ -14,9 +15,15 @@ namespace VibeModel.Services.Chat
     {
         public enum Kind { None, UsageLimit, LoginExpired, CommandUnavailable }
 
+        // Straight or typographic apostrophe: the CLI may print either.
         private static readonly Regex Limit = new Regex(
-            @"^(?:You've|You have) (?:hit|reached) your (?:session|usage|weekly|daily|5-hour|opus|monthly)?\s*limit\b(?:.*?\bresets?\s+(?<reset>[^\r\n]+?))?\s*\.?\s*$",
+            @"^(?:You['’]ve|You have) (?:hit|reached) your (?:session|usage|weekly|daily|5-hour|opus|monthly)?\s*limit\b(?:.*?\bresets?\s+(?<reset>[^\r\n]+?))?\s*\.?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+
+        // Older CLI builds: "Claude AI usage limit reached|1764158400" (the reset as Unix seconds).
+        private static readonly Regex OldLimit = new Regex(
+            @"^Claude AI usage limit reached(?:\|(?<epoch>\d{9,11}))?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // Only the CLI's own openings: an answer that explains some other login ("your Autodesk login
         // has expired") must stay an answer.
@@ -25,7 +32,7 @@ namespace VibeModel.Services.Chat
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex Unavailable = new Regex(
-            @"^/[\w-]+ (?:isn't|is not) available in this environment\.?\s*$",
+            @"^/[\w-]+ (?:isn['’]t|is not) available in this environment\.?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         /// <summary>What a text block (or the result event's error text) is; <paramref name="reset"/> = "2pm (Europe/Amsterdam)" when the limit says.</summary>
@@ -38,6 +45,14 @@ namespace VibeModel.Services.Chat
             if (m.Success)
             {
                 if (m.Groups["reset"].Success) reset = m.Groups["reset"].Value.Trim().TrimEnd('.');
+                return Kind.UsageLimit;
+            }
+            var old = OldLimit.Match(t);
+            if (old.Success)
+            {
+                if (old.Groups["epoch"].Success && long.TryParse(old.Groups["epoch"].Value, out var seconds))
+                    reset = DateTimeOffset.FromUnixTimeSeconds(seconds).ToLocalTime()
+                        .ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
                 return Kind.UsageLimit;
             }
             if (Login.IsMatch(t)) return Kind.LoginExpired;

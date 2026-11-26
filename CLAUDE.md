@@ -1094,7 +1094,8 @@ pool thread. The server drops a leading U+FEFF from `args` and POST bodies (`Rev
 token out on its first call, hence the literal header in both rules.
 **CLI notices** (`CliNotice`, pure): the CLI's own "You've hit your session limit · resets 2pm (Europe/Amsterdam)",
 "Failed to authenticate: OAuth session expired…" (also a block OPENING with "Invalid API key", "OAuth token expired", "Not
-logged in", "Please run /login" or "API Error: 401") and "/permissions isn't available in this environment." (anchored
+logged in", "Please run /login" or "API Error: 401"), an older CLI's "Claude AI usage limit reached|<unix seconds>" (the reset
+shown as local HH:mm) and "/permissions isn't available in this environment." (straight or typographic apostrophe; anchored
 on the start of the text block, a limit on the whole block — an answer that mentions a limit or another login is never
 caught) are never streamed
 raw: the turn ends through `onError` with `Strings.CliUsageLimit[Resets]` / `CliLoginExpired` (PowerShell → `claude` →

@@ -1,3 +1,4 @@
+using System;
 using VibeModel.Services.Chat;
 using Xunit;
 
@@ -13,6 +14,9 @@ namespace VibeModel.Tests
         [InlineData("You've hit your session limit · resets 2pm (Europe/Amsterdam)", CliNotice.Kind.UsageLimit, "2pm (Europe/Amsterdam)")]
         [InlineData("You've hit your session limit · resets 8:50pm (Europe/Amsterdam)", CliNotice.Kind.UsageLimit, "8:50pm (Europe/Amsterdam)")]
         [InlineData("You've hit your weekly limit", CliNotice.Kind.UsageLimit, null)]
+        [InlineData("You’ve hit your session limit · resets 2pm (Europe/Amsterdam)", CliNotice.Kind.UsageLimit, "2pm (Europe/Amsterdam)")]
+        [InlineData("Claude AI usage limit reached", CliNotice.Kind.UsageLimit, null)]
+        [InlineData("/permissions isn’t available in this environment.", CliNotice.Kind.CommandUnavailable, null)]
         [InlineData("Failed to authenticate: OAuth session expired and could not be refreshed", CliNotice.Kind.LoginExpired, null)]
         [InlineData("Invalid API key · Please run /login", CliNotice.Kind.LoginExpired, null)]
         [InlineData("API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"OAuth token has expired.\"}} · Please run /login", CliNotice.Kind.LoginExpired, null)]
@@ -34,6 +38,15 @@ namespace VibeModel.Tests
         public void AnswersThatMentionIt_AreNot(string text)
         {
             Assert.Equal(CliNotice.Kind.None, CliNotice.Classify(text, out _));
+        }
+
+        [Fact]
+        public void OldCliLimit_ReadsTheResetFromUnixSeconds()
+        {
+            var resetAt = new DateTimeOffset(2026, 11, 26, 14, 0, 0, TimeSpan.Zero);
+            Assert.Equal(CliNotice.Kind.UsageLimit,
+                CliNotice.Classify("Claude AI usage limit reached|" + resetAt.ToUnixTimeSeconds(), out var reset));
+            Assert.Equal(resetAt.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), reset);
         }
 
         [Fact]
