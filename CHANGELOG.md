@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.22 — Opdrachten die slagen en eerlijk geteld worden (2026-11-26)
+
 ### Fixed — opdrachten die slagen en eerlijk geteld worden
 Uit de export van 45 echte chats van een collega: 43 van de 251 opdrachten mislukten, en nog 10 scripts mislukten
 zonder dat iemand het zag.
