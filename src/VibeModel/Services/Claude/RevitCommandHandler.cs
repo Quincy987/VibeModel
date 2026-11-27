@@ -1337,7 +1337,8 @@ namespace VibeModel.Services.Claude
         public static RunOptions Current { get; internal set; }
 
         /// <summary>
-        /// True while the command runs inside a plan-15 run group (preview, read-only, approval):
+        /// True while the command runs inside a run group (plan 15: preview, read-only, approval; phase 2: also
+        /// every modifying exec that does not save or close):
         /// saving, closing or synchronizing is refused by Revit there, and exec explains why.
         /// </summary>
         public static bool InRunGroup { get; internal set; }

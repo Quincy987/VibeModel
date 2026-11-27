@@ -7,8 +7,8 @@ Uit dezelfde export van 45 chats: één script verving 10 arceringen en nam 256 
 zien, en de assistent drukte daarna zelf op Revit's ongedaan-maken.
 - Nieuw command `undo`: het neemt de laatste wijziging van VibeModel in dit model terug, als één Revit-stap. Het weigert
   zodra er daarna iets anders in het model veranderde (je eigen werk, Revit's eigen Ongedaan maken of Opnieuw) of het model
-  opnieuw geopend of gesynchroniseerd is, dus het haalt
-  nooit jouw werk weg. Het volgende antwoord bevestigt het (`undone: …`). `undo --status` laat zien wat het kan terugnemen.
+  opnieuw geopend of gesynchroniseerd is, dus het haalt nooit jouw werk weg. Het volgende antwoord bevestigt het
+  (`undone: …`). `undo --status` laat zien wat het kan terugnemen.
 - Eén overzicht per actie, zonder venster: een blad dat een andere naam of nummer kreeg, een view template die van views af
   ging of wisselde, en een filter dat bij views kwam, eraf ging of veranderde, staan in één regel (`-- attention:`).
 - Bij verdwenen maatvoering staat nu waarom: "de rand is weg en er kwam niets voor terug" of "kon niet opnieuw worden

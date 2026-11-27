@@ -280,9 +280,9 @@ namespace VibeModel.Services.Claude
         public static bool IsGuardedBatch(IEnumerable<string> commands) => AnnotationScope.AppliesToAny(commands);
 
         /// <summary>
-        /// True when the run needs a TransactionGroup it can roll back or show first. False under
-        /// <see cref="ChangeApprovalMode.Auto"/> without flags: the run is exactly as before plan 15.
-        /// A non-modifying command never needs one (it changes nothing).
+        /// True when the policy or a flag needs a TransactionGroup it can roll back or show first. False
+        /// under <see cref="ChangeApprovalMode.Auto"/> without flags; the per-command overload below adds
+        /// exec (phase 2). A non-modifying command never needs one (it changes nothing).
         /// </summary>
         public static bool NeedsRunGroup(ChangeApprovalMode mode, bool guarded, bool modifying, bool preview, bool readOnlyFlag)
         {

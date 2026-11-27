@@ -931,7 +931,7 @@ namespace VibeModel.Services.Claude
 
         public static bool IsLevel(Curve c) => c is Line l && Math.Abs(l.Direction.Z) < 0.01;
 
-        /// <summary>The curve a reference points at: an edge's curve, or a free curve (a filled region's boundary); null otherwise.</summary>
+        /// <summary>The curve a reference points at: an edge's curve (a filled region's boundary is a Solid edge, measured), or a curve; null otherwise.</summary>
         public static Curve CurveOf(Element host, Reference reference)
         {
             try
