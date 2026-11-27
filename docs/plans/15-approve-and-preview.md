@@ -39,6 +39,8 @@ also blocks the run.
   an exec deletion must never read as "delete 0". Views and types are not isolated or zoomed.
 - **exec inside a group**: under ask/preview/readonly exec runs inside the run group, so Revit
   refuses to save, close or synchronize there; exec adds a hint. Under auto exec is untouched.
+  (Changed in plan 22: a modifying exec now runs in a group under auto too — kept, one undo entry — unless it
+  saves, closes or synchronizes; see docs/plans/22-damage-control.md.)
 - **Waiting**: guarded requests under ask wait 10 min (HTTP, `RevitWebClient` in the pane, socket);
   then `APPROVAL_PENDING`. A decision the client never received is shown once in the next stamp. The
   rules block tells the model under ask to give its shell 600000 ms for such calls and never to

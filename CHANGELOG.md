@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### Added — schade beperken
+Uit dezelfde export van 45 chats: één script verving 10 arceringen en nam 256 maatlijnen mee, de proefrun liet dat niet
+zien, en de assistent drukte daarna zelf op Revit's ongedaan-maken.
+- Nieuw command `undo`: het neemt de laatste wijziging van VibeModel in dit model terug, als één Revit-stap. Het weigert
+  zodra er daarna iets anders in het model veranderde (je eigen werk, Revit's eigen Ongedaan maken of Opnieuw), dus het haalt
+  nooit jouw werk weg. Het volgende antwoord bevestigt het (`undone: …`). `undo --status` laat zien wat het kan terugnemen.
+- Eén overzicht per actie, zonder venster: een blad dat een andere naam of nummer kreeg, een view template die van views af
+  ging of wisselde, en een filter dat bij views kwam, eraf ging of veranderde, staan in één regel (`-- attention:`).
+- Bij verdwenen maatvoering staat nu waarom: "de rand is weg en er kwam niets voor terug" of "kon niet opnieuw worden
+  vastgemaakt".
+- Elk command in een opgeslagen chat bewaart kort wat VibeModel antwoordde (fouten, wat er veranderde, verdwenen of
+  teruggezette maatvoering, het overzicht); de chat-export toont het per stap en de scorecard telt het.
+
+### Changed
+- Een `exec`-script dat het model wijzigt is nu altijd één Revit-ongedaan-maken-stap, ook in *Automatisch*. Voorheen kon
+  één script meerdere stappen achterlaten, zodat één keer Ctrl+Z maar een deel terugdraaide. Een script dat zelf opslaat,
+  sluit of synchroniseert werkt zoals voorheen.
+- Maatlijnen op de rand van een arcering komen terug als de nieuwe arcering op dezelfde plek een rand heeft; verdwijnt de
+  rand, dan vervalt de maatlijn en staat dat in het overzicht.
+- Een script met een eigen proef-schakelaar (`bool CREATE = false`) krijgt een tip: een proef is `?preview=1` op het echte
+  script, want een schakelaar die stappen overslaat laat niet zien wat die stappen verwijderen.
+- Een script dat zelf Revit's Ongedaan maken aanroept wordt geweigerd; daarvoor is `undo`.
+- De regels voor de AI zeggen nu: geef elke verdwenen maatvoering en elke `-- attention:`-regel door, met het aantal
+  verwijderd en gemaakt, bied `undo` aan als er iets verdween waar niet om gevraagd was, en tel fouten per element in een
+  script in plaats van ze stil op te vangen.
+
+### Fixed
+- Revit's eigen automatische schetsmaten van een arcering werden als "verwijderde maatlijnen" gemeld.
+
 ## v1.2.22 — Opdrachten die slagen en eerlijk geteld worden (2026-11-26)
 
 ### Fixed — opdrachten die slagen en eerlijk geteld worden
