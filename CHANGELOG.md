@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.23 — Schade beperken (2026-11-27)
+
 ### Added — schade beperken
 Uit dezelfde export van 45 chats: één script verving 10 arceringen en nam 256 maatlijnen mee, de proefrun liet dat niet
 zien, en de assistent drukte daarna zelf op Revit's ongedaan-maken.
