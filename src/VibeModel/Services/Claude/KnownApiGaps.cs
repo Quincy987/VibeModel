@@ -134,7 +134,7 @@ namespace VibeModel.Services.Claude
                     "Autodesk.Revit.DB.Architecture.TopographySurface.Create(doc, points, facets) with the triangles as new PolymeshFacet(i, j, k) (indices into points) keeps a concave outline - measured: the same L gave 300 m²",
                     "check the triangles first with TopographySurface.IsValidFaceSet(facets, points); exec does not import Autodesk.Revit.DB.Architecture, write the full name",
                 },
-                Manual = "none for the outline; a boundary drawn by hand afterwards is Massing & Site -> Modify Site -> Subregion or Split Surface."
+                Manual = "none when the facets are given; to cut a surface by hand afterwards: Massing & Site -> Modify Site -> Split Surface."
             },
         };
 

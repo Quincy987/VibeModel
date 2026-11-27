@@ -57,6 +57,7 @@ namespace VibeModel.Services.Claude.Commands
 
             // ---- the world-space region to show ----
             XYZ min, max;
+            List<XYZ> boxPoints = null;
             int used = 0, outliers = 0;
             string source;
             double margin = RevitUnitHelper.MmToFeet(a.Margin);
@@ -74,18 +75,8 @@ namespace VibeModel.Services.Claude.Commands
             }
             else
             {
-                if (view is ViewPlan)
-                {
-                    min = new XYZ(RevitUnitHelper.MmToFeet(a.Box[0]), RevitUnitHelper.MmToFeet(a.Box[1]), -1e3);
-                    max = new XYZ(RevitUnitHelper.MmToFeet(a.Box[2]), RevitUnitHelper.MmToFeet(a.Box[3]), 1e3);
-                }
-                else
-                {
-                    var p0 = SheetHelper.ViewPoint(doc, view, a.Box[0], a.Box[1], out _);
-                    var p1 = SheetHelper.ViewPoint(doc, view, a.Box[2], a.Box[3], out _);
-                    min = new XYZ(Math.Min(p0.X, p1.X), Math.Min(p0.Y, p1.Y), Math.Min(p0.Z, p1.Z));
-                    max = new XYZ(Math.Max(p0.X, p1.X), Math.Max(p0.Y, p1.Y), Math.Max(p0.Z, p1.Z));
-                }
+                boxPoints = SheetHelper.ViewBoxPoints(doc, view, a.Box);
+                SheetHelper.Extent(boxPoints, out min, out max);
                 source = "--box";
             }
 
@@ -105,7 +96,8 @@ namespace VibeModel.Services.Claude.Commands
                     return;
                 }
                 // A section/elevation fit keeps to the section's own width (its cut is that wide).
-                CropTo(view, min, max, !(view is ViewPlan) && a.Box == null, out wMm, out hMm);
+                if (boxPoints != null) CropToPoints(view, boxPoints, false, out wMm, out hMm);
+                else CropTo(view, min, max, !(view is ViewPlan), out wMm, out hMm);
             });
             if (error != null)
                 return CommandResult.FromTransactionError(error, "REVIT_ERROR", "The view template may lock the crop region.");
@@ -173,11 +165,19 @@ namespace VibeModel.Services.Claude.Commands
         /// view; depth is kept. Returns the region's size in mm.
         /// </summary>
         internal static void CropTo(View view, XYZ min, XYZ max, bool clampWidth, out double wMm, out double hMm)
+            => CropToPoints(view, SheetHelper.Corners(min, max), clampWidth, out wMm, out hMm);
+
+        /// <summary>
+        /// Set the view's crop region to the extent of world points as seen in the view; depth is kept.
+        /// The corners of a rotated rectangle give exactly that rectangle, where the world box around
+        /// two of its corners would be larger.
+        /// </summary>
+        internal static void CropToPoints(View view, IEnumerable<XYZ> points, bool clampWidth, out double wMm, out double hMm)
         {
             var cb = view.CropBox;
             var inv = cb.Transform.Inverse;
             double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
-            foreach (var c in SheetHelper.Corners(min, max))
+            foreach (var c in points)
             {
                 var l = inv.OfPoint(c);
                 x0 = Math.Min(x0, l.X); y0 = Math.Min(y0, l.Y); x1 = Math.Max(x1, l.X); y1 = Math.Max(y1, l.Y);

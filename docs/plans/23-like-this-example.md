@@ -64,8 +64,11 @@ section/elevation: along/elevation mm, as `crop --box` and `text`); `--at` takes
 (`CropCommand.FitExtent`) + `--margin` (500 mm). With `--view <sheet>`: `--at` zooms the first
 view on the sheet that shows the elements and can be cropped (a perspective view cannot); `--box`
 is then paper mm and maps through the viewport (`Viewport.GetProjectionToSheetTransform`, the
-view's `GetModelToProjectionTransforms`) — a box inside no single viewport is refused with the
-reason (`ZoomArgs.PickViewport`, pure, smallest containing viewport wins).
+view's `GetModelToProjectionTransforms`), all four corners — on a plan turned against the project
+axes the world box of two corners is larger; measured: a 60 × 40 mm paper box at 1:500 crops
+exactly 30 × 20 m — and a box inside no single viewport is refused with the reason
+(`ZoomArgs.PickViewport`, pure, smallest containing viewport wins). `--at` on a view that does not
+draw the elements adds a `Note:` with `whyhidden`; ids that do not exist are counted.
 
 Mechanism: a `TransactionGroup` that is always rolled back. One transaction duplicates the view
 (`WithDetailing`, else `Duplicate`, said so), lets go of a scope box, crops it (`CropCommand.CropTo`;

@@ -215,7 +215,10 @@ curl -s "http://localhost:18884/chatlog?args=--export%20all"             # Expor
 close-up at full resolution of part of a view WITHOUT changing it — also a view on a sheet. `--box` is in the view's frame
 (plan project x,y; section along/elevation mm, as `crop --box`); `--at` = the elements' box + `--margin` (500 mm). With
 `--view <sheet>`: `--at` zooms the first view on it that shows the elements and can be cropped (perspective cannot); `--box`
-is paper mm, mapped through the viewport that holds it whole (`ZoomArgs.PickViewport`, pure; none → refused with why). Inside a
+is paper mm, mapped through the viewport that holds it whole (`ZoomArgs.PickViewport`, pure; none → refused with why) — all
+four corners (`SheetHelper.ViewBoxPoints` / `CropCommand.CropToPoints`, shared with `crop --box`): on a plan turned against the
+project axes the world box of two corners is larger (measured: 60 × 40 mm at 1:500 crops 30 × 20 m). `--at` on a view that does
+not draw the elements adds `Note: '<view>' does not draw … — whyhidden …`; ids that do not exist are counted in the line. Inside a
 `TransactionGroup` that is always rolled back: the view is duplicated (`WithDetailing`), the copy loses its scope box, is
 cropped (`CropCommand.CropTo`; 3D: + section box), gets the annotation crop at Revit's smallest offset and hides view markers
 not wholly inside the zone (measured: far notes and a far section marker otherwise shrank the zone to a speck), and is

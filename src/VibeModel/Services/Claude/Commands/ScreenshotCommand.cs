@@ -99,7 +99,7 @@ namespace VibeModel.Services.Claude.Commands
 
             // ---- a sheet: zoom the view on it that shows the elements, or that holds the paper box ----
             string fromSheet = null;
-            XYZ min = null, max = null;
+            List<XYZ> zone = null;   // world points whose extent in the view is the zone
             if (view is ViewSheet sheet)
             {
                 var vps = sheet.GetAllViewports().Select(i => doc.GetElement(i)).OfType<Viewport>().ToList();
@@ -126,7 +126,7 @@ namespace VibeModel.Services.Claude.Commands
                     if (view is View3D)
                         return "ERROR: the box lies on a 3D view ('" + view.Name + "'); a paper box cannot say how deep to look.\n" +
                                "Hint: zoom it with --view " + view.Id.IntegerValue + " --at <ids>.";
-                    if (!PaperToModel(doc, vp, view, origin, a.Box, out min, out max, out var mapError))
+                    if (!PaperToModel(vp, view, origin, a.Box, out zone, out var mapError))
                         return "ERROR: cannot map the paper box onto '" + view.Name + "': " + mapError + "\nHint: name the view with --view and give the box in its own frame.";
                     fromSheet = "viewport " + vp.Id.IntegerValue + " on sheet " + SheetHelper.Label(sheet) + ", paper box " + BoxText(a.Box) + " mm";
                 }
@@ -140,31 +140,22 @@ namespace VibeModel.Services.Claude.Commands
             if (v3 != null && a.Box != null && fromSheet == null)
                 return "ERROR: --box is for plans, sections and sheets; for a 3D view use --at <ids>.";
 
-            // ---- the world box to show ----
-            string source;
-            if (min == null && ids.Count > 0)
+            // ---- the zone: world points whose extent in the view is shown ----
+            string source, note = null;
+            if (zone == null && ids.Count > 0)
             {
-                CropCommand.FitExtent(doc, view, ids, out min, out max, out int used, out _);
+                CropCommand.FitExtent(doc, view, ids, out var lo, out var hi, out int used, out _);
                 if (used == 0) return "ERROR: none of " + IdList(ids) + " exists or has a size.\nHint: check the ids with 'get <id>'.";
                 var m = RevitUnitHelper.MmToFeet(a.Margin);
-                min = min - new XYZ(m, m, m);
-                max = max + new XYZ(m, m, m);
-                source = used + " element(s) + " + Mm.F(a.Margin) + " mm margin";
+                zone = SheetHelper.Corners(lo - new XYZ(m, m, m), hi + new XYZ(m, m, m)).ToList();
+                source = used + " element(s) + " + Mm.F(a.Margin) + " mm margin" +
+                         (used < ids.Count ? "; " + (ids.Count - used) + " of the ids skipped (missing or without a size)" : "");
+                if (fromSheet == null && !Shows(doc, view, ids.Select(i => new ElementId(i)).ToList()))
+                    note = "Note: '" + view.Name + "' does not draw " + IdList(ids) + " — the image shows the place, not the element; run 'whyhidden <id> " + view.Id.IntegerValue + "'.";
             }
-            else if (min == null)
+            else if (zone == null)
             {
-                if (view is ViewPlan)
-                {
-                    min = new XYZ(RevitUnitHelper.MmToFeet(a.Box[0]), RevitUnitHelper.MmToFeet(a.Box[1]), -1e3);
-                    max = new XYZ(RevitUnitHelper.MmToFeet(a.Box[2]), RevitUnitHelper.MmToFeet(a.Box[3]), 1e3);
-                }
-                else
-                {
-                    var p0 = SheetHelper.ViewPoint(doc, view, a.Box[0], a.Box[1], out _);
-                    var p1 = SheetHelper.ViewPoint(doc, view, a.Box[2], a.Box[3], out _);
-                    min = new XYZ(Math.Min(p0.X, p1.X), Math.Min(p0.Y, p1.Y), Math.Min(p0.Z, p1.Z));
-                    max = new XYZ(Math.Max(p0.X, p1.X), Math.Max(p0.Y, p1.Y), Math.Max(p0.Z, p1.Z));
-                }
+                zone = SheetHelper.ViewBoxPoints(doc, view, a.Box);
                 source = "--box";
             }
             else source = "paper box";
@@ -195,10 +186,11 @@ namespace VibeModel.Services.Claude.Commands
                             scope.Set(ElementId.InvalidElementId);
                         if (copy is View3D c3)
                         {
-                            c3.SetSectionBox(new BoundingBoxXYZ { Min = min, Max = max });
+                            SheetHelper.Extent(zone, out var lo, out var hi);
+                            c3.SetSectionBox(new BoundingBoxXYZ { Min = lo, Max = hi });
                             c3.IsSectionBoxActive = true;
                         }
-                        CropCommand.CropTo(copy, min, max, false, out wMm, out hMm);
+                        CropCommand.CropToPoints(copy, zone, false, out wMm, out hMm);
                         copy.CropBoxVisible = false;
                         // Notes far outside the zone would widen the image until the zone is a speck
                         // (measured on a plan): clip annotations to the zone, at Revit's smallest offset.
@@ -233,11 +225,12 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("SCREENSHOT (ZOOM)");
             sb.AppendLine("=================");
             sb.AppendLine("View: " + view.Name + " (" + view.ViewType + (view.Scale > 0 ? ", 1:" + view.Scale : "") + ")" + (fromSheet != null ? " — " + fromSheet : ""));
-            sb.AppendLine("Zoom: " + FrameBox(view, min, max) + ", " + Mm.F(wMm) + " × " + Mm.F(hMm) + " mm (" + source + "), " +
+            sb.AppendLine("Zoom: " + FrameBox(view, zone) + ", " + Mm.F(wMm) + " × " + Mm.F(hMm) + " mm (" + source + "), " +
                           "on a temporary copy of the view " + copyKind + " (nothing changed)");
             sb.AppendLine("Pixels (long edge): " + a.Pixels + (wMm > 0 ? " (" + Math.Round(a.Pixels / Math.Max(wMm, hMm) * 1000) + " px per m)" : ""));
             sb.AppendLine("Size: " + (info.Length / 1024) + " KB");
             sb.AppendLine("Path: " + png);
+            if (note != null) sb.AppendLine(note);
             sb.AppendLine();
             sb.AppendLine("The PNG at the path above shows that zone of '" + view.Name + "'. Open/read it to check the detail.");
             return sb.ToString();
@@ -299,23 +292,24 @@ namespace VibeModel.Services.Claude.Commands
             catch { return false; }
         }
 
-        /// <summary>A paper box (mm from the sheet's lower-left) as a world box in the viewport's view.</summary>
-        private static bool PaperToModel(Document doc, Viewport vp, View view, XYZ origin, double[] box, out XYZ min, out XYZ max, out string error)
+        /// <summary>
+        /// A paper box (mm from the sheet's lower-left) as the world points of its four corners in the
+        /// viewport's view — all four: on a plan turned against the project axes, the world box of two
+        /// opposite corners is larger than the paper box (measured: 60 × 40 mm at 1:500 now crops 30 × 20 m).
+        /// </summary>
+        private static bool PaperToModel(Viewport vp, View view, XYZ origin, double[] box, out List<XYZ> corners, out string error)
         {
-            min = max = null; error = null;
+            corners = null; error = null;
             try
             {
                 if (!vp.HasViewportTransforms()) { error = "the viewport has no view transform."; return false; }
-                var toSheet = vp.GetProjectionToSheetTransform().Inverse;
+                var toProjection = vp.GetProjectionToSheetTransform().Inverse;
                 var projections = view.GetModelToProjectionTransforms();
                 if (projections == null || projections.Count == 0) { error = "the view has no projection transform."; return false; }
                 if (projections.Count > 1) { error = "the view is split into " + projections.Count + " parts on the sheet."; return false; }
                 var toModel = projections[0].GetModelToProjectionTransform().Inverse;
-                var a = toModel.OfPoint(toSheet.OfPoint(SheetHelper.ToSheet(origin, box[0], box[1])));
-                var b = toModel.OfPoint(toSheet.OfPoint(SheetHelper.ToSheet(origin, box[2], box[3])));
-                min = new XYZ(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z));
-                max = new XYZ(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z));
-                if (view is ViewPlan) { min = new XYZ(min.X, min.Y, -1e3); max = new XYZ(max.X, max.Y, 1e3); }
+                corners = new[] { new[] { box[0], box[1] }, new[] { box[2], box[1] }, new[] { box[2], box[3] }, new[] { box[0], box[3] } }
+                    .Select(c => toModel.OfPoint(toProjection.OfPoint(SheetHelper.ToSheet(origin, c[0], c[1])))).ToList();
                 return true;
             }
             catch (Exception ex)
@@ -326,22 +320,16 @@ namespace VibeModel.Services.Claude.Commands
         }
 
         /// <summary>The zone in the frame the other commands use: plan x,y; section along + elevation; 3D the world box.</summary>
-        private static string FrameBox(View view, XYZ min, XYZ max)
+        private static string FrameBox(View view, IList<XYZ> zone)
         {
             Func<double, string> mm = f => Mm.F(RevitUnitHelper.FeetToMm(f));
+            Func<Func<XYZ, double>, string> range = f => mm(zone.Min(f)) + "…" + mm(zone.Max(f));
             if (view is ViewPlan)
-                return "x " + mm(min.X) + "…" + mm(max.X) + ", y " + mm(min.Y) + "…" + mm(max.Y) + " (project x,y mm)";
+                return "x " + range(p => p.X) + ", y " + range(p => p.Y) + " (project x,y mm)";
             if (view is View3D)
-                return "x " + mm(min.X) + "…" + mm(max.X) + ", y " + mm(min.Y) + "…" + mm(max.Y) + ", z " + mm(min.Z) + "…" + mm(max.Z) + " (model mm)";
-            double a0 = double.MaxValue, a1 = double.MinValue;
-            foreach (var c in SheetHelper.Corners(min, max))
-            {
-                var along = SheetHelper.Along(view, c);
-                a0 = Math.Min(a0, along); a1 = Math.Max(a1, along);
-            }
-            return "x " + mm(a0) + "…" + mm(a1) + ", y " + mm(min.Z) + "…" + mm(max.Z) + " (along the view, elevation mm)";
+                return "x " + range(p => p.X) + ", y " + range(p => p.Y) + ", z " + range(p => p.Z) + " (model mm)";
+            return "x " + range(p => SheetHelper.Along(view, p)) + ", y " + range(p => p.Z) + " (along the view, elevation mm)";
         }
-
         private static string BoxText(double[] b) => Mm.F(b[0]) + " " + Mm.F(b[1]) + " " + Mm.F(b[2]) + " " + Mm.F(b[3]);
 
         private static string IdList(List<int> ids)

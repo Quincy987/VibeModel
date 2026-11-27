@@ -182,8 +182,11 @@ namespace VibeModel.Services.Claude.Commands
                 if (!q.HasExpression) matched = all.Where(e => countReader.Read(e) != null).ToList();
             }
 
-            var cats = FilterQuery.ByCount(matched.Select(CategoryName));
-            matched = matched.OrderBy(e => cats.FindIndex(c => c.Key == CategoryName(e))).ThenBy(e => e.Id.IntegerValue).ToList();
+            // Largest category first, then by id: each category's name read once per element.
+            var named = matched.Select(e => new KeyValuePair<Element, string>(e, CategoryName(e))).ToList();
+            var cats = FilterQuery.ByCount(named.Select(n => n.Value));
+            var rank = cats.Select((c, i) => new KeyValuePair<string, int>(c.Key, i)).ToDictionary(p => p.Key, p => p.Value);
+            matched = named.OrderBy(n => rank[n.Value]).ThenBy(n => n.Key.Id.IntegerValue).Select(n => n.Key).ToList();
             sw.Stop();
             if (sw.ElapsedMilliseconds > SlowAnyMs)
                 Logger.Warn("filter any read " + all.Count + " elements in " + sw.ElapsedMilliseconds + " ms (" +
@@ -193,7 +196,7 @@ namespace VibeModel.Services.Claude.Commands
             string scope = view != null ? " [view: " + view.Name + "]" : "";
 
             if (countParam != null)
-                return CountAny(matched, countReader, countParam, expression, scope, all.Count, countNote, spellingNote);
+                return CountAny(matched, countReader, expression, scope, all.Count, countNote, spellingNote);
 
             if (selectResults && matched.Count > 0)
             {
@@ -229,7 +232,7 @@ namespace VibeModel.Services.Claude.Commands
             return sb.ToString();
         }
 
-        private static string CountAny(List<Element> elements, ParamReader reader, string countParam, string expression, string scope,
+        private static string CountAny(List<Element> elements, ParamReader reader, string expression, string scope,
                                        int read, string countNote, string spellingNote)
         {
             var groups = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);

@@ -211,6 +211,22 @@ namespace VibeModel.Services.Helpers
             }
         }
 
+        /// <summary>
+        /// The four corners of a box x0 y0 x1 y1 given in the view's own frame (<see cref="ViewPoint"/>) as
+        /// world points, for <c>CropCommand.CropToPoints</c> — shared by `crop --box` and `screenshot --box`.
+        /// </summary>
+        public static List<XYZ> ViewBoxPoints(Document doc, View view, double[] box)
+            => new[] { new[] { box[0], box[1] }, new[] { box[2], box[1] }, new[] { box[2], box[3] }, new[] { box[0], box[3] } }
+                .Select(c => ViewPoint(doc, view, c[0], c[1], out _)).ToList();
+
+        /// <summary>The world box around points.</summary>
+        public static void Extent(IEnumerable<XYZ> points, out XYZ min, out XYZ max)
+        {
+            var list = points.ToList();
+            min = new XYZ(list.Min(p => p.X), list.Min(p => p.Y), list.Min(p => p.Z));
+            max = new XYZ(list.Max(p => p.X), list.Max(p => p.Y), list.Max(p => p.Z));
+        }
+
         /// <summary>The 8 corners of the box min..max.</summary>
         public static IEnumerable<XYZ> Corners(XYZ min, XYZ max)
         {

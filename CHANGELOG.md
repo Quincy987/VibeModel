@@ -7,11 +7,12 @@ Uit dezelfde export van 45 chats: elke vraag wees naar een voorbeeld in het mode
 zoeken met een script dat alle parameters van alle elementen las liet Revit twee keer vastlopen, en voor een close-up bouwde
 de assistent tijdelijke views of knipte zelf afbeeldingen bij.
 - `filter any <parameter> <operator> <waarde>` zoekt in alle categorieën tegelijk, per categorie geteld, met `--count`,
-  `--ids` en `--select`. Het leest per element alleen die ene parameter (2 803 elementen in ongeveer 0,1 s). Een verkeerd
+  `--ids` en `--select`. Het leest per element alleen die ene parameter (2 803 elementen in 0,1 à 0,2 s). Een verkeerd
   geschreven naam krijgt de spelling van Revit of de namen die erop lijken.
 - `screenshot --at <ids>` en `screenshot --box x0 y0 x1 y1` zoomen in op een deel van een view, op volle resolutie, ook
   als die view op een blad staat (`--view <blad>`, het vak dan in papier-mm). Dat gebeurt op een tijdelijke kopie die meteen
-  wordt teruggedraaid: er komt geen view bij, er verandert niets en er komt geen stap in Ctrl+Z.
+  wordt teruggedraaid: er komt geen view bij, er verandert niets en er komt geen stap in Ctrl+Z. Tekent de view de
+  gevraagde elementen niet, dan zegt het antwoord dat erbij.
 - `sheetinfo` toont het detailnummer van elke viewport.
 
 ### Changed
