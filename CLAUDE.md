@@ -219,8 +219,8 @@ is paper mm, mapped through the viewport that holds it whole (`ZoomArgs.PickView
 four corners (`SheetHelper.ViewBoxPoints` / `CropCommand.CropToPoints`, shared with `crop --box`): on a plan turned against the
 project axes the world box of two corners is larger (measured: 60 × 40 mm at 1:500 crops 30 × 20 m). `--at` on a view that does
 not draw the elements adds `Note: '<view>' does not draw … — whyhidden …`; ids that do not exist are counted in the line. Inside a
-`TransactionGroup` that is always rolled back: the view is duplicated (`WithDetailing`), the copy loses its scope box, is
-cropped (`CropCommand.CropTo`; 3D: + section box), gets the annotation crop at Revit's smallest offset and hides view markers
+`TransactionGroup` that is always rolled back: the view is duplicated (`WithDetailing`), the copy loses its scope box and a
+shaped or split crop (not met live), is cropped (`CropCommand.CropToPoints`; 3D: + section box), gets the annotation crop at Revit's smallest offset and hides view markers
 not wholly inside the zone (measured: far notes and a far section marker otherwise shrank the zone to a speck), and is
 exported with no transaction open. `TemporaryWork` (scope) makes `OnDocumentChanged` return early, so nothing is counted,
 journaled, recorded or offered to `undo`; the counter is also rewound. The response keeps `Path:` and adds `Zoom: <box in the

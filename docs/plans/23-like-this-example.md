@@ -71,7 +71,8 @@ exactly 30 × 20 m — and a box inside no single viewport is refused with the r
 draw the elements adds a `Note:` with `whyhidden`; ids that do not exist are counted.
 
 Mechanism: a `TransactionGroup` that is always rolled back. One transaction duplicates the view
-(`WithDetailing`, else `Duplicate`, said so), lets go of a scope box, crops it (`CropCommand.CropTo`;
+(`WithDetailing`, else `Duplicate`, said so), lets go of a scope box and of a shaped or split crop
+(not met live), crops it (`CropCommand.CropToPoints`;
 a 3D view also gets a section box), hides the crop frame, turns the annotation crop on at Revit's
 smallest offset and hides view markers (sections, elevations, callouts) that are not wholly inside
 the zone — then `ExportImage` of the copy with no transaction open, then the rollback. While it

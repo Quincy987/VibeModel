@@ -203,7 +203,7 @@ namespace VibeModel.Services.Helpers
                     }
                 Func<double, string> mm = f => Claude.Mm.F(RevitUnitHelper.FeetToMm(f));
                 return "x " + mm(x0) + "…" + mm(x1) + ", y " + mm(y0) + "…" + mm(y1) + " mm" +
-                       (view.CropBoxActive ? " (crop region)" : " (crop off: the view's whole extent)");
+                       (view.CropBoxActive ? " (crop region)" : " (its crop region, which is off: the view shows more)");
             }
             catch
             {

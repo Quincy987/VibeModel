@@ -184,6 +184,8 @@ namespace VibeModel.Services.Claude.Commands
                         var scope = copy.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP);
                         if (scope != null && !scope.IsReadOnly && scope.AsElementId() != ElementId.InvalidElementId)
                             scope.Set(ElementId.InvalidElementId);
+                        // A shaped or split crop region is no rectangle to set; the copy goes back to a plain one.
+                        ReleaseCropShape(copy);
                         if (copy is View3D c3)
                         {
                             SheetHelper.Extent(zone, out var lo, out var hi);
@@ -266,6 +268,18 @@ namespace VibeModel.Services.Claude.Commands
                 if (hide.Count > 0) copy.HideElements(hide);
             }
             catch { /* markers stay; the zone is then smaller in the image */ }
+        }
+
+        private static void ReleaseCropShape(View copy)
+        {
+            try
+            {
+                var shape = copy.GetCropRegionShapeManager();
+                if (shape == null) return;
+                if (shape.Split) shape.RemoveSplit();
+                if (shape.ShapeSet) shape.RemoveCropRegionShape();
+            }
+            catch { /* the crop below then reports Revit's own refusal */ }
         }
 
         private static void ClipAnnotations(View copy)

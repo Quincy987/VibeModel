@@ -127,7 +127,8 @@ namespace VibeModel.Services.Claude.Commands
             if (extent != null) sb.AppendLine("View in this frame: " + extent);
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {
-                { "created", new List<object> { fi.Id.IntegerValue } }, { "type", Label(symbol) }, { "view", view.Id.IntegerValue }, { "rotateDeg", a.Rotate }
+                { "created", new List<object> { fi.Id.IntegerValue } }, { "type", Label(symbol) }, { "view", view.Id.IntegerValue }, { "rotateDeg", a.Rotate },
+                { "frame", convention }, { "viewExtent", extent }
             });
         }
 
