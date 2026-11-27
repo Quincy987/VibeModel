@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## v1.2.24 — Zoeken en van dichtbij kijken (2026-11-27)
+
+### Added — zoeken en van dichtbij kijken
+Uit dezelfde export van 45 chats: elke vraag wees naar een voorbeeld in het model ("zoals de andere kant"). Het voorbeeld
+zoeken met een script dat alle parameters van alle elementen las liet Revit twee keer vastlopen, en voor een close-up bouwde
+de assistent tijdelijke views of knipte zelf afbeeldingen bij.
+- `filter any <parameter> <operator> <waarde>` zoekt in alle categorieën tegelijk, per categorie geteld, met `--count`,
+  `--ids` en `--select`. Het leest per element alleen die ene parameter (2 803 elementen in 0,1 à 0,2 s). Een verkeerd
+  geschreven naam krijgt de spelling van Revit of de namen die erop lijken.
+- `screenshot --at <ids>` en `screenshot --box x0 y0 x1 y1` zoomen in op een deel van een view, op volle resolutie, ook
+  als die view op een blad staat (`--view <blad>`, het vak dan in papier-mm). Dat gebeurt op een tijdelijke kopie die meteen
+  wordt teruggedraaid: er komt geen view bij, er verandert niets en er komt geen stap in Ctrl+Z. Tekent de view de
+  gevraagde elementen niet, dan zegt het antwoord dat erbij.
+- `sheetinfo` toont het detailnummer van elke viewport.
+
+### Changed
+- `region` zegt waar de view ligt in zijn eigen coördinaten, zodat een arcering niet meer verschoven terechtkomt.
+- `apilookup TopographySurface` vertelt dat hol terrein in Revit 2023 wel kan, met driehoeken (gemeten: een L-vorm van
+  300 m² bleef 300 m², zonder driehoeken werd het 350 m²).
+- De AI zoekt een voorbeeld op waarde met `filter any` en kijkt van dichtbij met `screenshot --at`, in plaats van een
+  script over alle parameters of een tijdelijke view.
+
+### Fixed
+- `set <viewport> "Detail Number" 3` werd geweigerd als "alleen-lezen": een viewport heeft twee parameters met die naam.
+  Bij twee parameters met dezelfde naam kiest `set` nu de schrijfbare.
+
 ## v1.2.23 — Schade beperken (2026-11-27)
 
 ### Added — schade beperken

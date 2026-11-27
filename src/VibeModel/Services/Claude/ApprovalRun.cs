@@ -120,9 +120,10 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// Parts of an element nobody thinks of as an element: no category (sketch, sketch plane,
-        /// internal objects; types excepted), sketch lines and automatic sketch dimensions.
+        /// internal objects; types excepted), sketch lines and automatic sketch dimensions. Also
+        /// what `filter any` leaves out of a whole-model search.
         /// </summary>
-        private static bool Hidden(Element e)
+        internal static bool Hidden(Element e)
         {
             if (e is ElementType) return false;
             var cat = e.Category;

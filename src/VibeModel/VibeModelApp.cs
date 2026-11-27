@@ -461,6 +461,9 @@ namespace VibeModel
             {
                 var doc = e.GetDocument();
                 if (doc == null) return;
+                // A read-only command's temporary work (a zoomed screenshot's view copy), always
+                // rolled back: not an edit, not undoable, nothing created.
+                if (TemporaryWork.Active) return;
                 var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
 
                 // Office standards: the post-command check looks at what a command added (the

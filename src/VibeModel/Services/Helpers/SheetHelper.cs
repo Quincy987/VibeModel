@@ -175,6 +175,58 @@ namespace VibeModel.Services.Helpers
             return view.Origin;
         }
 
+        /// <summary>
+        /// Where the view sits in the frame the annotation commands use (<see cref="ViewPoint"/>): the
+        /// crop region's x and y range in mm — plan: project x,y; section/elevation: along the view
+        /// and elevation; sheet: paper. So a region or note placed from a script's own origin can be
+        /// checked against it. Null for views without a crop region (3D, drafting, legends, schedules).
+        /// </summary>
+        public static string FrameExtent(Document doc, View view)
+        {
+            try
+            {
+                if (view is ViewSheet sheet)
+                {
+                    var r = PaperRect(doc, sheet, out _, out _);
+                    return "x " + Claude.Mm.F(r.X0) + "…" + Claude.Mm.F(r.X1) + ", y " + Claude.Mm.F(r.Y0) + "…" + Claude.Mm.F(r.Y1) + " (paper mm)";
+                }
+                if (view is View3D || !HasCropRegion(view)) return null;
+                var cb = view.CropBox;
+                if (cb == null) return null;
+                double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+                foreach (var cx in new[] { cb.Min.X, cb.Max.X })
+                    foreach (var cy in new[] { cb.Min.Y, cb.Max.Y })
+                    {
+                        var w = cb.Transform.OfPoint(new XYZ(cx, cy, cb.Max.Z));
+                        double fx = view is ViewPlan ? w.X : Along(view, w), fy = view is ViewPlan ? w.Y : w.Z;
+                        x0 = Math.Min(x0, fx); x1 = Math.Max(x1, fx); y0 = Math.Min(y0, fy); y1 = Math.Max(y1, fy);
+                    }
+                Func<double, string> mm = f => Claude.Mm.F(RevitUnitHelper.FeetToMm(f));
+                return "x " + mm(x0) + "…" + mm(x1) + ", y " + mm(y0) + "…" + mm(y1) + " mm" +
+                       (view.CropBoxActive ? " (crop region)" : " (its crop region, which is off: the view shows more)");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The four corners of a box x0 y0 x1 y1 given in the view's own frame (<see cref="ViewPoint"/>) as
+        /// world points, for <c>CropCommand.CropToPoints</c> — shared by `crop --box` and `screenshot --box`.
+        /// </summary>
+        public static List<XYZ> ViewBoxPoints(Document doc, View view, double[] box)
+            => new[] { new[] { box[0], box[1] }, new[] { box[2], box[1] }, new[] { box[2], box[3] }, new[] { box[0], box[3] } }
+                .Select(c => ViewPoint(doc, view, c[0], c[1], out _)).ToList();
+
+        /// <summary>The world box around points.</summary>
+        public static void Extent(IEnumerable<XYZ> points, out XYZ min, out XYZ max)
+        {
+            var list = points.ToList();
+            min = new XYZ(list.Min(p => p.X), list.Min(p => p.Y), list.Min(p => p.Z));
+            max = new XYZ(list.Max(p => p.X), list.Max(p => p.Y), list.Max(p => p.Z));
+        }
+
         /// <summary>The 8 corners of the box min..max.</summary>
         public static IEnumerable<XYZ> Corners(XYZ min, XYZ max)
         {

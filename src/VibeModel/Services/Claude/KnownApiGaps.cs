@@ -118,6 +118,24 @@ namespace VibeModel.Services.Claude
                          "(Area for length × length; " + CalculatedFieldHint.TypeMismatch + "), the formula with the field names exactly as listed → OK. " +
                          "schedule --calc prints this with the Type filled in."
             },
+            new Gap
+            {
+                // A colleague's export: the AI said Revit 2023 terrain "only spans the convex hull", having looked up only
+                // the 2024+ Toposolid. Measured 2026-11-27 (plan 23): an L of 300 m² from 8 points gave 350 m² from the
+                // points alone and 300 m² with the 6 facets (IsValidFaceSet true).
+                Name = "terrain",
+                TypeKeys = new[] { "Toposolid", "TopographySurface" },
+                MemberKeys = new[] { "Toposolid.Create", "TopographySurface.Create" },
+                Title = "terrain: Toposolid is Revit 2024+, a concave TopographySurface needs facets",
+                Short = "concave terrain (Toposolid is 2024+)",
+                Cannot = "Revit 2023 has no Toposolid (2024+). TopographySurface.Create(doc, points) triangulates the points' convex hull: a notch or bay in the outline is filled in (measured: an L of 300 m² came out at 350 m²).",
+                Works = new[]
+                {
+                    "Autodesk.Revit.DB.Architecture.TopographySurface.Create(doc, points, facets) with the triangles as new PolymeshFacet(i, j, k) (indices into points) keeps a concave outline - measured: the same L gave 300 m²",
+                    "check the triangles first with TopographySurface.IsValidFaceSet(facets, points); exec does not import Autodesk.Revit.DB.Architecture, write the full name",
+                },
+                Manual = "none when the facets are given; to cut a surface by hand afterwards: Massing & Site -> Modify Site -> Split Surface."
+            },
         };
 
         /// <summary>

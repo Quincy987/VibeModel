@@ -112,7 +112,21 @@ namespace VibeModel.Services.Helpers
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+        /// <summary>
+        /// The parameter called <paramref name="name"/> (case-insensitive). When several share the name,
+        /// a writable one wins — measured: a viewport carries two "Detail Number" parameters and the
+        /// first one Revit lists is read-only, so `set &lt;viewport&gt; "Detail Number" 3` was refused.
+        /// </summary>
         public static Parameter Lookup(Element e, string name)
-            => e.Parameters.Cast<Parameter>().FirstOrDefault(p => p.Definition != null && p.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        {
+            Parameter first = null;
+            foreach (Parameter p in e.Parameters)
+            {
+                if (p.Definition == null || !p.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!p.IsReadOnly) return p;
+                if (first == null) first = p;
+            }
+            return first;
+        }
     }
 }
