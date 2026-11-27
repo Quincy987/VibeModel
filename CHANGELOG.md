@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v1.2.24 — Zoeken en van dichtbij kijken (2026-11-27)
+
 ### Added — zoeken en van dichtbij kijken
 Uit dezelfde export van 45 chats: elke vraag wees naar een voorbeeld in het model ("zoals de andere kant"). Het voorbeeld
 zoeken met een script dat alle parameters van alle elementen las liet Revit twee keer vastlopen, en voor een close-up bouwde
