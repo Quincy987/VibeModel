@@ -108,6 +108,9 @@ namespace VibeModel
                 application.Idling += OnStandardsIdling;
                 application.ControlledApplication.DocumentOpened += OnDocumentOpenedOrClosed;
                 application.ControlledApplication.DocumentClosed += OnDocumentOpenedOrClosed;
+                // Phase 2: opening a document or synchronizing it starts Revit's undo list afresh.
+                application.ControlledApplication.DocumentOpened += OnUndoListReset;
+                application.ControlledApplication.DocumentSynchronizedWithCentral += OnUndoListReset;
                 StartStandardsBackgroundWork();
 
                 // In-app updates (plan 19): one check 8 s from now, off the main thread.
@@ -137,6 +140,8 @@ namespace VibeModel
                 application.Idling -= OnStandardsIdling;
                 application.ControlledApplication.DocumentOpened -= OnDocumentOpenedOrClosed;
                 application.ControlledApplication.DocumentClosed -= OnDocumentOpenedOrClosed;
+                application.ControlledApplication.DocumentOpened -= OnUndoListReset;
+                application.ControlledApplication.DocumentSynchronizedWithCentral -= OnUndoListReset;
 
                 if (_usingFallback)
                 {
@@ -314,6 +319,23 @@ namespace VibeModel
             catch
             {
                 // Tracking is best-effort.
+            }
+        }
+
+        // Revit's undo list of a freshly opened or synchronized document is empty: the undo command must
+        // not offer a change from before (its posted Undo would do nothing, or something else).
+        private void OnUndoListReset(object sender, EventArgs e)
+        {
+            try
+            {
+                Autodesk.Revit.DB.Document doc = null;
+                if (e is Autodesk.Revit.DB.Events.DocumentOpenedEventArgs opened) doc = opened.Document;
+                else if (e is Autodesk.Revit.DB.Events.DocumentSynchronizedWithCentralEventArgs synced) doc = synced.Document;
+                if (doc != null && !doc.IsFamilyDocument) UndoLedger.Forget(ModelChangeTracker.DocKey(doc.PathName, doc.Title));
+            }
+            catch
+            {
+                // Best-effort: the ledger's counter check still refuses after any edit.
             }
         }
 

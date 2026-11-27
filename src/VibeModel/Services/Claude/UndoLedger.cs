@@ -267,6 +267,20 @@ namespace VibeModel.Services.Claude
             _pending = null;
         }
 
+        /// <summary>
+        /// The document was opened or synchronized with central: Revit's undo list starts empty, so nothing
+        /// recorded before can be taken back. A posted undo still on its way for it is dropped too.
+        /// </summary>
+        public static void Forget(string docKey)
+        {
+            lock (Sync)
+            {
+                Stacks.Remove(docKey ?? "");
+                if (_lastAnywhere != null && string.Equals(_lastAnywhere.DocKey, docKey ?? "", StringComparison.OrdinalIgnoreCase)) _lastAnywhere = null;
+                if (_pending != null && string.Equals(_pending.Run.DocKey, docKey ?? "", StringComparison.OrdinalIgnoreCase)) _pending = null;
+            }
+        }
+
         // ------------------------------------------------------------------ reading
 
         /// <summary>The document's kept runs, newest first.</summary>

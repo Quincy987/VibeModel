@@ -173,6 +173,17 @@ namespace VibeModel.Tests
         }
 
         [Fact]
+        public void OpeningOrSyncingADocument_EmptiesItsLedger()
+        {
+            var a = Kept("VibeModel: exec a", 10, 12);
+            UndoLedger.MarkPosted(a, 12, Now);
+            UndoLedger.Forget(Doc);
+            Assert.Empty(UndoLedger.List(Doc));
+            Assert.False(UndoLedger.IsPending(Doc));
+            Assert.Contains("no change in this document", UndoLedger.Decide(Doc, "model", 12, Now).Reason);
+        }
+
+        [Fact]
         public void OurOwnUndo_IsNoUserEdit_ButStillMovesTheCounter()
         {
             var key = "untitled:phase2-" + Guid.NewGuid().ToString("N");
@@ -237,6 +248,18 @@ namespace VibeModel.Tests
             Assert.Equal(4, json.Count);
             Assert.Equal("sheet", ((Dictionary<string, object>)json[0])["kind"]);
             Assert.StartsWith("-- preview: attention: ", AttentionReport.Line(items, preview: true));
+        }
+
+        [Fact]
+        public void Attention_ATemplateSwap_IsOneItem_NotAlsoItsFilters()
+        {
+            var before = Snap();
+            var after = Snap();
+            after.Views[11].TemplateId = 0;
+            after.Views[11].FilterIds = new List<long> { 50 };      // the view's own filters show once the template is off
+            var items = AttentionReport.Compare(before, after, null);
+            Assert.Single(items);
+            Assert.Equal("template", items[0].Kind);
         }
 
         [Fact]
@@ -358,12 +381,28 @@ namespace VibeModel.Tests
         }
 
         [Fact]
-        public void TurnActivity_CarriesTheStatusToTheStoredStep()
+        public void TurnActivity_CarriesTheStatusToTheStoredStep_OnlyForVibeModelCommands()
         {
             var turn = new TurnActivity(DateTime.UtcNow);
             turn.Apply(ChatActivityEvent.Started("t1", new ToolCallInfo("exec", "x", "x")), DateTime.UtcNow);
             turn.Apply(ChatActivityEvent.Finished("t1", null, "-- changed: added 1"), DateTime.UtcNow);
-            Assert.Equal("-- changed: added 1", ChatSessionStep.FromTurn(turn)[0].Status);
+            // The CLI reading a file whose lines happen to look like status lines: not VibeModel's answer.
+            turn.Apply(ChatActivityEvent.Started("t2", new ToolCallInfo("@read", "notes.txt", "notes.txt")), DateTime.UtcNow);
+            turn.Apply(ChatActivityEvent.Finished("t2", null, "-- changed: added 9"), DateTime.UtcNow);
+            var steps = ChatSessionStep.FromTurn(turn);
+            Assert.Equal("-- changed: added 1", steps[0].Status);
+            Assert.Null(steps[1].Status);
+        }
+
+        [Fact]
+        public void StatusLines_NameTheFailedCommandsOfAJsonBatch()
+        {
+            var json = "{\"ok\":false,\"atomic\":false,\"rolledBack\":false,\"results\":[" +
+                       "{\"command\":\"wall\",\"args\":\"x\",\"result\":{\"ok\":true,\"data\":{}}}," +
+                       "{\"command\":\"delete\",\"args\":\"9\",\"result\":{\"ok\":false,\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"Element 9 not found\"}}}]," +
+                       "\"changes\":{\"added\":{\"count\":1}}}";
+            var status = ToolCallDescriber.StatusLines(json);
+            Assert.StartsWith("ERROR (delete): Element 9 not found\n-- changes: ", status);
         }
 
         // ---------------------------------------------------------------- the rules

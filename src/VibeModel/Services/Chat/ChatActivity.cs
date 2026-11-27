@@ -297,6 +297,14 @@ namespace VibeModel.Services.Chat
                         var hint = GetString(e, "suggestion");
                         if (!string.IsNullOrEmpty(hint)) lines.Add("Hint: " + FirstLine(hint));
                     }
+                    // A JSON batch: each failed command's error, named by its command.
+                    if (obj.TryGetValue("results", out var results))
+                        foreach (var item in results as object[] ?? (results as System.Collections.ArrayList)?.ToArray() ?? new object[0])
+                        {
+                            if (!(item is Dictionary<string, object> entry) || !entry.TryGetValue("result", out var r)) continue;
+                            var failed = r is string rs ? ErrorLine(rs) : ErrorLine(Json.Serialize(r));
+                            if (failed != null) lines.Add("ERROR (" + (GetString(entry, "command") ?? "?") + "): " + failed);
+                        }
                     foreach (var key in StatusKeys)
                         if (obj.TryGetValue(key, out var value) && value != null)
                             lines.Add("-- " + key + ": " + Shorten(value is string sv ? sv : Json.Serialize(value), 300));
@@ -620,7 +628,8 @@ namespace VibeModel.Services.Chat
                 if (step == null || step.State != StepState.Running) return;
                 step.State = string.IsNullOrEmpty(e.ErrorLine) ? StepState.Done : StepState.Failed;
                 step.ErrorLine = e.ErrorLine;
-                step.Status = e.Status;
+                // Only a VibeModel command's answer is a status; the CLI's own tools (@read, @shell …) are not.
+                step.Status = (step.Command ?? "").StartsWith("@", StringComparison.Ordinal) ? null : e.Status;
                 step.FinishedUtc = nowUtc;
             }
         }

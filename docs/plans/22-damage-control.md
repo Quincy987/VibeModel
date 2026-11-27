@@ -37,7 +37,7 @@ Not measured: a snippet that opens and edits another project document inside the
 `UndoLedger` (pure): per document the kept runs, newest last — undo name (the group name, else the
 last transaction the run committed), summary (command + `-- changed:`), the edit counter before and
 after (`ModelChangeTracker.GetTotalEdits`), whether it is one undo entry for sure (a VibeModel group,
-exactly one transaction, or `profile/extrude/sweep/lwall`, which group their own work). `undo` takes
+exactly one transaction, or `extrude/sweep/lwall`, which group their own work). `undo` takes
 back the LAST run by posting Revit's Undo (`PostableCommand.Undo`) and refuses — naming why — when
 there is none, when the counter moved since (the user, Revit's own Undo/Redo, another client: then
 the top of Revit's list is not that run), when the run may be several entries, inside a batch, when
@@ -52,7 +52,8 @@ the model stands). When the user's own Ctrl+Z right after VibeModel's last run t
 counter moved by one and the undone names include the run's), it leaves the ledger too; the run below
 only becomes undoable when every undone transaction was that run's (an undo of several steps at once
 may have taken more).
-`undo --status` lists the runs. A preview turn reports what it would take back. Journaled
+Opening a document or synchronizing it with central empties its ledger (Revit's undo list starts
+afresh). `undo --status` lists the runs. A preview turn reports what it would take back. Journaled
 (`· undo · took back 'VibeModel: exec …'`); refused on the file-based fallback; exec refuses a
 snippet that posts `PostableCommand.Undo/Redo` (`ExecSourceChecks.PostsUndo`, code `EXEC_POSTS_UNDO`).
 
@@ -106,7 +107,8 @@ reason.
 ## 6. What VibeModel answered, stored per step
 
 `ToolCallDescriber.StatusLines`: the ERROR line(s) with their Hint, every `-- ` line and a batch's
-`[…] rolled back` line (JSON: error, the status keys compacted, `meta`), scrubbed, ≤ 1200 chars. On
+`[…] rolled back` line (JSON: error, each failed batch command, the status keys compacted, `meta`), scrubbed,
+≤ 1200 chars; only for VibeModel commands, never the CLI's own tools (`@read`, `@shell`). On
 the ToolFinished event → the step → `ChatSessionStep.Status` (`status`, additive). The export prints
 `Wat VibeModel antwoordde bij stap N (cmd):` + a `text` block; the scorecard reads it
 (`stepsWithStatus`, `stepsRemovingAnnotations`, `annotationsRemoved`, `attentionLines`; the phase-1

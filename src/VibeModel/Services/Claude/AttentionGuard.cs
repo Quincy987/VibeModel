@@ -17,9 +17,6 @@ namespace VibeModel.Services.Claude
     {
         private const long SlowCaptureMs = 50;
 
-        /// <summary>Views read at most (their template and filters); the rest is counted, never silent.</summary>
-        public const int MaxViews = AttentionReport.MaxViews;
-
         public static AttentionReport.Snapshot Capture(Document doc)
         {
             if (doc == null || doc.IsFamilyDocument) return null;
@@ -33,7 +30,7 @@ namespace VibeModel.Services.Claude
                 foreach (var v in new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>())
                 {
                     if (v is ViewSheet) continue;
-                    if (read >= MaxViews) { s.UnreadViews.Add(v.Id.IntegerValue); continue; }
+                    if (read >= AttentionReport.MaxViews) { s.UnreadViews.Add(v.Id.IntegerValue); continue; }
                     read++;
                     var fact = new AttentionReport.ViewFact { Name = v.Name, IsTemplate = v.IsTemplate };
                     try { fact.TemplateId = v.ViewTemplateId != null && v.ViewTemplateId != ElementId.InvalidElementId ? v.ViewTemplateId.IntegerValue : 0; } catch { }

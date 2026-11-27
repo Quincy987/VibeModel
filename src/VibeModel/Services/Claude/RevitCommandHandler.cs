@@ -417,10 +417,11 @@ namespace VibeModel.Services.Claude
             return new AttentionOut { Items = items, NotRead = notChecked, Preview = preview };
         }
 
-        // Commands that make their change as ONE transaction group of their own (a generated family:
-        // save, load and place — plan 12), so several commits are still one undo entry.
+        // Commands that make their change as ONE transaction group of their own (ProfileRunner: load the
+        // generated family, place, join — plan 12), so several commits are still one undo entry. `profile`
+        // itself is one transaction (the count of one says so).
         private static readonly HashSet<string> OwnGroupCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "profile", "extrude", "sweep", "lwall" };
+            { "extrude", "sweep", "lwall" };
 
         /// <summary>
         /// Phase 2: one entry in the undo ledger for a kept single command. One undo entry for sure when

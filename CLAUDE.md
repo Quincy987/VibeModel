@@ -473,7 +473,7 @@ curl -s http://localhost:18884/approvals                                  # This
 - **`undo`** (phase 2, `Commands/UndoCommand.cs`, pure `UndoLedger.cs`; plan `docs/plans/22-damage-control.md`): takes back
   VibeModel's LAST kept change in the active document by posting Revit's Undo (`PostableCommand.Undo`, the only public way).
   The ledger records every kept single command and batch (undo name, `-- changed:` summary, the edit counter before/after,
-  one undo entry for sure: a VibeModel group, exactly one transaction, or `profile/extrude/sweep/lwall`). Refused — `UNDO_REFUSED`
+  one undo entry for sure: a VibeModel group, exactly one transaction, or `extrude/sweep/lwall`, which group their own work). Refused — `UNDO_REFUSED`
   with the reason — when nothing is recorded, the counter moved since (the user, Revit's own Undo/Redo, another client), the run
   may be several entries (an exec that saves), inside a batch, VibeModel's last change is in another document, an earlier undo is
   still on its way, or Revit cannot post. The posted command runs after the request; DocumentChanged confirms it (the undo is the
@@ -482,7 +482,8 @@ curl -s http://localhost:18884/approvals                                  # This
   between) or `undo of '…' did not happen`; it is no USER edit. The run below then becomes the top. The user's own Ctrl+Z right after
   VibeModel's last run takes it out of the ledger too; the run below only becomes undoable when every undone transaction was that run's. `undo --status`
   lists the runs; a preview turn only says what it would take back. Journaled (`· undo · took back '…'`, `IJournaledOutcome`);
-  refused on the file-based fallback; exec refuses a snippet posting `PostableCommand.Undo/Redo` (`EXEC_POSTS_UNDO`). Measured:
+  refused on the file-based fallback; exec refuses a snippet posting `PostableCommand.Undo/Redo` (`EXEC_POSTS_UNDO`). Opening a document
+  or synchronizing it with central empties its ledger (Revit's undo list starts afresh; `UndoLedger.Forget`). Measured:
   after exec, batch and an `ask` Keep; two in a row; refused after Revit's Undo button; in a sketch Revit runs no ExternalEvent
   (the request times out, nothing is undone; cancelling the sketch is an edit, so undo then refuses).
 - **`-- attention:` line** (phase 2, `AttentionReport` pure, `AttentionGuard` Revit side): sheets (number, name), views (view
@@ -1193,7 +1194,8 @@ line (+ context, `≈ €`). The button exports every chat and opens Explorer on
   usage, model, durationMs, build)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). The export prints
   `_VibeModel 1.2.22 · modus: ask · pakket: geen_` under the token line (`ChatExportDocument.BuildLine`). Phase 2: each step also keeps
   `status` — what VibeModel answered, in short (`ToolCallDescriber.StatusLines`: the ERROR line(s) with their Hint, every `-- ` line,
-  a batch's `[…] rolled back`; from a JSON envelope the error, the status keys compacted and `meta`; scrubbed, ≤ 1200 chars), carried on
+  a batch's `[…] rolled back`; from a JSON envelope the error, each failed batch command (`ERROR (delete): …`), the status keys compacted
+  and `meta`; scrubbed, ≤ 1200 chars; never for the CLI's own tools `@read`/`@shell`/…), carried on
   the ToolFinished event of all three backends; the export prints it per step under `Wat VibeModel antwoordde bij stap N (cmd):` /
   `What VibeModel answered at step N (cmd):` in a `text` block. `args` is the full call
   (`ToolCallInfo.FullArgs`: the args string, a curl's decoded `?args=`, else the whole shell command — an

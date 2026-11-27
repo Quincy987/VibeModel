@@ -111,6 +111,8 @@ namespace VibeModel.Services.Claude
                     else
                         swapped.Add("'" + old.Name + "' got view template " + TemplateName(after, now.TemplateId));
                 }
+                // A view whose template changed shows the new template's filters: the template line says it all.
+                if (old.TemplateId != now.TemplateId) continue;
                 foreach (var f in now.FilterIds.Except(old.FilterIds)) Add(filtersAdded, f, old.Name);
                 foreach (var f in old.FilterIds.Except(now.FilterIds)) Add(filtersRemoved, f, old.Name);
             }
