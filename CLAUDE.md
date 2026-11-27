@@ -414,6 +414,7 @@ curl -s http://localhost:18884/approvals                                  # This
   line, no ApprovalLog entry), so the snippet's own transactions, the wrapper's and the annotation re-host are ONE undo entry
   `VibeModel: exec …` — except a snippet that saves, closes or synchronizes (`SavesOrCloses`), which runs as before. Measured:
   `trans.Commit()` + an own `Transaction` → one Undo took back both levels; `EditFamily` + `LoadFamily` inside the group works;
+  `trans.Commit(); doc.Export(folder, sheetIds, new PDFExportOptions …)` inside the group wrote the PDF (4.1 MB);
   exec ×10 median 502 ms with the group, 506 ms without (the compile dominates). Every other command under auto: no group, as before.
 - **`ask`**: `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and a batch holding one) that
   actually changed something wait for the user: the added/modified elements the active view can show

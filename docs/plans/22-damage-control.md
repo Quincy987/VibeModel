@@ -30,6 +30,7 @@ Measured (Revit 2023, demo model, 2026-11-27):
 
 A consequence: an exec that changes something the office protects (`ForbiddenActions`) is now
 rolled back under auto too (FORBIDDEN), where it used to stay with a `-- forbidden: … press Ctrl+Z` line.
+Measured too: `trans.Commit()` + `doc.Export(folder, sheetIds, PDFExportOptions)` inside the group writes the PDF (4.1 MB sheet).
 Not measured: a snippet that opens and edits another project document inside the group.
 
 ## 2. The `undo` command
