@@ -41,7 +41,7 @@ namespace VibeModel.Services.Claude
             /// <summary>False when the run may have left several undo entries (an exec that saves runs without a group).</summary>
             public bool Undoable { get; internal set; }
             public string NotUndoableReason { get; internal set; }
-            /// <summary>Transaction names committed during the run: an undo naming any of them is this run.</summary>
+            /// <summary>Transaction names committed during the run (and its group's): tells the user's own Ctrl+Z of this run from an undo of more.</summary>
             internal HashSet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal);
         }
 
@@ -64,7 +64,8 @@ namespace VibeModel.Services.Claude
         private static readonly object Sync = new object();
         private static readonly Dictionary<string, List<Run>> Stacks = new Dictionary<string, List<Run>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, string> Reports = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        private static readonly HashSet<string> CurrentNames = new HashSet<string>(StringComparer.Ordinal);
+        // In commit order: the last one names the undo entry of a run without a group.
+        private static readonly List<string> CurrentNames = new List<string>();
         private static Pending _pending;
         private static Run _lastAnywhere;
 
@@ -82,7 +83,7 @@ namespace VibeModel.Services.Claude
             if (names == null) return;
             lock (Sync)
                 foreach (var n in names)
-                    if (!string.IsNullOrEmpty(n)) CurrentNames.Add(n);
+                    if (!string.IsNullOrEmpty(n)) { CurrentNames.Remove(n); CurrentNames.Add(n); }
         }
 
         /// <summary>
@@ -179,57 +180,66 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// DocumentChanged reported an undo or redo in <paramref name="docKey"/> (after the edit counter
-        /// moved to <paramref name="totalEditsAfter"/>). The posted undo is confirmed when it undid one of
-        /// the run's transactions; the run below then becomes the top — its counter moved with the undo,
-        /// so it is set to where the model stands now, unless something else happened between the two runs.
+        /// moved to <paramref name="totalEditsAfter"/>, with the undone transactions' <paramref name="names"/>).
+        /// <para>
+        /// The posted undo: one Revit Undo takes back exactly one entry, the top of Revit's list — and the
+        /// undo command only posts while the counter stands where this run left it, so the top IS this run.
+        /// It is confirmed when the undo is the first change after the post (counter + 1); the run below
+        /// then becomes the top, its counter set to where the model stands now (unless something else
+        /// happened between the two runs: then it stays stale and is refused).
+        /// </para>
+        /// <para>
+        /// The user's own Ctrl+Z right after VibeModel's last run (measured: Revit's Undo button) takes it
+        /// back too: it leaves the ledger. The run below only becomes undoable when every undone
+        /// transaction was that run's — an undo of several steps at once may have taken more.
+        /// </para>
         /// </summary>
         public static void ObserveUndoRedo(string docKey, IEnumerable<string> names, long totalEditsAfter, bool redo)
         {
             lock (Sync)
             {
+                var list = (names ?? Enumerable.Empty<string>()).Where(n => !string.IsNullOrEmpty(n)).ToList();
                 if (_pending == null || !string.Equals(_pending.Run.DocKey, docKey ?? "", StringComparison.OrdinalIgnoreCase))
                 {
-                    // The user's own Ctrl+Z took back VibeModel's last run (measured: Revit's Undo button). It is
-                    // gone from the model, so it leaves the ledger too; the run below becomes the top as above.
-                    if (!redo) DropIfTopUndone(docKey, names, totalEditsAfter);
+                    if (redo || !Stacks.TryGetValue(docKey ?? "", out var own) || own.Count == 0) return;
+                    var top = own[own.Count - 1];
+                    if (totalEditsAfter != top.EditsAfter + 1 || list.Count == 0 || !list.Any(top.Names.Contains)) return;
+                    TakeOff(top, totalEditsAfter, belowFollows: list.All(top.Names.Contains));
                     return;
                 }
                 var p = _pending;
                 _pending = null;
-                var list = (names ?? Enumerable.Empty<string>()).Where(n => !string.IsNullOrEmpty(n)).ToList();
-                // The posted undo is the first change after it was posted, and it names the run's transaction.
-                bool matches = !redo && totalEditsAfter == p.EditsAtPost + 1 &&
-                               (list.Count == 0 || list.Any(n => p.Run.Names.Contains(n)));
-                if (!matches)
+                if (redo)
                 {
-                    Reports[p.Run.DocKey] = "undo of '" + p.Run.UndoName + "' did not happen (Revit " + (redo ? "redid" : "undid") + " '" +
-                                            (list.Count > 0 ? string.Join("', '", list) : "?") + "')";
+                    Reports[p.Run.DocKey] = "undo of '" + p.Run.UndoName + "' did not happen (Revit redid '" + Names(list) + "' instead)";
                     return;
                 }
-                var stack = StackOf(p.Run.DocKey);
-                int index = stack.IndexOf(p.Run);
-                if (index >= 0)
+                if (totalEditsAfter != p.EditsAtPost + 1)
                 {
-                    stack.RemoveAt(index);
-                    var below = index - 1 >= 0 && index - 1 < stack.Count ? stack[index - 1] : null;
-                    if (below != null && below.EditsAfter == p.Run.EditsBefore) below.EditsAfter = totalEditsAfter;
+                    // Something else changed the model between the post and Revit running it: the undo took that back.
+                    Reports[p.Run.DocKey] = "the posted undo took back '" + Names(list) + "', not '" + p.Run.UndoName +
+                                            "' (the model changed in between) - the user checks Revit's undo list (Redo: Ctrl+Y)";
+                    return;
                 }
-                if (ReferenceEquals(_lastAnywhere, p.Run)) _lastAnywhere = stack.Count > 0 ? stack[stack.Count - 1] : null;
+                TakeOff(p.Run, totalEditsAfter, belowFollows: true);
                 Reports[p.Run.DocKey] = "undone: " + p.Run.UndoName;
             }
         }
 
-        private static void DropIfTopUndone(string docKey, IEnumerable<string> names, long totalEditsAfter)
+        // The run leaves its stack; the run below becomes the top at the model's new counter when it
+        // directly preceded it (nothing happened between the two) and the undo took back only this run.
+        private static void TakeOff(Run run, long totalEditsAfter, bool belowFollows)
         {
-            if (!Stacks.TryGetValue(docKey ?? "", out var stack) || stack.Count == 0) return;
-            var top = stack[stack.Count - 1];
-            var list = (names ?? Enumerable.Empty<string>()).Where(n => !string.IsNullOrEmpty(n)).ToList();
-            if (totalEditsAfter != top.EditsAfter + 1 || list.Count == 0 || !list.Any(n => top.Names.Contains(n))) return;
-            stack.RemoveAt(stack.Count - 1);
-            var below = stack.Count > 0 ? stack[stack.Count - 1] : null;
-            if (below != null && below.EditsAfter == top.EditsBefore) below.EditsAfter = totalEditsAfter;
-            if (ReferenceEquals(_lastAnywhere, top)) _lastAnywhere = below;
+            var stack = StackOf(run.DocKey);
+            int index = stack.IndexOf(run);
+            if (index < 0) return;
+            stack.RemoveAt(index);
+            var below = index - 1 >= 0 ? stack[index - 1] : null;
+            if (belowFollows && below != null && below.EditsAfter == run.EditsBefore) below.EditsAfter = totalEditsAfter;
+            if (ReferenceEquals(_lastAnywhere, run)) _lastAnywhere = stack.Count > 0 ? stack[stack.Count - 1] : null;
         }
+
+        private static string Names(List<string> names) => names.Count > 0 ? string.Join("', '", names) : "?";
 
         /// <summary>
         /// For the next model-state stamp of this document: "undone: VibeModel: exec …" once the posted

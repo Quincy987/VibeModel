@@ -476,9 +476,11 @@ curl -s http://localhost:18884/approvals                                  # This
   one undo entry for sure: a VibeModel group, exactly one transaction, or `profile/extrude/sweep/lwall`). Refused — `UNDO_REFUSED`
   with the reason — when nothing is recorded, the counter moved since (the user, Revit's own Undo/Redo, another client), the run
   may be several entries (an exec that saves), inside a batch, VibeModel's last change is in another document, an earlier undo is
-  still on its way, or Revit cannot post. The posted command runs after the request; DocumentChanged confirms it (counter + name)
-  and the next stamp says `| undone: VibeModel: exec …` (JSON `meta.undone`) or `undo of '…' did not happen`; it is no USER edit.
-  The run below then becomes the top; so does it when the user's own Ctrl+Z took back VibeModel's last run. `undo --status`
+  still on its way, or Revit cannot post. The posted command runs after the request; DocumentChanged confirms it (the undo is the
+  first change after the post — one Revit Undo takes back exactly the top entry, which the counter check proved was this run) and the
+  next stamp says `| undone: VibeModel: exec …` (JSON `meta.undone`), `the posted undo took back '…', not '…'` (the model changed in
+  between) or `undo of '…' did not happen`; it is no USER edit. The run below then becomes the top. The user's own Ctrl+Z right after
+  VibeModel's last run takes it out of the ledger too; the run below only becomes undoable when every undone transaction was that run's. `undo --status`
   lists the runs; a preview turn only says what it would take back. Journaled (`· undo · took back '…'`, `IJournaledOutcome`);
   refused on the file-based fallback; exec refuses a snippet posting `PostableCommand.Undo/Redo` (`EXEC_POSTS_UNDO`). Measured:
   after exec, batch and an `ask` Keep; two in a row; refused after Revit's Undo button; in a sketch Revit runs no ExternalEvent
@@ -488,8 +490,10 @@ curl -s http://localhost:18884/approvals                                  # This
   that existed before: `-- attention: sheet 0002 renamed 'A' → 'B'; view template 'X' removed from 3 views ('L1', 'L2', 'L3');
   filter 'Y' added to 1 view ('Doorsnede'); filter 'Z' changed` (Revit marks a filter modified when its rules change). After
   `-- changed:`; a preview prints `-- preview: attention: …`; never after a rollback; JSON additive `attention:[{kind,text}]` (in
-  `preview` for a preview). ≤ 3000 views read, the rest named (`N views not checked …`); > 50 ms is logged (not reached on the
-  demo model: 86 views). Never asked about (the user's decision: an overview, no window in auto).
+  `preview` for a preview). Read again only when the run modified or deleted a sheet, view or filter of the snapshot (a renamed sheet,
+  a template or filter change always marks its sheet or view modified; a filter's rules mark the filter). ≤ 3000 views read, the rest
+  only by id — a changed one among them is named (`N changed views not checked …`); > 50 ms is logged (not reached on the demo model:
+  86 views). Never asked about (the user's decision: an overview, no window in auto).
 - **Inside a run group** Revit refuses to save, close or synchronize ("Operation is not permitted when
   there is any open transaction phase started by API client" — measured; under `auto` an exec can
   `trans.Commit(); doc.Save();`); exec adds a `Hint:` saying why when the snippet calls `Save`,
@@ -503,7 +507,7 @@ curl -s http://localhost:18884/approvals                                  # This
   whose source writes to them (comments and strings stripped; variables taken from a protected item are followed; reading passes) →
   `ERROR: Refused: <what> is protected by the office.` (JSON `FORBIDDEN`; in a batch that item fails like any other). After the run,
   the same items are compared for the ids that existed before (a new pinned link is no change): in a run group the run is rolled back
-  (`FORBIDDEN`); without one the change stays and the response starts with `-- forbidden: <what> changed; press Ctrl+Z to undo — …`
+  (`FORBIDDEN`; since phase 2 every modifying exec has one, also under auto, except one that saves or closes); without one the change stays and the response starts with `-- forbidden: <what> changed; press Ctrl+Z to undo — …`
   (JSON `forbidden`), journaled as `· forbidden <what>`. Reading the items is logged above 50 ms.
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
   group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
@@ -749,9 +753,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   previous call) — never an unrelated neighbour, so deleting one floor does not move its spot onto the
   next. What cannot be re-hosted is deleted — never an invalid annotation left behind — and listed: `-- annotations: re-hosted 2 spot elevations (1730946 → 1730963 on
   structural foundation 1730950, …); removed 1 dimension that referenced 1730914 (view Doorsnede 1-1,
-  sheet 0003)`, after the `-- revit`/`-- check` lines; since phase 2 each removed group says why: `removed 256 dimensions — reference
-  gone, nothing came back in its place — that referenced …` or `— could not be re-attached to the replacement —` (Revit refused the
-  new one, or its view is gone) (JSON: additive `annotations` object
+  sheet 0003)`, after the `-- revit`/`-- check` lines; since phase 2 each removed group ends with why: `removed 256 dimensions that
+  referenced … (view …) — reference gone, nothing came back in its place` or `— could not be re-attached to the replacement` (Revit
+  refused the new one, or its view is gone) (JSON: additive `annotations` object
   `{rehosted:[{from,to,kind,host,hosts,view}], removed:[{id,kind,referenced,view,sheet,by,reason}]}`, `by` =
   `revit` when Revit's failure policy deleted it — marked `(Revit)` in text; `reason` = `nothingInPlace` / `couldNotAttach`). The
   re-host is in the same undo step (a TransactionGroup) — for `exec` too since phase 2 (its run group), except a snippet that saves,

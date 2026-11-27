@@ -24,6 +24,8 @@ zien, en de assistent drukte daarna zelf op Revit's ongedaan-maken.
 - Een script met een eigen proef-schakelaar (`bool CREATE = false`) krijgt een tip: een proef is `?preview=1` op het echte
   script, want een schakelaar die stappen overslaat laat niet zien wat die stappen verwijderen.
 - Een script dat zelf Revit's Ongedaan maken aanroept wordt geweigerd; daarvoor is `undo`.
+- Een `exec`-script dat iets wijzigt wat het kantoor beschermt (basispunt, pin, view template) wordt nu ook in *Automatisch*
+  helemaal teruggedraaid, in plaats van te blijven staan met de melding "druk op Ctrl+Z".
 - De regels voor de AI zeggen nu: geef elke verdwenen maatvoering en elke `-- attention:`-regel door, met het aantal
   verwijderd en gemaakt, bied `undo` aan als er iets verdween waar niet om gevraagd was, en tel fouten per element in een
   script in plaats van ze stil op te vangen.

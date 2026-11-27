@@ -62,6 +62,7 @@ namespace VibeModel.Tests
         [InlineData("bool dryRun = false;", null)]
         [InlineData("// bool CREATE = false;\nsb.AppendLine(\"x\");", null)]
         [InlineData("bool found = false;", null)]
+        [InlineData("bool run = false;", null)]
         public void DryRunSwitch_IsNamed(string code, string expected)
             => Assert.Equal(expected, ExecSourceChecks.DryRunSwitch(code));
 
@@ -128,11 +129,17 @@ namespace VibeModel.Tests
         {
             var a = Kept("VibeModel: exec a", 10, 12);
             UndoLedger.MarkPosted(a, 12, Now);
-            UndoLedger.ObserveUndoRedo(Doc, new[] { "Move" }, 13, redo: false);
-            Assert.Contains("did not happen", UndoLedger.TakeReport(Doc, Now));
+            // Something committed between the post and Revit running it (counter 13), then the undo (14): it took that back.
+            UndoLedger.ObserveUndoRedo(Doc, new[] { "Move" }, 14, redo: false);
+            var report = UndoLedger.TakeReport(Doc, Now);
+            Assert.StartsWith("the posted undo took back 'Move', not 'VibeModel: exec a'", report);
             Assert.Single(UndoLedger.List(Doc));                                  // still recorded
 
-            UndoLedger.MarkPosted(a, 13, Now);
+            UndoLedger.MarkPosted(a, 14, Now);
+            UndoLedger.ObserveUndoRedo(Doc, new[] { "VibeModel: exec a" }, 15, redo: true);
+            Assert.Contains("did not happen (Revit redid", UndoLedger.TakeReport(Doc, Now));
+
+            UndoLedger.MarkPosted(a, 15, Now);
             Assert.Null(UndoLedger.TakeReport(Doc, Now.AddSeconds(2)));           // still on its way
             Assert.Contains("did not happen", UndoLedger.TakeReport(Doc, Now + UndoLedger.PendingTimeout + TimeSpan.FromSeconds(1)));
             Assert.False(UndoLedger.IsPending(Doc));
@@ -152,6 +159,17 @@ namespace VibeModel.Tests
             // An undo of something else (the user's own move) changes nothing in the ledger: refused as before.
             UndoLedger.ObserveUndoRedo(Doc, new[] { "Move" }, 16, redo: false);
             Assert.False(UndoLedger.Decide(Doc, "model", 16, Now).Ok);
+        }
+
+        [Fact]
+        public void TheUsersUndoOfSeveralStepsAtOnce_LeavesTheRunBelowRefused()
+        {
+            Kept("VibeModel: exec a", 10, 12);
+            Kept("VibeModel: exec b", 12, 14);
+            // One undo event that also took back a step that was not run b's: run a may be gone too.
+            UndoLedger.ObserveUndoRedo(Doc, new[] { "VibeModel: exec b", "Move" }, 15, redo: false);
+            Assert.Single(UndoLedger.List(Doc));
+            Assert.False(UndoLedger.Decide(Doc, "model", 15, Now).Ok);
         }
 
         [Fact]
@@ -226,11 +244,23 @@ namespace VibeModel.Tests
         {
             Assert.Empty(AttentionReport.Compare(Snap(), Snap(), new long[0]));
             Assert.Null(AttentionReport.Line(new List<AttentionReport.Item>()));
-            Assert.Equal("-- attention: 4000 views not checked for template/filter changes (too many views)",
-                AttentionReport.Line(new List<AttentionReport.Item>(), notRead: 4000));
+            Assert.Equal("-- attention: 2 changed views not checked for template/filter changes (more than 3000 views in the model)",
+                AttentionReport.Line(new List<AttentionReport.Item>(), notRead: 2));
             var deleted = Snap();
             deleted.Sheets.Clear();
             Assert.Contains("sheet 0001 'Situatie' deleted", AttentionReport.Line(AttentionReport.Compare(Snap(), deleted, null)));
+        }
+
+        [Fact]
+        public void Attention_ReadsAgainOnlyWhenTheRunTouchedASheetViewOrFilter()
+        {
+            var s = Snap();
+            s.UnreadViews.Add(900);
+            Assert.False(s.Touches(new long[] { 4711, 4712 }));        // a wall and its join: nothing to compare
+            Assert.True(s.Touches(new long[] { 4711, 1 }));            // the sheet
+            Assert.True(s.Touches(new long[] { 50 }));                 // a filter's rules
+            Assert.True(s.Touches(new long[] { 900 }));                // a view beyond the cap
+            Assert.Equal(1, s.UnreadTouched(new long[] { 900, 900, 11 }));
         }
 
         [Fact]
@@ -241,8 +271,9 @@ namespace VibeModel.Tests
                 o.Removed.Add(new RemovedAnnotation { Id = 1000 + i, Kind = AnnotationKind.Dimension, Referenced = new List<long> { 50 + i % 10 }, View = "Doorsnede " + (i % 10), Reason = RemovalReason.NothingInPlace });
             o.Removed.Add(new RemovedAnnotation { Id = 5000, Kind = AnnotationKind.Dimension, Referenced = new List<long> { 60 }, View = "Doorsnede 1", Reason = RemovalReason.CouldNotAttach });
             var line = o.ToTextLine();
-            Assert.StartsWith("-- annotations: removed 256 dimensions — reference gone, nothing came back in its place — that referenced ", line);
-            Assert.Contains("1 dimension — could not be re-attached to the replacement — that referenced 60", line);
+            Assert.StartsWith("-- annotations: removed 256 dimensions that referenced ", line);
+            Assert.Contains("view Doorsnede 9) — reference gone, nothing came back in its place, 1 dimension that referenced 60", line);
+            Assert.EndsWith("1 dimension that referenced 60 (view Doorsnede 1) — could not be re-attached to the replacement", line);
             Assert.DoesNotContain("\n", line);
             var json = new JavaScriptSerializer().Serialize(o.ToJson());
             Assert.Contains("\"reason\":\"nothingInPlace\"", json);
@@ -269,7 +300,7 @@ namespace VibeModel.Tests
         [Fact]
         public void StatusLines_KeepTheHeadAndEveryStatusLine()
         {
-            var text = "ERROR: exec failed: boom\nHint: fix it\n\npartial out\nERROR in exec: boom\n-- annotations: removed 2 dimensions — reference gone, nothing came back in its place — that referenced 7\n" +
+            var text = "ERROR: exec failed: boom\nHint: fix it\n\npartial out\nERROR in exec: boom\n-- annotations: removed 2 dimensions that referenced 7 — reference gone, nothing came back in its place\n" +
                        "-- changed: added 0, modified 0, deleted 12 (Detail Items 10, Dimensions 2)\n-- attention: sheet 0001 renamed 'A' → 'B'\n-- model #3 | view: L1 | selected: 0";
             var status = ToolCallDescriber.StatusLines(text);
             Assert.StartsWith("ERROR: exec failed: boom\nHint: fix it\nERROR in exec: boom\n-- annotations: removed 2 dimensions", status);

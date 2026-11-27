@@ -284,6 +284,7 @@ namespace VibeModel.Services.Claude
             // Phase 2: sheets, view templates and filters as they are, for the "-- attention" line.
             var attentionBefore = modifying ? AttentionGuard.Capture(doc) : null;
             List<AttentionReport.Item> attentionItems = null;
+            int attentionNotChecked = 0;
             FailureReport revit = null;
 
             // Annotations on the elements this command replaces/changes (spot elevations,
@@ -299,8 +300,7 @@ namespace VibeModel.Services.Claude
             var preRead = modifying ? ApprovalRun.PreRead(doc, targets) : null;
             // The annotations the guard may delete and re-create: their categories, for the change line.
             if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
-            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
-            // Phase 2: where the edit counter stood, for the undo command's ledger.
+            // Where the edit counter stood: a rolled-back run group rewinds to it, the undo ledger records it.
             long editsBefore = modifying ? ApprovalRun.EditsMark(doc) : 0;
             if (modifying) UndoLedger.BeginRun();
             TransactionGroup group = null;
@@ -344,7 +344,7 @@ namespace VibeModel.Services.Claude
                 if (KeptWork(request.Command, cr, changes) && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
                 if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
                 // Read while the run's group is open: a preview still shows what it would change.
-                attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes);
+                attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                 if (runControl)
                     run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
                         modifyingCommands: new[] { request.Command }, forbidden: forbidden);
@@ -356,7 +356,7 @@ namespace VibeModel.Services.Claude
                 else EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
             }
 
-            if (runControl) FinishRun(app, doc, request, run, changes, editsMark, request.Command, request.Args);
+            if (runControl) FinishRun(app, doc, request, run, changes, editsBefore, request.Command, request.Args);
             // Nothing a rolled-back run did is checked or journaled.
             bool rolledBack = runControl && !run.Keep;
             if (rolledBack) changes = null;
@@ -394,7 +394,7 @@ namespace VibeModel.Services.Claude
             else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var outcomeCommand) && outcomeCommand is IJournaledOutcome withOutcome)
                 JournalOutcome(app, request.Command, request.Args, withOutcome, cr, request.Turn);
 
-            var attention = ShownAttention(attentionItems, attentionBefore, kept != null, runControl, run);
+            var attention = ShownAttention(attentionItems, attentionNotChecked, kept != null, runControl, run);
             return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage,
                 attention);
         }
@@ -409,12 +409,12 @@ namespace VibeModel.Services.Claude
             public string Line => AttentionReport.Line(Items, NotRead, Preview);
         }
 
-        private static AttentionOut ShownAttention(List<AttentionReport.Item> items, AttentionReport.Snapshot before, bool kept, bool runControl, RunOutcome run)
+        private static AttentionOut ShownAttention(List<AttentionReport.Item> items, int notChecked, bool kept, bool runControl, RunOutcome run)
         {
             if (items == null) return null;
             bool preview = runControl && IsPreview(run);
             if (!preview && (!kept || (runControl && !run.Keep))) return null;
-            return new AttentionOut { Items = items, NotRead = before?.ViewsNotRead ?? 0, Preview = preview };
+            return new AttentionOut { Items = items, NotRead = notChecked, Preview = preview };
         }
 
         // Commands that make their change as ONE transaction group of their own (a generated family:
@@ -930,13 +930,14 @@ namespace VibeModel.Services.Claude
             bool runControl = ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, batchModifies, options.Preview, options.ReadOnly);
             var preRead = batchModifies ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
             if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
-            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             var run = new RunOutcome();
 
             var protectedBefore = batchModifies ? ForbiddenGuard.Capture(doc) : null;
+            // Where the edit counter stood: a rolled-back run group rewinds to it, the undo ledger records it.
             long editsBefore = batchModifies ? ApprovalRun.EditsMark(doc) : 0;
             var attentionBefore = batchModifies ? AttentionGuard.Capture(doc) : null;
             List<AttentionReport.Item> attentionItems = null;
+            int attentionNotChecked = 0;
             if (batchModifies) UndoLedger.BeginRun();
             var batchExecs = new List<string>();
             string forbidden = null;
@@ -1002,7 +1003,7 @@ namespace VibeModel.Services.Claude
                             changes = CreatedElementsRecorder.DisarmChanges();
                             if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                             if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
-                            attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes);
+                            attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                         }
                         // Nothing modified (every command failed or only read): an empty change set.
                         run = DecideRun(app, doc, req, mode, guarded, options, anyModified ? changes : null, preRead,
@@ -1020,7 +1021,7 @@ namespace VibeModel.Services.Claude
                         changes = CreatedElementsRecorder.DisarmChanges();
                         if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                         if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
-                        attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes);
+                        attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                         tg.Assimilate(); // merge all committed child transactions into one undo entry
                     }
                     else
@@ -1047,7 +1048,7 @@ namespace VibeModel.Services.Claude
 
             if (runControl)
             {
-                FinishRun(app, doc, req, run, changes, editsMark, ProjectJournal.BatchText(batchItems), null);
+                FinishRun(app, doc, req, run, changes, editsBefore, ProjectJournal.BatchText(batchItems), null);
                 if (!run.Keep) anyModified = false; // nothing kept: no check, no journal line
                 var line = BatchRunLine(run);
                 if (line != null) sb.AppendLine(line);
@@ -1087,7 +1088,7 @@ namespace VibeModel.Services.Claude
             if (annotationLine != null) sb.AppendLine(annotationLine);
             if (layout != null) sb.AppendLine(layout.Line);
             if (kept != null) sb.AppendLine(kept.ChangedLine());
-            var attention = ShownAttention(attentionItems, attentionBefore, kept != null, runControl, run);
+            var attention = ShownAttention(attentionItems, attentionNotChecked, kept != null, runControl, run);
             var attentionLine = attention?.Line;
             if (attentionLine != null) sb.AppendLine(attentionLine);
             var quantitiesLine = StaticQuantityReport.Line(quantities);

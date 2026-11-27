@@ -37,7 +37,7 @@ namespace VibeModel.Services.Claude
         // Names that mean "only pretend" (value true) and names that mean "really do it" (value false).
         private static readonly Regex PretendName = new Regex(@"^(dry_?run|dryrun|test_?only|simulate|simulation|preview|trial|what_?if|fake)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex DoName = new Regex(@"^(create|apply|commit|execute|do_?it|really|write|live|for_?real|delete|modify|run)$",
+        private static readonly Regex DoName = new Regex(@"^(create|apply|commit|execute|do_?it|really|write|live|for_?real|delete|modify)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public const string DryRunHint =

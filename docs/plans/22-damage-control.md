@@ -28,6 +28,10 @@ Measured (Revit 2023, demo model, 2026-11-27):
 - cost: exec ×10 creating a level, median 506 ms without the group (old path) and 502 ms with it —
   the compile dominates; no difference measurable.
 
+A consequence: an exec that changes something the office protects (`ForbiddenActions`) is now
+rolled back under auto too (FORBIDDEN), where it used to stay with a `-- forbidden: … press Ctrl+Z` line.
+Not measured: a snippet that opens and edits another project document inside the group.
+
 ## 2. The `undo` command
 
 `UndoLedger` (pure): per document the kept runs, newest last — undo name (the group name, else the
@@ -39,11 +43,15 @@ there is none, when the counter moved since (the user, Revit's own Undo/Redo, an
 the top of Revit's list is not that run), when the run may be several entries, inside a batch, when
 another document holds VibeModel's last change, while an earlier undo is on its way, or when Revit
 cannot post. The posted command runs after the request; DocumentChanged confirms it
-(`ObserveUndoRedo`, matched on the counter and the transaction name) and the next stamp says
-`| undone: VibeModel: exec …` (JSON `meta.undone`) — or `undo of '…' did not happen` (another undo,
-or not seen within 20 s). That undo is not counted as a USER edit. After it, the run below becomes
-the top (its counter set to where the model stands). When the user's own Ctrl+Z takes back
-VibeModel's last run (same counter and name test), it leaves the ledger the same way.
+(`ObserveUndoRedo`: the undo is the first change after the post — one Revit Undo takes back exactly
+the top entry, which the counter check proved was this run) and the next stamp says
+`| undone: VibeModel: exec …` (JSON `meta.undone`), `the posted undo took back '…', not '…'` (the
+model changed in between) or `undo of '…' did not happen` (a redo, or not seen within 20 s). That
+undo is not counted as a USER edit. After it, the run below becomes the top (its counter set to where
+the model stands). When the user's own Ctrl+Z right after VibeModel's last run takes it back (the
+counter moved by one and the undone names include the run's), it leaves the ledger too; the run below
+only becomes undoable when every undone transaction was that run's (an undo of several steps at once
+may have taken more).
 `undo --status` lists the runs. A preview turn reports what it would take back. Journaled
 (`· undo · took back 'VibeModel: exec …'`); refused on the file-based fallback; exec refuses a
 snippet that posts `PostableCommand.Undo/Redo` (`ExecSourceChecks.PostsUndo`, code `EXEC_POSTS_UNDO`).
@@ -62,13 +70,14 @@ cancelling the sketch commits an edit, so `undo` then refuses.
 the ids that existed before — `sheet 0002 renamed 'A' → 'B'; filter 'Doorsnede type' added to 1 view
 ('P2 regions')`; a template taken off or swapped, a filter removed, deleted or changed (Revit marks
 it modified). After `-- changed:`; in a preview `-- preview: attention: …`; never after a rollback;
-JSON additive `attention:[{kind,text}]` (in `preview` for a preview). At most 3000 views are read;
-the rest is named (`N views not checked …`). Measured: no `> 50 ms` log line on the demo model
+JSON additive `attention:[{kind,text}]` (in `preview` for a preview). The document is read again
+only when the run modified or deleted a sheet, view or filter of the snapshot. At most 3000 views are
+read; the rest only by id, and a changed one among them is named (`N changed views not checked …`). Measured: no `> 50 ms` log line on the demo model
 (86 views, 3 filters, 2 sheets). Detaching a view template through exec is refused anyway
 (FORBIDDEN, the template rule), so that item shows up through other routes.
 
-`-- annotations:` now says why per group: `removed 256 dimensions — reference gone, nothing came back
-in its place — that referenced …` or `— could not be re-attached to the replacement —` (Revit refused
+`-- annotations:` now says why per group: `removed 256 dimensions that referenced … (view …) — reference
+gone, nothing came back in its place` or `— could not be re-attached to the replacement` (Revit refused
 the new one, or its view is gone); JSON `removed[].reason` (`nothingInPlace` / `couldNotAttach`).
 Still one line per action, ≤ 10 views named. Revit's automatic sketch dimensions (`OST_WeakDims`, a
 filled region's own sketch) are no longer recorded — measured: they were reported as "removed".

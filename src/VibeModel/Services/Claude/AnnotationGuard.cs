@@ -878,11 +878,6 @@ namespace VibeModel.Services.Claude
                             yield return new Geo { Reference = ed.Reference, Curve = c };
                         }
                 }
-                else if (edges && go is Curve free && free.Reference != null)
-                {
-                    // A filled region's view geometry: its boundary as curves with references (phase 2).
-                    yield return new Geo { Reference = free.Reference, Curve = free };
-                }
                 else if (go is GeometryInstance gi)
                 {
                     GeometryElement inner;

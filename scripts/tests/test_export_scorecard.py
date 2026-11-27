@@ -203,7 +203,7 @@ class ScorecardTest(unittest.TestCase):
     def test_status_blocks_are_read_and_change_no_other_number(self):
         # Since 1.2.23 each step keeps what VibeModel answered, in a fenced block under the table.
         status = ("Wat VibeModel antwoordde bij stap 2 (exec):\n\n```text\n"
-                  "-- annotations: removed 256 dimensions — reference gone, nothing came back in its place — that referenced 7\n"
+                  "-- annotations: removed 256 dimensions that referenced 7 — reference gone, nothing came back in its place\n"
                   "-- changed: added 2, modified 0, deleted 266\n-- attention: sheet 0001 renamed 'A' → 'B'\n"
                   "| 9 | looks | like a row | ✗ x | |\n```\n\n")
         with_status = CHAT_NL.replace("**Antwoord** (29 s)", status + "**Antwoord** (29 s)", 1)

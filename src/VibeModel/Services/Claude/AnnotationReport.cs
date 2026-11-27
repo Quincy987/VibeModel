@@ -130,13 +130,13 @@ namespace VibeModel.Services.Claude
             }
         }
 
-        /// <summary>" — reference gone, nothing came back in its place" / " — could not be re-attached"; "" when not recorded.</summary>
+        /// <summary>" — reference gone, nothing came back in its place" / " — could not be re-attached …"; "" when not recorded.</summary>
         public static string ReasonText(RemovalReason reason)
         {
             switch (reason)
             {
-                case RemovalReason.NothingInPlace: return " — reference gone, nothing came back in its place —";
-                case RemovalReason.CouldNotAttach: return " — could not be re-attached to the replacement —";
+                case RemovalReason.NothingInPlace: return " — reference gone, nothing came back in its place";
+                case RemovalReason.CouldNotAttach: return " — could not be re-attached to the replacement";
                 default: return "";
             }
         }
@@ -145,10 +145,10 @@ namespace VibeModel.Services.Claude
         {
             var referenced = items.SelectMany(i => i.Referenced).Distinct().ToList();
             var views = items.Select(ViewLabel).Where(v => v != null).Distinct().ToList();
-            var text = AnnotationText.Count(items.Count, kind) + (byRevit ? " (Revit)" : "") + ReasonText(reason);
+            var text = AnnotationText.Count(items.Count, kind) + (byRevit ? " (Revit)" : "");
             if (referenced.Count > 0) text += " that referenced " + List(referenced.Select(x => x.ToString(CultureInfo.InvariantCulture)).ToList());
             if (views.Count > 0) text += " (" + string.Join("; ", views.Take(MaxListed)) + (views.Count > MaxListed ? "; +" + (views.Count - MaxListed) + " more views" : "") + ")";
-            return text;
+            return text + ReasonText(reason);
         }
 
         private static string ViewLabel(RemovedAnnotation r)

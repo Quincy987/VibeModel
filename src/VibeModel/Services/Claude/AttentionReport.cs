@@ -38,8 +38,21 @@ namespace VibeModel.Services.Claude
             public Dictionary<long, ViewFact> Views = new Dictionary<long, ViewFact>();
             /// <summary>Filter elements: id → name.</summary>
             public Dictionary<long, string> Filters = new Dictionary<long, string>();
-            /// <summary>Views whose template/filters were not read (the cap): said in the line, never silent.</summary>
-            public int ViewsNotRead;
+            /// <summary>Views whose template/filters were not read (the cap): only their ids, so a run that touches one says so.</summary>
+            public HashSet<long> UnreadViews = new HashSet<long>();
+
+            /// <summary>
+            /// True when the run touched anything this snapshot describes (a sheet, view or filter it
+            /// modified or deleted): only then is the document read again. A changed sheet name, template or
+            /// filter list always marks its sheet or view modified; a filter's rules mark the filter.
+            /// </summary>
+            public bool Touches(IEnumerable<long> modifiedOrDeleted)
+                => (modifiedOrDeleted ?? Enumerable.Empty<long>()).Any(id =>
+                    Sheets.ContainsKey(id) || Views.ContainsKey(id) || Filters.ContainsKey(id) || UnreadViews.Contains(id));
+
+            /// <summary>How many views the run touched that were not read (they are named as not checked).</summary>
+            public int UnreadTouched(IEnumerable<long> modifiedOrDeleted)
+                => (modifiedOrDeleted ?? Enumerable.Empty<long>()).Distinct().Count(UnreadViews.Contains);
         }
 
         public sealed class Item
@@ -47,6 +60,9 @@ namespace VibeModel.Services.Claude
             public string Kind;   // sheet | template | filter
             public string Text;
         }
+
+        /// <summary>Views whose template and filters are read at most (the rest only by id, named when the run changed them).</summary>
+        public const int MaxViews = 3000;
 
         private const int MaxNamed = 3;
         private const int MaxItems = 6;
@@ -121,7 +137,7 @@ namespace VibeModel.Services.Claude
 
         /// <summary>
         /// "-- attention: sheet 0001 renamed 'A' → 'B'; view template 'X' removed from 3 views ('L1', 'L2', 'L3')";
-        /// null when nothing changed and nothing was left unchecked. <paramref name="notRead"/> = views left out by the cap.
+        /// null when nothing changed and nothing was left unchecked. <paramref name="notRead"/> = views the run changed that the cap left unread.
         /// </summary>
         public static string Line(IList<Item> items, int notRead = 0, bool preview = false)
         {
@@ -130,7 +146,8 @@ namespace VibeModel.Services.Claude
             var shown = parts.Take(MaxItems).ToList();
             if (parts.Count > MaxItems) shown.Add("+" + (parts.Count - MaxItems).ToString(CultureInfo.InvariantCulture) + " more");
             if (notRead > 0)
-                shown.Add(Count(notRead, "view") + " not checked for template/filter changes (too many views)");
+                shown.Add(Count(notRead, "changed view") + " not checked for template/filter changes (more than " +
+                          MaxViews.ToString(CultureInfo.InvariantCulture) + " views in the model)");
             return (preview ? "-- preview: attention: " : "-- attention: ") + string.Join("; ", shown);
         }
 
