@@ -68,13 +68,15 @@ namespace VibeModel.Services.Claude
         /// Undo/redo is always user-driven — even undoing a VibeModel edit changes the model
         /// outside VibeModel's control, so it counts as a user edit.
         /// </summary>
-        public static void RecordUndoRedo(string docKey)
+        public static void RecordUndoRedo(string docKey, bool postedByVibeModel = false)
         {
             lock (Sync)
             {
                 var state = GetOrAdd(docKey);
                 state.TotalEdits++;
-                state.UserEditsSinceLastStamp++;
+                // Phase 2: the Undo the `undo` command posted takes back VibeModel's own run — not a user edit.
+                if (!postedByVibeModel)
+                    state.UserEditsSinceLastStamp++;
             }
         }
 
@@ -102,13 +104,13 @@ namespace VibeModel.Services.Claude
         /// counter, atomically. Only call when the stamp will actually be delivered — the
         /// reset means "the client has been told".
         /// </summary>
-        public static ModelStamp TakeStamp(string docKey, string viewName, int selectedCount, string approval = null)
+        public static ModelStamp TakeStamp(string docKey, string viewName, int selectedCount, string approval = null, string undone = null)
         {
             lock (Sync)
             {
                 var state = GetOrAdd(docKey);
                 var stamp = new ModelStamp(state.TotalEdits, state.UserEditsSinceLastStamp,
-                    viewName, selectedCount, approval);
+                    viewName, selectedCount, approval, undone);
                 state.UserEditsSinceLastStamp = 0;
                 return stamp;
             }
@@ -181,13 +183,20 @@ namespace VibeModel.Services.Claude
         /// </summary>
         public string Approval { get; }
 
-        public ModelStamp(long totalEdits, long userEdits, string viewName, int selectedCount, string approval = null)
+        /// <summary>
+        /// Phase 2: "undone: VibeModel: exec …" — the Undo the <c>undo</c> command posted happened (or
+        /// "undo of '…' did not happen"); shown once, in the first stamp after it. Null almost always.
+        /// </summary>
+        public string Undone { get; }
+
+        public ModelStamp(long totalEdits, long userEdits, string viewName, int selectedCount, string approval = null, string undone = null)
         {
             TotalEdits = totalEdits;
             UserEdits = userEdits;
             ViewName = viewName;
             SelectedCount = selectedCount;
             Approval = string.IsNullOrEmpty(approval) ? null : approval;
+            Undone = string.IsNullOrEmpty(undone) ? null : undone;
         }
 
         /// <summary>
@@ -205,6 +214,7 @@ namespace VibeModel.Services.Claude
             line += " | view: " + (string.IsNullOrEmpty(ViewName) ? "unknown" : ViewName) +
                     " | selected: " + SelectedCount;
             if (Approval != null) line += " | " + Approval;
+            if (Undone != null) line += " | " + Undone;
             return line;
         }
 
@@ -227,6 +237,7 @@ namespace VibeModel.Services.Claude
                 { "selectedCount", SelectedCount }
             };
             if (Approval != null) meta["approval"] = Approval;
+            if (Undone != null) meta["undone"] = Undone;
             return meta;
         }
     }

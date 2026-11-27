@@ -19,9 +19,27 @@ namespace VibeModel.Services.Claude
         public string View { get; set; }
     }
 
+    /// <summary>
+    /// Phase 2: why the guard could not put an annotation back. The user's rule: a reference that is
+    /// gone with nothing in its place rightly takes its annotation along; only a replacement in the same
+    /// place brings it back.
+    /// </summary>
+    public enum RemovalReason
+    {
+        /// <summary>Not recorded (older callers): the line says nothing about why.</summary>
+        Unknown,
+        /// <summary>The referenced face/edge is gone and nothing came back in its place.</summary>
+        NothingInPlace,
+        /// <summary>A replacement lay in the same place, but Revit refused the new annotation (or its view is gone).</summary>
+        CouldNotAttach
+    }
+
     /// <summary>One annotation that is gone after the command (Revit, the failure policy or the guard removed it).</summary>
     public sealed class RemovedAnnotation
     {
+        /// <summary>Why it was not put back (phase 2).</summary>
+        public RemovalReason Reason { get; set; }
+
         public long Id { get; set; }
         public AnnotationKind Kind { get; set; }
         public List<long> Referenced { get; set; } = new List<long>();
@@ -61,8 +79,9 @@ namespace VibeModel.Services.Claude
             }
             if (Removed.Count > 0)
             {
-                var groups = Removed.GroupBy(r => new { r.Kind, r.ByRevit }).OrderBy(g => (int)g.Key.Kind).ThenBy(g => g.Key.ByRevit)
-                    .Select(g => DescribeRemoved(g.Key.Kind, g.Key.ByRevit, g.ToList()));
+                var groups = Removed.GroupBy(r => new { r.Kind, r.ByRevit, r.Reason }).OrderBy(g => (int)g.Key.Kind).ThenBy(g => g.Key.ByRevit)
+                    .ThenBy(g => (int)g.Key.Reason)
+                    .Select(g => DescribeRemoved(g.Key.Kind, g.Key.ByRevit, g.Key.Reason, g.ToList()));
                 parts.Add("removed " + string.Join(", ", groups));
             }
             return "-- annotations: " + string.Join("; ", parts);
@@ -88,7 +107,8 @@ namespace VibeModel.Services.Claude
                         { "referenced", r.Referenced.Select(x => (object)x).ToList() },
                         { "view", r.View },
                         { "sheet", r.Sheet },
-                        { "by", r.ByRevit ? "revit" : "vibemodel" }
+                        { "by", r.ByRevit ? "revit" : "vibemodel" },
+                        { "reason", ReasonKey(r.Reason) }
                     }).ToList() }
             };
         }
@@ -99,14 +119,36 @@ namespace VibeModel.Services.Claude
             return r.From + " → " + r.To + hosts;
         }
 
-        private static string DescribeRemoved(AnnotationKind kind, bool byRevit, List<RemovedAnnotation> items)
+        /// <summary>JSON: "nothingInPlace", "couldNotAttach", or null when not recorded.</summary>
+        public static string ReasonKey(RemovalReason reason)
+        {
+            switch (reason)
+            {
+                case RemovalReason.NothingInPlace: return "nothingInPlace";
+                case RemovalReason.CouldNotAttach: return "couldNotAttach";
+                default: return null;
+            }
+        }
+
+        /// <summary>" — reference gone, nothing came back in its place" / " — could not be re-attached …"; "" when not recorded.</summary>
+        public static string ReasonText(RemovalReason reason)
+        {
+            switch (reason)
+            {
+                case RemovalReason.NothingInPlace: return " — reference gone, nothing came back in its place";
+                case RemovalReason.CouldNotAttach: return " — could not be re-attached to the replacement";
+                default: return "";
+            }
+        }
+
+        private static string DescribeRemoved(AnnotationKind kind, bool byRevit, RemovalReason reason, List<RemovedAnnotation> items)
         {
             var referenced = items.SelectMany(i => i.Referenced).Distinct().ToList();
             var views = items.Select(ViewLabel).Where(v => v != null).Distinct().ToList();
             var text = AnnotationText.Count(items.Count, kind) + (byRevit ? " (Revit)" : "");
             if (referenced.Count > 0) text += " that referenced " + List(referenced.Select(x => x.ToString(CultureInfo.InvariantCulture)).ToList());
-            if (views.Count > 0) text += " (" + string.Join("; ", views) + ")";
-            return text;
+            if (views.Count > 0) text += " (" + string.Join("; ", views.Take(MaxListed)) + (views.Count > MaxListed ? "; +" + (views.Count - MaxListed) + " more views" : "") + ")";
+            return text + ReasonText(reason);
         }
 
         private static string ViewLabel(RemovedAnnotation r)
@@ -263,6 +305,38 @@ namespace VibeModel.Services.Claude
                 free.RemoveAt(0);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Phase 2: a filled region's straight edge "in the same place" as the edge a dimension
+        /// referenced (the user's rule — only then does the dimension come back). The new edge
+        /// <paramref name="newA"/>–<paramref name="newB"/> must run the same way as the old one (parallel,
+        /// both seen across the dimension direction <paramref name="dimDir"/>), lie on the old reference
+        /// line (both ends within ±1 mm of it along the dimension) and overlap the old edge along its own
+        /// direction (a gap of at most the search radius). The distance between their middles is returned
+        /// for picking the closest; negative when they do not match.
+        /// </summary>
+        public static double SameEdge(V3 oldA, V3 oldB, V3 newA, V3 newB, V3 dimDir, double tolMm = RehostToleranceMm)
+        {
+            var dl = dimDir.Length;
+            var oldDir = oldB - oldA;
+            var newDir = newB - newA;
+            double lo = oldDir.Length, ln = newDir.Length;
+            if (dl < 1e-12 || lo < 1e-9 || ln < 1e-9) return -1;
+            if (Math.Abs(oldDir.Dot(newDir) / (lo * ln)) < ParallelDot) return -1;
+            // The edge crosses the dimension: it is (nearly) perpendicular to the dimension line.
+            if (Math.Abs(oldDir.Dot(dimDir) / (lo * dl)) > 1 - ParallelDot + 1e-9) return -1;
+            double tOld = oldA.Dot(dimDir) / dl;
+            if (Math.Abs(newA.Dot(dimDir) / dl - tOld) > tolMm + 1e-9 || Math.Abs(newB.Dot(dimDir) / dl - tOld) > tolMm + 1e-9) return -1;
+            // Overlap along the edge direction.
+            double s0 = 0, s1 = lo;
+            double n0 = (newA - oldA).Dot(oldDir) / lo, n1 = (newB - oldA).Dot(oldDir) / lo;
+            if (n0 > n1) { var t = n0; n0 = n1; n1 = t; }
+            double gap = Math.Max(n0 - s1, s0 - n1);
+            if (gap > SearchRadiusMm + 1e-9) return -1;
+            var midOld = new V3((oldA.X + oldB.X) / 2, (oldA.Y + oldB.Y) / 2, (oldA.Z + oldB.Z) / 2);
+            var midNew = new V3((newA.X + newB.X) / 2, (newA.Y + newB.Y) / 2, (newA.Z + newB.Z) / 2);
+            return (midNew - midOld).Length;
         }
 
         /// <summary>Same facing: a spot on a top face only moves to another face that also faces up (dot ≥ ParallelDot).</summary>

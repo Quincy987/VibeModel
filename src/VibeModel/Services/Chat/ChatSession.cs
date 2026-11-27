@@ -163,6 +163,9 @@ namespace VibeModel.Services.Chat
         public string Error { get; set; }
         public long? DurationMs { get; set; }
 
+        /// <summary>Phase 2: what VibeModel answered, in short (the step's status lines); null for older chats.</summary>
+        public string Status { get; set; }
+
         /// <summary>The steps of a turn as they are stored (only a step that finished without error is ok).</summary>
         public static List<ChatSessionStep> FromTurn(TurnActivity turn)
         {
@@ -178,7 +181,8 @@ namespace VibeModel.Services.Chat
                     Error = s.State == TurnActivity.StepState.Failed ? s.ErrorLine
                         : s.State == TurnActivity.StepState.Cancelled ? "cancelled"
                         : s.State == TurnActivity.StepState.Running ? "not finished" : null,
-                    DurationMs = s.DurationMs
+                    DurationMs = s.DurationMs,
+                    Status = s.Status
                 });
             }
             return steps;

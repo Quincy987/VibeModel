@@ -277,6 +277,10 @@ curl -s "http://localhost:18884/unjoin?args=12345 67890"          # Remove join 
 
 # Execute arbitrary C# code (braced loops stop after 25 s, &timeout=<s> up to 300; unsure about the API? apilookup first)
 curl -s "http://localhost:18884/exec?args=sb.AppendLine(doc.Title);"
+
+# Take back VibeModel's last change in this document (one Revit undo step; refused when anything else changed since)
+curl -s "http://localhost:18884/undo"
+curl -s "http://localhost:18884/undo?args=--status"
 ```
 
 **Modelling flags.** `wall`/`floor --type` take a type name (exact, else a unique case-insensitive
@@ -405,7 +409,13 @@ wall 0 0 5000 0 3000"
 curl -s -G "http://localhost:18884/exec" --data-urlencode "args=sb.AppendLine(doc.Title);" --data "readonly=1"  # Fails if it changes the model
 curl -s http://localhost:18884/approvals                                  # This session's Keep/Discard decisions
 ```
-- **`auto`** (default): never ask — no run group, no prompt; only the `-- changed:` line below is added.
+- **`auto`** (default): never ask — no prompt; only the `-- changed:` line below is added. Since phase 2 a modifying `exec`
+  runs in a run group under every policy (`ChangeApprovalPolicy.ExecRunsInGroup`; under auto it is simply kept, no `-- approval:`
+  line, no ApprovalLog entry), so the snippet's own transactions, the wrapper's and the annotation re-host are ONE undo entry
+  `VibeModel: exec …` — except a snippet that saves, closes or synchronizes (`SavesOrCloses`), which runs as before. Measured:
+  `trans.Commit()` + an own `Transaction` → one Undo took back both levels; `EditFamily` + `LoadFamily` inside the group works;
+  `trans.Commit(); doc.Export(folder, sheetIds, new PDFExportOptions …)` inside the group wrote the PDF (4.1 MB);
+  exec ×10 median 502 ms with the group, 506 ms without (the compile dominates). Every other command under auto: no group, as before.
 - **`ask`**: `delete`, `exec`, `set`, `join`, `unjoin`, `phase` (and a batch holding one) that
   actually changed something wait for the user: the added/modified elements the active view can show
   are isolated temporarily and selected, and a modal window (owned by Revit, restored when minimized)
@@ -461,6 +471,31 @@ curl -s http://localhost:18884/approvals                                  # This
   shown once in the next stamp: `-- model #12 | … | approval #8: discarded` (JSON `meta.approval`).
   The RULES block / turn prompt carry the policy (`ChatBackendBase.ApprovalAskRule`/`ApprovalWaitRule`
   /`ApprovalReadOnlyRule`; auto = the old Undo sentence verbatim).
+- **`undo`** (phase 2, `Commands/UndoCommand.cs`, pure `UndoLedger.cs`; plan `docs/plans/22-damage-control.md`): takes back
+  VibeModel's LAST kept change in the active document by posting Revit's Undo (`PostableCommand.Undo`, the only public way).
+  The ledger records every kept single command and batch (undo name, `-- changed:` summary, the edit counter before/after,
+  one undo entry for sure: a VibeModel group, exactly one transaction, or `extrude/sweep/lwall`, which group their own work). Refused — `UNDO_REFUSED`
+  with the reason — when nothing is recorded, the counter moved since (the user, Revit's own Undo/Redo, another client), the run
+  may be several entries (an exec that saves), inside a batch, VibeModel's last change is in another document, an earlier undo is
+  still on its way, or Revit cannot post. The posted command runs after the request; DocumentChanged confirms it (the undo is the
+  first change after the post — one Revit Undo takes back exactly the top entry, which the counter check proved was this run) and the
+  next stamp says `| undone: VibeModel: exec …` (JSON `meta.undone`), `the posted undo took back '…', not '…'` (the model changed in
+  between) or `undo of '…' did not happen`; it is no USER edit. The run below then becomes the top. The user's own Ctrl+Z right after
+  VibeModel's last run takes it out of the ledger too; the run below only becomes undoable when every undone transaction was that run's. `undo --status`
+  lists the runs; a preview turn only says what it would take back. Journaled (`· undo · took back '…'`, `IJournaledOutcome`);
+  refused on the file-based fallback; exec refuses a snippet posting `PostableCommand.Undo/Redo` (`EXEC_POSTS_UNDO`). Opening a document
+  or synchronizing it with central empties its ledger (Revit's undo list starts afresh; `UndoLedger.Forget`). Measured:
+  after exec, batch and an `ask` Keep; two in a row; refused after Revit's Undo button; in a sketch Revit runs no ExternalEvent
+  (the request times out, nothing is undone; cancelling the sketch is an edit, so undo then refuses).
+- **`-- attention:` line** (phase 2, `AttentionReport` pure, `AttentionGuard` Revit side): sheets (number, name), views (view
+  template, filters) and filter elements read before every modifying command or batch and compared by value afterwards for the ids
+  that existed before: `-- attention: sheet 0002 renamed 'A' → 'B'; view template 'X' removed from 3 views ('L1', 'L2', 'L3');
+  filter 'Y' added to 1 view ('Doorsnede'); filter 'Z' changed` (Revit marks a filter modified when its rules change). After
+  `-- changed:`; a preview prints `-- preview: attention: …`; never after a rollback; JSON additive `attention:[{kind,text}]` (in
+  `preview` for a preview). Read again only when the run modified or deleted a sheet, view or filter of the snapshot (a renamed sheet,
+  a template or filter change always marks its sheet or view modified; a filter's rules mark the filter). ≤ 3000 views read, the rest
+  only by id — a changed one among them is named (`N changed views not checked …`); > 50 ms is logged (not reached on the demo model:
+  86 views). Never asked about (the user's decision: an overview, no window in auto).
 - **Inside a run group** Revit refuses to save, close or synchronize ("Operation is not permitted when
   there is any open transaction phase started by API client" — measured; under `auto` an exec can
   `trans.Commit(); doc.Save();`); exec adds a `Hint:` saying why when the snippet calls `Save`,
@@ -474,7 +509,7 @@ curl -s http://localhost:18884/approvals                                  # This
   whose source writes to them (comments and strings stripped; variables taken from a protected item are followed; reading passes) →
   `ERROR: Refused: <what> is protected by the office.` (JSON `FORBIDDEN`; in a batch that item fails like any other). After the run,
   the same items are compared for the ids that existed before (a new pinned link is no change): in a run group the run is rolled back
-  (`FORBIDDEN`); without one the change stays and the response starts with `-- forbidden: <what> changed; press Ctrl+Z to undo — …`
+  (`FORBIDDEN`; since phase 2 every modifying exec has one, also under auto, except one that saves or closes); without one the change stays and the response starts with `-- forbidden: <what> changed; press Ctrl+Z to undo — …`
   (JSON `forbidden`), journaled as `· forbidden <what>`. Reading the items is logged above 50 ms.
 - **File-based fallback** (`C:\RevitClaudeLink`, only when the HTTP port could not open) has no run
   group: while the policy is not `auto` (or a preview chat turn runs) it refuses every modifying
@@ -569,6 +604,11 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   `Floor.GetSlabShapeEditor()` are 2024+, confirmed on the SDK DLLs; shown only when `ExecCommand.ApiHas` finds the
   running RevitAPI lacks them) append `Hint: exec compiles C# 5, Revit 2023 API:` + one line each, after the plan-16
   lookup hint.
+- **Trials and posted undos** (phase 2, `ExecSourceChecks`, pure, on the code with comments and strings stripped): a snippet
+  that declares a dry-run switch set to pretend (`bool CREATE = false`, `const bool DryRun = true`, `var apply = false`) gets
+  `Hint: a switch inside the script (CREATE = false) hides what the real run does … Run the real script with ?preview=1` (not in a
+  preview) — measured in a colleague's export: such a trial skipped the delete and never showed the 256 dimensions it took along.
+  A snippet that posts `PostableCommand.Undo/Redo` is refused (`EXEC_POSTS_UNDO`, hint: the `undo` command).
 
 ### Sheet Assembly (section / crop / viewport / dimension / spot / text / sheetinfo / schedule / callout / region / export)
 Build a drawing sheet from the conversation: sections, views on a sheet, dimensions, notes —
@@ -699,22 +739,29 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   `AnnotationGuard` records the spots, dimensions and tags on the elements the command names (a type id
   covers its instances; every annotation in the document for `exec`; skipped above 5000, logged once,
   and the capture time is logged above 200 ms). Afterwards it only looks at annotations whose referenced
-  element the command deleted or changed — an annotation the command removed itself (named in `delete`,
+  element the command deleted or changed (Revit's automatic sketch dimensions, `OST_WeakDims` — a filled region's own sketch — are
+  never recorded; measured, they were reported as removed) — an annotation the command removed itself (named in `delete`,
   or deleted by an `exec` snippet while its host stayed untouched) stays removed. A spot whose element
   survived but moved or went stale is refreshed on the same element; a lost spot moves to a replacement
   with a face/edge at the same height (±1 mm) within 50 mm (a 350 pile replacing a 320 one keeps its tip
   spot); a dimension is re-created with every lost face replaced by a face on the old reference plane
   (±1 mm, parallel, seen edge-on — also a new face of the same, changed element); a tag moves to the
-  replacement covering the old element's middle. A replacement is an element of the same category near
+  replacement covering the old element's middle; a dimension on a **filled region's edge** (phase 2) comes back only on a straight
+  edge of a region the run added in the same view (or the same, changed region) on the old reference line (±1 mm), running the
+  same way and overlapping the old edge (gap ≤ 50 mm; `AnnotationMatch.SameEdge`) — the user's rule: an edge gone with nothing in
+  its place rightly takes its dimension along. Measured: a region's view geometry is a Solid whose edges `NewDimension` accepts;
+  same shape → both dimensions back, a lower shape → the width back and the height removed, region deleted → removed. A replacement is an element of the same category near
   the old one that the command added, or that VibeModel created earlier this session (placed in a
   previous call) — never an unrelated neighbour, so deleting one floor does not move its spot onto the
   next. What cannot be re-hosted is deleted — never an invalid annotation left behind — and listed: `-- annotations: re-hosted 2 spot elevations (1730946 → 1730963 on
   structural foundation 1730950, …); removed 1 dimension that referenced 1730914 (view Doorsnede 1-1,
-  sheet 0003)`, after the `-- revit`/`-- check` lines (JSON: additive `annotations` object
-  `{rehosted:[{from,to,kind,host,hosts,view}], removed:[{id,kind,referenced,view,sheet,by}]}`, `by` =
-  `revit` when Revit's failure policy deleted it — marked `(Revit)` in text). The re-host is in the same
-  undo step (a TransactionGroup) — except `exec`, whose snippet may save, open or close documents (not
-  allowed inside a group), so there it is its own undo step. A rolled-back atomic batch is not
+  sheet 0003)`, after the `-- revit`/`-- check` lines; since phase 2 each removed group ends with why: `removed 256 dimensions that
+  referenced … (view …) — reference gone, nothing came back in its place` or `— could not be re-attached to the replacement` (Revit
+  refused the new one, or its view is gone) (JSON: additive `annotations` object
+  `{rehosted:[{from,to,kind,host,hosts,view}], removed:[{id,kind,referenced,view,sheet,by,reason}]}`, `by` =
+  `revit` when Revit's failure policy deleted it — marked `(Revit)` in text; `reason` = `nothingInPlace` / `couldNotAttach`). The
+  re-host is in the same undo step (a TransactionGroup) — for `exec` too since phase 2 (its run group), except a snippet that saves,
+  closes or synchronizes (not allowed inside a group): there it is its own undo step. A rolled-back atomic batch is not
   reconciled. Nothing is touched when no recorded annotation changed. A re-hosted spot keeps its old leader (moved
   with the point); one without a readable leader gets `AnnotationMatch.RehostSpotLeaderMm` (12 paper mm, pinned by a test),
   a constant apart from `spot`'s placing default `AnnotationLayout.SpotLeaderMm`. Pure parts (wording, tolerances,
@@ -1146,7 +1193,12 @@ line (+ context, `≈ €`). The button exports every chat and opens Explorer on
   for a preview turn), `pack` (the active pack id, "" = none; `StandardsPrompt.ActivePackId`, published with the
   blocks) — taken when the question is sent (`ChatSessionBuild.Current`) — (`ChatSession.Append(role, content, steps,
   usage, model, durationMs, build)` from `ChatPane.AppendTurnRecord`; `ChatSessionStep.FromTurn`). The export prints
-  `_VibeModel 1.2.22 · modus: ask · pakket: geen_` under the token line (`ChatExportDocument.BuildLine`). `args` is the full call
+  `_VibeModel 1.2.22 · modus: ask · pakket: geen_` under the token line (`ChatExportDocument.BuildLine`). Phase 2: each step also keeps
+  `status` — what VibeModel answered, in short (`ToolCallDescriber.StatusLines`: the ERROR line(s) with their Hint, every `-- ` line,
+  a batch's `[…] rolled back`; from a JSON envelope the error, each failed batch command (`ERROR (delete): …`), the status keys compacted
+  and `meta`; scrubbed, ≤ 1200 chars; never for the CLI's own tools `@read`/`@shell`/…), carried on
+  the ToolFinished event of all three backends; the export prints it per step under `Wat VibeModel antwoordde bij stap N (cmd):` /
+  `What VibeModel answered at step N (cmd):` in a `text` block. `args` is the full call
   (`ToolCallInfo.FullArgs`: the args string, a curl's decoded `?args=`, else the whole shell command — an
   exec sent with `--data-urlencode` or a heredoc), capped at 4000 chars (`… (+N tekens)`); a message
   without a record is written exactly as before, and older builds ignore the keys. Never sent to a model.
@@ -1175,7 +1227,11 @@ text and tags horizontal; copy a hand-corrected example's spacing; annotations p
 assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `QuantitiesRule` (estimate quantities as a Revit schedule),
 `DynamicQuantitiesRule` (never a computed quantity as a fixed parameter value; built-in field → `--takeoff` → family formula →
 `--calc`; else say so and ask). The ask-first list names project parameters and parameter bindings (also through exec).
-`DerivedCoverageRule` (act on `-- schedules:` / `-- views:`).
+`DerivedCoverageRule` (act on `-- schedules:` / `-- views:`). Phase 2: `SideEffectsRule` (pass on every `-- annotations:` /
+`-- attention:` line per action in the user's words — counts and views, why, deleted versus created when a script replaced things —
+and offer `undo` when something went that the user did not ask for), `DryRunRule` (a trial is `?preview=1` / `readonly=1` on the real
+script, never a switch inside it), `ExecFailuresRule` (no silent catch per item: count and print what failed), and the undo section's
+`UndoCommandRule` (take back your own last change with `undo`, never by posting Revit's Undo through exec).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 `AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values (sizes and positions, and also a phase, type or level
@@ -1269,7 +1325,9 @@ classes (PowerShell inline, pipe, timeout, missing tool, file not found, exec co
 error), hidden failures (heuristic: an ok exec directly followed by the same snippet re-sent — ≥ 85 % the same, or its
 file patched to remove a construct C# 5 rejects; a dry run → real run excluded), steps with several server calls,
 correction turns (heuristic Dutch/English phrase pattern on follow-up questions), offer / question endings, median
-tokens per turn, peak context, and the builds/modes/packs seen. Baseline (a colleague's 45-chat export, counting
+tokens per turn, peak context, and the builds/modes/packs seen; since 1.2.23 also from the stored step status: steps with
+status, steps that removed annotations, annotations removed (`-- annotations: … removed N …`, not in a preview) and
+`-- attention:` lines. Baseline (a colleague's 45-chat export, counting
 version 1): 251 commands, 43 failed (17.1 %), 22 with only an exit code, 10 hidden, 34 multi-call steps, 13 correction
 turns of 111 follow-ups, median 1.15M tokens per turn, peak context 199k. Exports stay out of git (names).
 

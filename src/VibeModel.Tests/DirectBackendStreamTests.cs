@@ -75,6 +75,18 @@ namespace VibeModel.Tests
 
         private (string answer, string error, List<TurnUsage> usage) RunTurn(AnthropicDirectBackend backend, string question)
         {
+            // The backend calls onComplete from inside its worker, just before it clears its "busy" flag:
+            // a turn sent the moment the previous one completed can still meet that flag. Retry briefly.
+            for (int attempt = 0; ; attempt++)
+            {
+                var r = RunTurnOnce(backend, question);
+                if (r.error != Strings.Get(Strings.MessageInProgress) || attempt >= 100) return r;
+                Thread.Sleep(20);
+            }
+        }
+
+        private (string answer, string error, List<TurnUsage> usage) RunTurnOnce(AnthropicDirectBackend backend, string question)
+        {
             string answer = null, error = null;
             var usage = new List<TurnUsage>();
             var done = new ManualResetEventSlim();

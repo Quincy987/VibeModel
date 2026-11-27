@@ -44,6 +44,7 @@ namespace VibeModel.Services.Chat
                 { "chatlog", "Reading the chat history…" },
                 { "diagnose", "Checking the setup…" },
                 { "approvals", "Reading decisions…" },
+                { "undo", "Taking back the last change…" },
                 { "apilookup", "Looking up the Revit API…" },
                 { "update", "Checking for updates…" },
 
@@ -155,6 +156,7 @@ namespace VibeModel.Services.Chat
                 { "chatlog", "Chatgeschiedenis lezen…" },
                 { "diagnose", "Installatie controleren…" },
                 { "approvals", "Beslissingen lezen…" },
+                { "undo", "Laatste wijziging terugdraaien…" },
                 { "apilookup", "Revit-API opzoeken…" },
                 { "update", "Controleren op updates…" },
 

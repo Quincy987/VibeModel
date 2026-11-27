@@ -398,7 +398,7 @@ namespace VibeModel.Services.Chat
                         fullResponse.Append(toolLabel);
 
                         var result = ExecuteTool(toolName, input);
-                        ReportActivity(ChatActivityEvent.Finished(toolId, ToolCallDescriber.ErrorLine(result)));
+                        ReportActivity(ChatActivityEvent.Finished(toolId, ToolCallDescriber.ErrorLine(result), ToolCallDescriber.StatusLines(result)));
 
                         // Screenshot results carry an image; everything else is a plain string.
                         // Older screenshots lose their image at the start of the next turn, never

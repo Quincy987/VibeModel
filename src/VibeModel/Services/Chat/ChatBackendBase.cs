@@ -333,6 +333,16 @@ namespace VibeModel.Services.Chat
         // assumed and what it left out, and must be able to check quantities without the AI.
         internal const string ChangeReportRule =
             "When this turn changed the model, end with ONE compact line: what was added, changed and deleted per category, taken from the command output (`-- changed:` in text, the `changes` counts in JSON), never estimated, plus the assumptions you made (type, level, phase, position) and what you skipped or could not do. One line, no list.";
+
+        // Phase 2 (a colleague's 45-chat export): one script replaced 10 filled regions and 256 dimensions on
+        // their edges went with them; the answer did not say so in plain words. The server now names it per
+        // action (`-- annotations:`, `-- attention:`); the model passes it on and offers `undo`.
+        internal const string SideEffectsRule =
+            "Pass on every `-- annotations:` and `-- attention:` line (JSON `annotations` / `attention`) in the user's words, once per action: what disappeared or changed and where (counts and views, never one line per element), and why when the line says so. When a script replaced elements, say how many it deleted and how many it created. When something went that the user did not ask for, say so plainly and offer `undo` in the same line.";
+        internal const string ExecFailuresRule =
+            "In an exec snippet that loops over elements, never swallow an exception per item silently (no empty catch): count what failed and print it with the reason (sb.AppendLine), so the output says \"8 of 10 failed: …\".";
+        internal const string DryRunRule =
+            "A trial run is `?preview=1` (a change) or `readonly=1` (reading) on the REAL script or batch: it runs everything and reports what it would add, modify and delete, annotations included, and keeps nothing. Never build a switch into a script that skips steps for a trial (`bool CREATE = false`): such a trial never shows what the skipped step deletes.";
         internal const string OmissionsRule =
             "When a command output says it is incomplete (showing N of M), tell the user the real total; never present a cut list as everything. Always name assumptions and omissions.";
         internal const string QuantitiesRule =
@@ -352,13 +362,18 @@ namespace VibeModel.Services.Chat
         // exactly the sentence above; ask and readonly replace it, so the model knows the user
         // decides (or that nothing is kept) and does not retry a discarded change.
         internal const string UndoRule =
-            "Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps.";
+            "Every modification through VibeModel is one Revit undo step (Ctrl+Z), so deletions and edits the user asked for are reversible and must simply be executed, never refused or redirected to manual steps. " + UndoCommandRule;
+
+        // Phase 2: the assistant improvised `uiApp.PostCommand(PostableCommand.Undo)` in an exec — that undoes
+        // whatever is on top of Revit's undo list, also the user's own work. `undo` checks first.
+        internal const string UndoCommandRule =
+            "To take back YOUR last change (the user asks, or its result is wrong), call `undo`: it takes back exactly VibeModel's last change and refuses when anything else changed the model since (then the user uses Ctrl+Z); its confirmation comes in the next response's stamp (`undone: …`). Never post Revit's Undo through exec.";
         internal const string ApprovalAskRule =
             UndoRule + " Change approval is on: the user keeps or discards a deletion or edit in Revit before you see the result (`-- approval: kept by the user` or `ERROR: Discarded by the user`). After a discard: do not retry, do not argue; ask what they want instead.";
         internal const string ApprovalWaitRule =
             "delete, set, phase, join, unjoin, an exec that changes the model and batches holding them wait for the user's Keep/Discard in Revit: when your shell tool has a timeout, set it to 600000 ms for those calls. If a call still times out (APPROVAL_PENDING), call approvals to learn the outcome; never re-run the change.";
         internal const string ApprovalAnnotateRule =
-            "Every kept change through VibeModel is one Revit undo step (Ctrl+Z). VibeModel is set to annotation-only (the mode chip under the chat input): views, sheets, schedules and annotations (text, tags, dimensions, spot elevations, filled regions) are made and kept; a change to a model element is rolled back and refused (ANNOTATION_ONLY). After a refusal: say so, do not retry or work around it with exec, and offer the user to switch the mode in the chat's mode chip.";
+            "Every kept change through VibeModel is one Revit undo step (Ctrl+Z). " + UndoCommandRule + " VibeModel is set to annotation-only (the mode chip under the chat input): views, sheets, schedules and annotations (text, tags, dimensions, spot elevations, filled regions) are made and kept; a change to a model element is rolled back and refused (ANNOTATION_ONLY). After a refusal: say so, do not retry or work around it with exec, and offer the user to switch the mode in the chat's mode chip.";
         internal const string ForbiddenRule =
             "Never move the project base point or survey point, change the shared coordinates, unpin grids, levels, links or imports, or edit a view template, even when the user asks: VibeModel refuses it (FORBIDDEN). This goes before every other rule here. Say that Revit-beheer does this; do not work around it.";
         internal const string ExecRecipeRule =
@@ -422,6 +437,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("Compact answers");
             sb.AppendLine("- Answer first, in at most 5 short lines in total: a table and the final id line do not count, everything else does — notes, warnings and offers included.");
             sb.AppendLine("- " + ChangeReportRule);
+            sb.AppendLine("- " + SideEffectsRule);
             sb.AppendLine("- " + NextStepRule);
             sb.AppendLine("- " + PhaseNoteRule);
             sb.AppendLine("- No element ids in running text unless the user asks for them; put ids in a single `code` line at the end if they are needed.");
@@ -433,6 +449,8 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- " + DynamicQuantitiesRule);
             sb.AppendLine("- " + DerivedCoverageRule);
             sb.AppendLine("- " + AnnotationLayoutRule);
+            sb.AppendLine("- " + DryRunRule);
+            sb.AppendLine("- " + ExecFailuresRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);
             sb.AppendLine("Never");
             sb.AppendLine("- " + ForbiddenRule);

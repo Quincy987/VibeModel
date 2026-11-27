@@ -108,6 +108,9 @@ namespace VibeModel
                 application.Idling += OnStandardsIdling;
                 application.ControlledApplication.DocumentOpened += OnDocumentOpenedOrClosed;
                 application.ControlledApplication.DocumentClosed += OnDocumentOpenedOrClosed;
+                // Phase 2: opening a document or synchronizing it starts Revit's undo list afresh.
+                application.ControlledApplication.DocumentOpened += OnUndoListReset;
+                application.ControlledApplication.DocumentSynchronizedWithCentral += OnUndoListReset;
                 StartStandardsBackgroundWork();
 
                 // In-app updates (plan 19): one check 8 s from now, off the main thread.
@@ -137,6 +140,8 @@ namespace VibeModel
                 application.Idling -= OnStandardsIdling;
                 application.ControlledApplication.DocumentOpened -= OnDocumentOpenedOrClosed;
                 application.ControlledApplication.DocumentClosed -= OnDocumentOpenedOrClosed;
+                application.ControlledApplication.DocumentOpened -= OnUndoListReset;
+                application.ControlledApplication.DocumentSynchronizedWithCentral -= OnUndoListReset;
 
                 if (_usingFallback)
                 {
@@ -317,6 +322,23 @@ namespace VibeModel
             }
         }
 
+        // Revit's undo list of a freshly opened or synchronized document is empty: the undo command must
+        // not offer a change from before (its posted Undo would do nothing, or something else).
+        private void OnUndoListReset(object sender, EventArgs e)
+        {
+            try
+            {
+                Autodesk.Revit.DB.Document doc = null;
+                if (e is Autodesk.Revit.DB.Events.DocumentOpenedEventArgs opened) doc = opened.Document;
+                else if (e is Autodesk.Revit.DB.Events.DocumentSynchronizedWithCentralEventArgs synced) doc = synced.Document;
+                if (doc != null && !doc.IsFamilyDocument) UndoLedger.Forget(ModelChangeTracker.DocKey(doc.PathName, doc.Title));
+            }
+            catch
+            {
+                // Best-effort: the ledger's counter check still refuses after any edit.
+            }
+        }
+
         private void OnStandardsIdling(object sender, IdlingEventArgs e)
         {
             try
@@ -460,12 +482,18 @@ namespace VibeModel
                 {
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted:
                         ModelChangeTracker.RecordCommit(key, e.GetTransactionNames(), RevitCommandHandler.IsProcessingCommand);
+                        // Phase 2: which undo entry a VibeModel run leaves (the undo command confirms by name).
+                        if (RevitCommandHandler.IsProcessingCommand && !doc.IsFamilyDocument)
+                            UndoLedger.NoteCommit(e.GetTransactionNames());
                         break;
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionUndone:
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone:
-                        // Undo/redo is always user-driven â€” even undoing a VibeModel edit
-                        // changes the model outside VibeModel's control.
-                        ModelChangeTracker.RecordUndoRedo(key);
+                        // Undo/redo is user-driven - even undoing a VibeModel edit changes the model
+                        // outside VibeModel's control. Except the Undo the undo command posted.
+                        bool posted = UndoLedger.IsPending(key);
+                        ModelChangeTracker.RecordUndoRedo(key, posted);
+                        UndoLedger.ObserveUndoRedo(key, e.GetTransactionNames(), ModelChangeTracker.GetTotalEdits(key),
+                            redo: e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone);
                         break;
                     // TransactionRolledBack is deliberately not counted: a rollback restores
                     // the pre-transaction state, so there is no net model change to report.

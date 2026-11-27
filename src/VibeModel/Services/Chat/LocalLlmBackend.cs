@@ -345,7 +345,7 @@ namespace VibeModel.Services.Chat
                     fullResponse.Append(toolLabel);
 
                     var result = ExecuteTool(toolName, argsValue);
-                    ReportActivity(ChatActivityEvent.Finished(stepId, ToolCallDescriber.ErrorLine(result)));
+                    ReportActivity(ChatActivityEvent.Finished(stepId, ToolCallDescriber.ErrorLine(result), ToolCallDescriber.StatusLines(result)));
 
                     // Add tool result to history (OpenAI format)
                     _conversationHistory.Add(new Dictionary<string, object>

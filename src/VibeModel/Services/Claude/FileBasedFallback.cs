@@ -80,6 +80,14 @@ namespace VibeModel.Services.Claude
                     return;
                 }
 
+                // Phase 2: the undo command needs the HTTP path's ledger and stamp to know what it takes back.
+                if (string.Equals(cmd, "undo", StringComparison.OrdinalIgnoreCase))
+                {
+                    WriteOutput(commandText, "ERROR: the file-based fallback cannot take back a change safely, so undo makes no change here.\nHint: " +
+                        "the user presses Ctrl+Z in Revit, or use the HTTP server (restart Revit when its port was blocked).");
+                    return;
+                }
+
                 // Same failure handling as the HTTP path: the application-level safety net only
                 // acts while a command runs, and exec turns a collected rollback into an error.
                 string output;

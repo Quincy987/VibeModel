@@ -200,6 +200,35 @@ class ScorecardTest(unittest.TestCase):
         self.assertEqual((c["turns"], c["commands"], c["failed"], c["medianTokensPerTurn"]), (2, 3, 1, 1500))
         self.assertEqual(c["builds"], [{"version": "1.2.22", "mode": "readonly", "pack": "none"}])
 
+    def test_status_blocks_are_read_and_change_no_other_number(self):
+        # Since 1.2.23 each step keeps what VibeModel answered, in a fenced block under the table.
+        status = ("Wat VibeModel antwoordde bij stap 2 (exec):\n\n```text\n"
+                  "-- annotations: removed 256 dimensions that referenced 7 — reference gone, nothing came back in its place\n"
+                  "-- changed: added 2, modified 0, deleted 266\n-- attention: sheet 0001 renamed 'A' → 'B'\n"
+                  "| 9 | looks | like a row | ✗ x | |\n```\n\n")
+        with_status = CHAT_NL.replace("**Antwoord** (29 s)", status + "**Antwoord** (29 s)", 1)
+        single = os.path.join(self.tmp.name, "chats-3.md")
+        with io.open(single, "w", encoding="utf-8") as f:
+            f.write("# README\n\ntext\n\n---\n\n" + with_status + "\n---\n\n" + CHAT_OLD_EN)
+        c = self.card(single)
+        base = self.card(self.dir)
+        for k in ("commands", "failed", "hiddenFailuresHeuristic", "stepsWithSeveralServerCalls", "turns"):
+            self.assertEqual(c[k], base[k], k)
+        self.assertEqual((c["stepsWithStatus"], c["stepsRemovingAnnotations"], c["annotationsRemoved"], c["attentionLines"]), (1, 1, 256, 1))
+        self.assertEqual(base["stepsWithStatus"], 0)
+
+    def test_raw_json_status_is_read(self):
+        path = os.path.join(self.tmp.name, "chat2.json")
+        with io.open(path, "w", encoding="utf-8") as f:
+            json.dump({"id": "y", "title": "t", "messages": [
+                {"role": "user", "content": "vervang", "timestampUtc": "2026-11-27T10:00:00Z"},
+                {"role": "assistant", "content": "Klaar.", "timestampUtc": "2026-11-27T10:00:10Z",
+                 "steps": [{"command": "exec", "args": "x", "ok": True,
+                            "status": "-- annotations: removed 3 tags (view L1)\n-- preview: annotations: removed 9 dimensions"}]},
+            ]}, f)
+        c = self.card(path)
+        self.assertEqual((c["stepsWithStatus"], c["annotationsRemoved"]), (1, 3))
+
     def test_main_writes_md_and_json(self):
         base = os.path.join(self.tmp.name, "card")
         out = io.StringIO()

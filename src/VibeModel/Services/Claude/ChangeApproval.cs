@@ -280,9 +280,9 @@ namespace VibeModel.Services.Claude
         public static bool IsGuardedBatch(IEnumerable<string> commands) => AnnotationScope.AppliesToAny(commands);
 
         /// <summary>
-        /// True when the run needs a TransactionGroup it can roll back or show first. False under
-        /// <see cref="ChangeApprovalMode.Auto"/> without flags: the run is exactly as before plan 15.
-        /// A non-modifying command never needs one (it changes nothing).
+        /// True when the policy or a flag needs a TransactionGroup it can roll back or show first. False
+        /// under <see cref="ChangeApprovalMode.Auto"/> without flags; the per-command overload below adds
+        /// exec (phase 2). A non-modifying command never needs one (it changes nothing).
         /// </summary>
         public static bool NeedsRunGroup(ChangeApprovalMode mode, bool guarded, bool modifying, bool preview, bool readOnlyFlag)
         {
@@ -291,6 +291,24 @@ namespace VibeModel.Services.Claude
             if (mode == ChangeApprovalMode.ReadOnly || mode == ChangeApprovalMode.Annotate) return true;
             return mode == ChangeApprovalMode.Ask && guarded;
         }
+
+        /// <summary>
+        /// <see cref="NeedsRunGroup(ChangeApprovalMode,bool,bool,bool,bool)"/> for one command, plus
+        /// phase 2: a modifying <c>exec</c> always runs in a group (<see cref="ExecRunsInGroup"/>), also
+        /// under <see cref="ChangeApprovalMode.Auto"/>, so its own transactions, the wrapper's and the
+        /// annotation re-host are ONE undo entry. Under auto the group is simply kept (no prompt, no line).
+        /// </summary>
+        public static bool NeedsRunGroup(ChangeApprovalMode mode, bool guarded, bool modifying, bool preview, bool readOnlyFlag,
+            string command, string args)
+            => NeedsRunGroup(mode, guarded, modifying, preview, readOnlyFlag) || (modifying && ExecRunsInGroup(command, args));
+
+        /// <summary>
+        /// True for an <c>exec</c> whose snippet can run inside a transaction group: everything but a
+        /// snippet that saves, closes or synchronizes (<see cref="SavesOrCloses"/> — Revit refuses those
+        /// inside a group). Such a snippet runs exactly as before: possibly several undo entries.
+        /// </summary>
+        public static bool ExecRunsInGroup(string command, string args)
+            => string.Equals((command ?? "").Trim(), "exec", StringComparison.OrdinalIgnoreCase) && !SavesOrCloses(args);
 
         /// <summary>
         /// What a finished run does with its group. Called only for a run that has one

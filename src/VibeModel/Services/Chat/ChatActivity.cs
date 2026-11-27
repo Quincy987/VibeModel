@@ -42,6 +42,12 @@ namespace VibeModel.Services.Chat
         public string ErrorLine { get; set; }
 
         /// <summary>
+        /// ToolFinished (phase 2): what VibeModel answered, in short — the ERROR/Hint head and every
+        /// <c>-- </c> status line (<see cref="ToolCallDescriber.StatusLines"/>). Stored with the chat for the export; never drawn.
+        /// </summary>
+        public string Status { get; set; }
+
+        /// <summary>
         /// ToolStarted: the exact onToken delta the backend streams right after this event (its
         /// UI-only status line, e.g. "\n\nCreating wall…\n\n"). The pane hides it because the step
         /// row replaces it; it still goes into the stored transcript exactly as before.
@@ -59,8 +65,8 @@ namespace VibeModel.Services.Chat
                 EchoText = echoText
             };
 
-        public static ChatActivityEvent Finished(string toolId, string errorLine) =>
-            new ChatActivityEvent { Kind = ChatActivityKind.ToolFinished, ToolId = toolId, ErrorLine = errorLine };
+        public static ChatActivityEvent Finished(string toolId, string errorLine, string status = null) =>
+            new ChatActivityEvent { Kind = ChatActivityKind.ToolFinished, ToolId = toolId, ErrorLine = errorLine, Status = status };
 
         /// <summary>Usage: the turn's tokens/cost so far (the last one reported wins).</summary>
         public TurnUsage Usage { get; set; }
@@ -258,6 +264,82 @@ namespace VibeModel.Services.Chat
             return runtime != null ? "exec failed: " + runtime : null;
         }
 
+        /// <summary>The longest status text kept per step (phase 2).</summary>
+        public const int MaxStatusLength = 1200;
+
+        // JSON envelope keys whose content is a status, in the order the text response prints them.
+        private static readonly string[] StatusKeys =
+            { "revit", "check", "schedules", "views", "annotations", "layout", "changes", "attention", "quantities", "preview", "approval", "forbidden" };
+
+        /// <summary>
+        /// Phase 2: what VibeModel answered, in short, for the stored chat and its export (the export
+        /// stored only commands and ✓/✗, so what a step reported — annotations removed, an attention
+        /// line — was lost). Text: the ERROR line(s) with the Hint right after them, every line that
+        /// starts with <c>-- </c> (changed, annotations, attention, revit, layout, schedules, views,
+        /// quantities, check, preview, approval, forbidden, the stamp) and a batch's
+        /// <c>[atomic] rolled back</c> lines. JSON: the error, those keys compacted, the stamp. Null when
+        /// there is none; scrubbed of secrets; capped at <see cref="MaxStatusLength"/> with an honest cut.
+        /// </summary>
+        public static string StatusLines(string result)
+        {
+            var text = (result ?? "").Trim();
+            if (text.Length == 0) return null;
+            var lines = new List<string>();
+            if (text.StartsWith("{"))
+            {
+                Dictionary<string, object> obj = null;
+                try { obj = Json.DeserializeObject(text) as Dictionary<string, object>; } catch { obj = null; }
+                if (obj != null)
+                {
+                    if (obj.TryGetValue("error", out var err) && err is Dictionary<string, object> e)
+                    {
+                        lines.Add("ERROR: " + (GetString(e, "message") ?? GetString(e, "code") ?? "error"));
+                        var hint = GetString(e, "suggestion");
+                        if (!string.IsNullOrEmpty(hint)) lines.Add("Hint: " + FirstLine(hint));
+                    }
+                    // A JSON batch: each failed command's error, named by its command.
+                    if (obj.TryGetValue("results", out var results))
+                        foreach (var item in results as object[] ?? (results as System.Collections.ArrayList)?.ToArray() ?? new object[0])
+                        {
+                            if (!(item is Dictionary<string, object> entry) || !entry.TryGetValue("result", out var r)) continue;
+                            var failed = r is string rs ? ErrorLine(rs) : ErrorLine(Json.Serialize(r));
+                            if (failed != null) lines.Add("ERROR (" + (GetString(entry, "command") ?? "?") + "): " + failed);
+                        }
+                    foreach (var key in StatusKeys)
+                        if (obj.TryGetValue(key, out var value) && value != null)
+                            lines.Add("-- " + key + ": " + Shorten(value is string sv ? sv : Json.Serialize(value), 300));
+                    if (obj.TryGetValue("meta", out var meta) && meta is Dictionary<string, object> m)
+                        lines.Add("-- meta: " + Shorten(Json.Serialize(m), 200));
+                    return Join(lines);
+                }
+            }
+            var all = text.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < all.Length; i++)
+            {
+                var line = all[i].TrimEnd();
+                var t = line.TrimStart();
+                if (t.StartsWith("ERROR", StringComparison.Ordinal))
+                {
+                    lines.Add(t);
+                    // The hint that belongs to it.
+                    for (int j = i + 1; j < all.Length && all[j].TrimStart().StartsWith("Hint:", StringComparison.Ordinal); j++)
+                        lines.Add(all[j].Trim());
+                }
+                else if (t.StartsWith("-- ", StringComparison.Ordinal) ||
+                         (t.StartsWith("[", StringComparison.Ordinal) && t.IndexOf("] rolled back", StringComparison.Ordinal) > 0))
+                    lines.Add(t);
+            }
+            return Join(lines);
+        }
+
+        private static string Join(List<string> lines)
+        {
+            if (lines.Count == 0) return null;
+            var joined = ChatExportRedaction.Scrub(string.Join("\n", lines.Distinct()));
+            if (joined.Length <= MaxStatusLength) return joined;
+            return joined.Substring(0, MaxStatusLength) + "… (+" + (joined.Length - MaxStatusLength) + " tekens)";
+        }
+
         /// <summary>A CLI tool_result's content: a string, or an array of {type:text,text} blocks.</summary>
         public static string ResultText(object content)
         {
@@ -403,6 +485,9 @@ namespace VibeModel.Services.Chat
 
             /// <summary>The full arguments (capped, secrets scrubbed) — for the stored chat, never drawn.</summary>
             public string FullArgs { get; internal set; }
+
+            /// <summary>Phase 2: what VibeModel answered, in short (status lines) — for the stored chat, never drawn.</summary>
+            public string Status { get; internal set; }
             public DateTime StartedUtc { get; internal set; }
             public DateTime? FinishedUtc { get; internal set; }
 
@@ -543,6 +628,8 @@ namespace VibeModel.Services.Chat
                 if (step == null || step.State != StepState.Running) return;
                 step.State = string.IsNullOrEmpty(e.ErrorLine) ? StepState.Done : StepState.Failed;
                 step.ErrorLine = e.ErrorLine;
+                // Only a VibeModel command's answer is a status; the CLI's own tools (@read, @shell …) are not.
+                step.Status = (step.Command ?? "").StartsWith("@", StringComparison.Ordinal) ? null : e.Status;
                 step.FinishedUtc = nowUtc;
             }
         }

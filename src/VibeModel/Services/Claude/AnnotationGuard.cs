@@ -112,6 +112,7 @@ namespace VibeModel.Services.Claude
         private static AnnotationRecord Record(Document doc, Element e, HashSet<int> targets)
         {
             if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) return null;   // a floor's sketch dimensions etc.
+            if (IsSketchDimension(e)) return null;   // measured (phase 2): a filled region's own sketch dimensions live in its view
 
             if (e is IndependentTag tag)
             {
@@ -194,6 +195,12 @@ namespace VibeModel.Services.Claude
                 rr.IsDatum = IsDatum(host);
                 var bb = host.get_BoundingBox(null);
                 if (bb != null) { rr.BoxMin = bb.Min; rr.BoxMax = bb.Max; }
+                // Phase 2: a dimension on a filled region's edge - where that edge lay, to find it again.
+                if (host is FilledRegion && reference != null)
+                {
+                    var c = AnnotationGeometry.CurveOf(host, reference);
+                    if (c is Line l && l.IsBound) { rr.RegionEdge = true; rr.EdgeA = l.GetEndPoint(0); rr.EdgeB = l.GetEndPoint(1); }
+                }
             }
             return rr;
         }
@@ -245,6 +252,7 @@ namespace VibeModel.Services.Claude
                 var go = host?.GetGeometryObjectFromReference(r);
                 if (go is PlanarFace pf) p = pf.Origin;
                 else if (go is Edge ed) p = ed.AsCurve().Evaluate(0.5, true);
+                else if (go is Curve gc && gc.IsBound) p = gc.Evaluate(0.5, true);
                 if (p == null) return null;
                 double t = (p - lo).DotProduct(dir);
                 if (host is FamilyInstance fi && ts.Count > 0)
@@ -339,6 +347,7 @@ namespace VibeModel.Services.Claude
 
             var added = (changes?.Added ?? new List<ElementId>()).Select(i => doc.GetElement(i)).Where(x => x != null).ToList();
             var results = new Dictionary<int, RehostResult>();
+            var refused = new HashSet<int>();   // phase 2: a re-host that threw - a replacement may have been there
             var err = TransactionHelper.Execute(doc, ModelChangeTracker.TransactionPrefix + "Re-host annotations", () =>
             {
                 foreach (var rec in damaged)
@@ -350,13 +359,14 @@ namespace VibeModel.Services.Claude
                 {
                     RehostResult r = null;
                     try { r = Rehost(doc, rec, added, deleted); }
-                    catch (Exception ex) { Logger.Warn("Annotation guard: re-host of " + rec.Id + " failed: " + ex.Message); }
+                    catch (Exception ex) { Logger.Warn("Annotation guard: re-host of " + rec.Id + " failed: " + ex.Message); refused.Add(rec.Id); }
                     results[rec.Id] = r;
                 }
             });
             if (err != null)
             {
                 Logger.Warn("Annotation guard: re-host transaction failed (" + err + ") — removing stale annotations only");
+                foreach (var id in results.Where(kv => kv.Value != null).Select(kv => kv.Key)) refused.Add(id);
                 results.Clear();
                 if (damaged.Count > 0)
                     TransactionHelper.Execute(doc, ModelChangeTracker.TransactionPrefix + "Remove stale annotations", () =>
@@ -376,7 +386,7 @@ namespace VibeModel.Services.Claude
                     continue;
                 }
                 // Revit's failure handling may still have deleted a re-created annotation at commit.
-                if (r != null && doc.GetElement(new ElementId(r.NewId)) != null)
+                if (r != null && !r.Failed && doc.GetElement(new ElementId(r.NewId)) != null)
                     outcome.Rehosted.Add(new RehostedAnnotation
                     {
                         From = rec.Id, To = r.NewId, Kind = rec.Kind, View = rec.ViewName,
@@ -387,7 +397,9 @@ namespace VibeModel.Services.Claude
                     {
                         Id = rec.Id, Kind = rec.Kind, View = rec.ViewName, Sheet = rec.Sheet,
                         Referenced = Culprits(rec, deleted, modified),
-                        ByRevit = revitDeleted.Contains(rec.Id)
+                        ByRevit = revitDeleted.Contains(rec.Id),
+                        // The user's rule: nothing in its place - rightly removed; a replacement Revit refused - said so.
+                        Reason = r != null || refused.Contains(rec.Id) ? RemovalReason.CouldNotAttach : RemovalReason.NothingInPlace
                     });
             }
             return outcome;
@@ -404,6 +416,9 @@ namespace VibeModel.Services.Claude
         private sealed class RehostResult
         {
             public int NewId;
+            /// <summary>Phase 2: a replacement lay in the same place, but Revit made no annotation on it.</summary>
+            public bool Failed;
+            public static RehostResult Refused() => new RehostResult { Failed = true };
             public readonly Dictionary<int, Element> Hosts = new Dictionary<int, Element>();   // by id, in order of use
 
             public RehostResult Host(Element e)
@@ -416,7 +431,7 @@ namespace VibeModel.Services.Claude
         private static RehostResult Rehost(Document doc, AnnotationRecord rec, List<Element> added, HashSet<int> deleted)
         {
             var view = doc.GetElement(rec.OwnerViewId) as View;
-            if (view == null) return null;   // the view is gone: nothing to put it back in
+            if (view == null) return RehostResult.Refused();   // the view is gone: nothing to put it back in
             switch (rec.Kind)
             {
                 case AnnotationKind.SpotElevation: return RehostSpot(doc, view, rec, added);
@@ -465,7 +480,7 @@ namespace VibeModel.Services.Claude
             else AnnotationGeometry.Leader(view, hit.Point, true, AnnotationMatch.RehostSpotLeaderMm, out bend, out end);
 
             var spot = doc.Create.NewSpotElevation(view, hit.Reference, hit.Point, bend, end, hit.Point, rec.HasLeader);
-            if (spot == null) return null;
+            if (spot == null) return RehostResult.Refused();
             KeepType(spot, rec.TypeId);
             return new RehostResult { NewId = spot.Id.IntegerValue }.Host(host);
         }
@@ -488,6 +503,16 @@ namespace VibeModel.Services.Claude
                     continue;
                 }
                 if (rr.IsDatum || !rr.T.HasValue) return null;   // a datum that is gone, or no position recorded
+
+                // Phase 2: a filled region's edge comes back only when a region edge lies in the same place.
+                if (rr.RegionEdge)
+                {
+                    var edge = RegionEdgeInPlace(doc, view, rr, rec.LineDir, added);
+                    if (edge == null) return null;
+                    ra.Append(edge.Item1);
+                    result.Host(edge.Item2);
+                    continue;
+                }
 
                 // A planar face of a replacement (or of the same, changed element) on the old reference plane (±1 mm).
                 var planeMm = AnnotationGeometry.V(rec.LineOrigin + rec.LineDir * rr.T.Value);
@@ -513,11 +538,45 @@ namespace VibeModel.Services.Claude
             double t0 = rec.TMin, t1 = rec.TMax;
             if (t1 - t0 < 1e-6) { t0 -= 1; t1 += 1; }
             var line = Line.CreateBound(rec.LineOrigin + rec.LineDir * (t0 - 1), rec.LineOrigin + rec.LineDir * (t1 + 1));
-            var dim = doc.Create.NewDimension(view, line, ra);
-            if (dim == null) return null;
+            Dimension dim;
+            try { dim = doc.Create.NewDimension(view, line, ra); }
+            catch (Exception ex)
+            {
+                Logger.Warn("Annotation guard: Revit refused the re-created dimension " + rec.Id + ": " + ex.Message);
+                return RehostResult.Refused();
+            }
+            if (dim == null) return RehostResult.Refused();
             KeepType(dim, rec.TypeId);
             result.NewId = dim.Id.IntegerValue;
             return result;
+        }
+
+        /// <summary>
+        /// Phase 2: a straight edge of a filled region in the same view - one the run added, or the
+        /// same (changed) region - that lies where the dimension's old region edge was
+        /// (<see cref="AnnotationMatch.SameEdge"/>); the closest one wins. Null: nothing came back in its place.
+        /// </summary>
+        private static Tuple<Reference, Element> RegionEdgeInPlace(Document doc, View view, RefRecord rr, XYZ lineDir, List<Element> added)
+        {
+            if (rr.EdgeA == null || rr.EdgeB == null) return null;
+            var candidates = added.OfType<FilledRegion>().Where(r => r.OwnerViewId == view.Id).Cast<Element>().ToList();
+            if (rr.ElementId > 0 && doc.GetElement(new ElementId(rr.ElementId)) is FilledRegion same && !candidates.Contains(same))
+                candidates.Insert(0, same);
+            var oldA = AnnotationGeometry.V(rr.EdgeA);
+            var oldB = AnnotationGeometry.V(rr.EdgeB);
+            var dir = AnnotationGeometry.V(lineDir);
+            Tuple<Reference, Element> best = null;
+            double bestD = double.MaxValue;
+            foreach (var region in candidates)
+                foreach (var g in AnnotationGeometry.Enumerate(region, view, faces: false, edges: true))
+                {
+                    if (!(g.Curve is Line l) || !l.IsBound) continue;
+                    double d = AnnotationMatch.SameEdge(oldA, oldB, AnnotationGeometry.V(l.GetEndPoint(0)), AnnotationGeometry.V(l.GetEndPoint(1)), dir);
+                    if (d < 0 || d >= bestD) continue;
+                    best = Tuple.Create(g.Reference, (Element)region);
+                    bestD = d;
+                }
+            return best;
         }
 
         /// <summary>The recorded reference when its element and face still exist; null otherwise.</summary>
@@ -538,6 +597,10 @@ namespace VibeModel.Services.Claude
             }
             catch { return null; }
         }
+
+        /// <summary>Revit's automatic sketch dimensions (a filled region's or floor's sketch): never the user's annotation.</summary>
+        private static bool IsSketchDimension(Element e)
+            => e.Category != null && e.Category.Id.IntegerValue == (int)BuiltInCategory.OST_WeakDims;
 
         /// <summary>Levels, grids, reference planes and detail/model lines: never replaced by a command.</summary>
         private static bool IsDatum(Element e) => e is Level || e is Grid || e is ReferencePlane || e is CurveElement;
@@ -562,7 +625,7 @@ namespace VibeModel.Services.Claude
             var host = Candidates(doc, added, old, centre, false).FirstOrDefault(c => Contains(c, centre));
             if (host == null) return null;
             var tag = IndependentTag.Create(doc, rec.TypeId, view.Id, AnnotationGeometry.TagReference(host), rec.TagLeader, rec.Orientation, rec.Head);
-            return tag == null ? null : new RehostResult { NewId = tag.Id.IntegerValue }.Host(host);
+            return tag == null ? RehostResult.Refused() : new RehostResult { NewId = tag.Id.IntegerValue }.Host(host);
         }
 
         private static void KeepType(Element annotation, ElementId typeId)
@@ -646,7 +709,7 @@ namespace VibeModel.Services.Claude
             {
                 try
                 {
-                    if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId) continue;   // a floor's sketch dimensions etc.
+                    if (e.OwnerViewId == null || e.OwnerViewId == ElementId.InvalidElementId || IsSketchDimension(e)) continue;   // sketch dimensions
                     if (ReferencedIds(e).Any(set.Contains)) result.Add(e);
                 }
                 catch { /* unreadable annotation — skip */ }
@@ -695,6 +758,8 @@ namespace VibeModel.Services.Claude
         public bool IsDatum;              // level, grid, reference plane, detail/model line: never replaced
         public XYZ BoxMin, BoxMax;        // the element's model box when recorded
         public double? T;                 // dimension references: position along the dimension line (feet)
+        public bool RegionEdge;           // phase 2: a straight boundary edge of a filled region
+        public XYZ EdgeA, EdgeB;          // its end points (model coordinates)
     }
 
     internal sealed class AnnotationRecord
@@ -865,6 +930,18 @@ namespace VibeModel.Services.Claude
         }
 
         public static bool IsLevel(Curve c) => c is Line l && Math.Abs(l.Direction.Z) < 0.01;
+
+        /// <summary>The curve a reference points at: an edge's curve (a filled region's boundary is a Solid edge, measured), or a curve; null otherwise.</summary>
+        public static Curve CurveOf(Element host, Reference reference)
+        {
+            try
+            {
+                var go = host.GetGeometryObjectFromReference(reference);
+                if (go is Edge ed) return ed.AsCurve();
+                return go as Curve;
+            }
+            catch { return null; }
+        }
 
         /// <summary>
         /// Where an existing spot elevation sits: its point on the face/edge it references, in

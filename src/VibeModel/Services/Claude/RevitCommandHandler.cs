@@ -271,7 +271,9 @@ namespace VibeModel.Services.Claude
             var doc = app.ActiveUIDocument?.Document;
             var mode = ChangeApprovalPolicy.EffectiveMode;
             bool guarded = ChangeApprovalPolicy.IsGuarded(request.Command);
-            bool runControl = doc != null && ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, modifying, options.Preview, options.ReadOnly);
+            // Phase 2: a modifying exec runs in a group under every policy (one undo entry), unless it saves or closes.
+            bool runControl = doc != null && ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, modifying, options.Preview, options.ReadOnly,
+                request.Command, request.Args);
             RecordedChanges changes = null;
             CommandResult cr;
 
@@ -279,6 +281,10 @@ namespace VibeModel.Services.Claude
             var refused = modifying ? ForbiddenGuard.PreCheck(doc, request.Command, request.Args) : null;
             if (refused != null) return Render(request, refused, app);
             var protectedBefore = modifying ? ForbiddenGuard.Capture(doc) : null;
+            // Phase 2: sheets, view templates and filters as they are, for the "-- attention" line.
+            var attentionBefore = modifying ? AttentionGuard.Capture(doc) : null;
+            List<AttentionReport.Item> attentionItems = null;
+            int attentionNotChecked = 0;
             FailureReport revit = null;
 
             // Annotations on the elements this command replaces/changes (spot elevations,
@@ -294,12 +300,15 @@ namespace VibeModel.Services.Claude
             var preRead = modifying ? ApprovalRun.PreRead(doc, targets) : null;
             // The annotations the guard may delete and re-create: their categories, for the change line.
             if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
-            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
+            // Where the edit counter stood: a rolled-back run group rewinds to it, the undo ledger records it.
+            long editsBefore = modifying ? ApprovalRun.EditsMark(doc) : 0;
+            if (modifying) UndoLedger.BeginRun();
             TransactionGroup group = null;
+            string groupName = null;
             AnnotationOutcome annotations = null;
             if (runControl || (snapshot != null && !IsExec(request.Command)))
             {
-                var groupName = runControl
+                groupName = runControl
                     ? ChangeApprovalPolicy.UndoName(request.Command, request.Args)
                     : "VibeModel: " + request.Command;
                 try { group = new TransactionGroup(doc, groupName); group.Start(); }
@@ -308,6 +317,7 @@ namespace VibeModel.Services.Claude
                     Logger.Warn((runControl ? "Run group" : "Annotation guard") + ": no transaction group (" + ex.Message + ")");
                     group?.Dispose();
                     group = null;
+                    groupName = null;
                     // A run that must be previewable, refusable or approvable never runs without its group.
                     if (runControl)
                         return Render(request, CommandResult.Error(ChangeApprovalPolicy.RunGroupCode,
@@ -333,6 +343,8 @@ namespace VibeModel.Services.Claude
                 // A failed exec can have kept transactions of its own: what they did is reconciled too.
                 if (KeptWork(request.Command, cr, changes) && snapshot != null) annotations = GuardReconcile(snapshot, ref changes, revit);
                 if (changes != null && !changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
+                // Read while the run's group is open: a preview still shows what it would change.
+                attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                 if (runControl)
                     run = DecideRun(app, doc, request, mode, guarded, options, changes, preRead, cr, revit, annotations, batch: false,
                         modifyingCommands: new[] { request.Command }, forbidden: forbidden);
@@ -344,7 +356,7 @@ namespace VibeModel.Services.Claude
                 else EndGroup(group, anyCommitted: annotations != null || (changes != null && !changes.IsEmpty));
             }
 
-            if (runControl) FinishRun(app, doc, request, run, changes, editsMark, request.Command, request.Args);
+            if (runControl) FinishRun(app, doc, request, run, changes, editsBefore, request.Command, request.Args);
             // Nothing a rolled-back run did is checked or journaled.
             bool rolledBack = runControl && !run.Keep;
             if (rolledBack) changes = null;
@@ -357,6 +369,9 @@ namespace VibeModel.Services.Claude
             var recipes = kept != null && IsExec(request.Command) ? SaveRecipes(doc, new[] { request.Args }, kept, request.Turn) : null;
             var forbiddenKept = !rolledBack ? forbidden : null;
             var forbiddenOutcome = forbiddenKept != null ? "forbidden " + forbiddenKept : null;
+
+            // Phase 2: the undo command can take this run back while nothing else happened since.
+            if (kept != null && !rolledBack) RecordUndo(doc, request, groupName, editsBefore, kept);
 
             var findings = KeptWork(request.Command, cr, changes) ? PostCommandCheck.Run(app, changes.Added) : null;
             // New elements an existing schedule / a sheet view of this session leaves out. A rolled-back
@@ -376,8 +391,62 @@ namespace VibeModel.Services.Claude
                 Journal(app, request.Command, request.Args, changes, request.Turn, null, forbiddenOutcome ?? "failed; changes kept", recipes);
             else if (cr.Success && !rolledBack && _registry.GetCommands().TryGetValue(request.Command, out var command) && command is IJournaledCommand journaled)
                 JournalFiles(app, request.Command, request.Args, journaled, cr, request.Turn);
+            else if (cr.Success && _registry.GetCommands().TryGetValue(request.Command, out var outcomeCommand) && outcomeCommand is IJournaledOutcome withOutcome)
+                JournalOutcome(app, request.Command, request.Args, withOutcome, cr, request.Turn);
 
-            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage);
+            var attention = ShownAttention(attentionItems, attentionNotChecked, kept != null, runControl, run);
+            return Render(request, run.Replace ?? cr, app, revit, findings, ShownAnnotations(annotations, runControl, run), run, kept, forbiddenKept, layout, quantities, coverage,
+                attention);
+        }
+
+        /// <summary>Phase 2: the "-- attention" items a response shows — a kept run's, or what a preview would change; none after a rollback.</summary>
+        private sealed class AttentionOut
+        {
+            public List<AttentionReport.Item> Items;
+            public int NotRead;
+            public bool Preview;
+
+            public string Line => AttentionReport.Line(Items, NotRead, Preview);
+        }
+
+        private static AttentionOut ShownAttention(List<AttentionReport.Item> items, int notChecked, bool kept, bool runControl, RunOutcome run)
+        {
+            if (items == null) return null;
+            bool preview = runControl && IsPreview(run);
+            if (!preview && (!kept || (runControl && !run.Keep))) return null;
+            return new AttentionOut { Items = items, NotRead = notChecked, Preview = preview };
+        }
+
+        // Commands that make their change as ONE transaction group of their own (ProfileRunner: load the
+        // generated family, place, join — plan 12), so several commits are still one undo entry. `profile`
+        // itself is one transaction (the count of one says so).
+        private static readonly HashSet<string> OwnGroupCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "extrude", "sweep", "lwall" };
+
+        /// <summary>
+        /// Phase 2: one entry in the undo ledger for a kept single command. One undo entry for sure when
+        /// it ran in VibeModel's group (<paramref name="groupName"/>), made its change in exactly one
+        /// transaction, or is a command that groups its own work; otherwise (an exec that saves runs
+        /// without a group) it is recorded as not undoable by the undo command.
+        /// </summary>
+        private static void RecordUndo(Document doc, CommandRequest request, string groupName, long editsBefore, ChangeSetSummary kept)
+        {
+            try
+            {
+                if (doc == null) return;
+                var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+                long after = ModelChangeTracker.GetTotalEdits(key);
+                bool oneEntry = groupName != null || after - editsBefore == 1 || OwnGroupCommands.Contains(request.Command ?? "");
+                UndoLedger.Record(key, doc.Title, groupName,
+                    UndoLedger.SummaryOf(request.Command, request.Args, kept.ChangedLine()), editsBefore, after,
+                    DateTime.Now, (request.Turn ?? ProjectJournal.CurrentTurn)?.Id, oneEntry,
+                    IsExec(request.Command) ? "saves, closes or synchronizes, so it ran without one undo group and may be several undo steps"
+                        : "was " + (after - editsBefore).ToString(System.Globalization.CultureInfo.InvariantCulture) + " separate Revit transactions");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Undo ledger: run not recorded - " + ex.Message);
+            }
         }
 
         /// <summary>
@@ -431,7 +500,7 @@ namespace VibeModel.Services.Claude
         private string Render(CommandRequest request, CommandResult cr, UIApplication app, FailureReport revit = null,
             List<CheckFinding> findings = null, AnnotationOutcome annotations = null, RunOutcome run = null,
             ChangeSetSummary changed = null, string forbidden = null, AnnotationExtents.LayoutReport layout = null, List<StaticQuantityReport.Entry> quantities = null,
-            CoverageReport coverage = null)
+            CoverageReport coverage = null, AttentionOut attention = null)
         {
             bool json = request.Format == ResponseFormat.Json;
 
@@ -457,6 +526,7 @@ namespace VibeModel.Services.Claude
                     AddAnnotationsJson(dict, annotations, run);
                     if (layout != null) dict["layout"] = layout.Json;
                     if (changed != null) dict["changes"] = changed.ChangesJson();
+                    AddAttentionJson(dict, attention);
                     var quantitiesJson = StaticQuantityReport.Json(quantities);
                     if (quantitiesJson != null) dict["quantities"] = quantitiesJson;
                     if (forbidden != null) dict["forbidden"] = forbidden;
@@ -478,9 +548,12 @@ namespace VibeModel.Services.Claude
             if (annotationLine != null) text = AppendLine(text, annotationLine);
             if (layout != null) text = AppendLine(text, layout.Line);
             if (changed != null) text = AppendLine(text, changed.ChangedLine());
+            var attentionLine = attention?.Line;
+            if (attentionLine != null && !attention.Preview) text = AppendLine(text, attentionLine);
             var quantitiesLine = StaticQuantityReport.Line(quantities);
             if (quantitiesLine != null) text = AppendLine(text, quantitiesLine);
             if (run?.Line != null) text = AppendLine(text, run.Line);
+            if (attentionLine != null && attention.Preview) text = AppendLine(text, attentionLine);
             if (forbidden != null) text = ForbiddenActions.KeptLine(forbidden) + "\n" + text;
             return stamp != null ? stamp.AppendToText(text) : text;
         }
@@ -531,6 +604,17 @@ namespace VibeModel.Services.Claude
             var line = annotations?.ToTextLine();
             if (line == null || !IsPreview(run)) return line;
             return "-- preview: " + (line.StartsWith("-- ", StringComparison.Ordinal) ? line.Substring(3) : line);
+        }
+
+        // JSON (phase 2): the additive "attention" array; for a preview inside the "preview" object.
+        private static void AddAttentionJson(Dictionary<string, object> envelope, AttentionOut attention)
+        {
+            if (attention?.Line == null) return;
+            var json = AttentionReport.Json(attention.Items, attention.NotRead);
+            if (attention.Preview && envelope.TryGetValue("preview", out var p) && p is Dictionary<string, object> preview)
+                preview["attention"] = json;
+            else
+                envelope["attention"] = json;
         }
 
         // JSON: the additive "annotations" object; for a preview inside the "preview" object.
@@ -789,9 +873,10 @@ namespace VibeModel.Services.Claude
                 // The chat pane's starter chips read the same facts.
                 ActiveDocumentTracker.UpdateView(viewName, uidoc.ActiveView is ViewSheet, selectedCount);
 
-                return ModelChangeTracker.TakeStamp(
-                    ModelChangeTracker.DocKey(doc.PathName, doc.Title), viewName, selectedCount,
-                    includeApproval ? ApprovalLog.TakeUndelivered() : null);
+                var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+                return ModelChangeTracker.TakeStamp(key, viewName, selectedCount,
+                    includeApproval ? ApprovalLog.TakeUndelivered() : null,
+                    includeApproval ? UndoLedger.TakeReport(key, DateTime.UtcNow) : null);
             }
             catch (Exception ex)
             {
@@ -846,10 +931,15 @@ namespace VibeModel.Services.Claude
             bool runControl = ChangeApprovalPolicy.NeedsRunGroup(mode, guarded, batchModifies, options.Preview, options.ReadOnly);
             var preRead = batchModifies ? ApprovalRun.PreRead(doc, AnnotationScope.TargetIds(batchItems) ?? new List<int>()) : null;
             if (preRead != null && snapshot != null) ApprovalRun.ReadAlso(doc, snapshot.AnnotationIds, preRead);
-            long editsMark = runControl ? ApprovalRun.EditsMark(doc) : 0;
             var run = new RunOutcome();
 
             var protectedBefore = batchModifies ? ForbiddenGuard.Capture(doc) : null;
+            // Where the edit counter stood: a rolled-back run group rewinds to it, the undo ledger records it.
+            long editsBefore = batchModifies ? ApprovalRun.EditsMark(doc) : 0;
+            var attentionBefore = batchModifies ? AttentionGuard.Capture(doc) : null;
+            List<AttentionReport.Item> attentionItems = null;
+            int attentionNotChecked = 0;
+            if (batchModifies) UndoLedger.BeginRun();
             var batchExecs = new List<string>();
             string forbidden = null;
 
@@ -859,6 +949,7 @@ namespace VibeModel.Services.Claude
                 tg.Start();
                 CreatedElementsRecorder.Arm();
                 RunContext.InRunGroup = runControl;
+                RunContext.InBatch = true;
                 try
                 {
                     foreach (var item in req.Batch)
@@ -913,6 +1004,7 @@ namespace VibeModel.Services.Claude
                             changes = CreatedElementsRecorder.DisarmChanges();
                             if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                             if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
+                            attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                         }
                         // Nothing modified (every command failed or only read): an empty change set.
                         run = DecideRun(app, doc, req, mode, guarded, options, anyModified ? changes : null, preRead,
@@ -930,6 +1022,7 @@ namespace VibeModel.Services.Claude
                         changes = CreatedElementsRecorder.DisarmChanges();
                         if (snapshot != null) annotations = GuardReconcile(snapshot, ref changes, batchRevit);
                         if (!changes.IsEmpty) forbidden = ForbiddenGuard.Compare(doc, protectedBefore);
+                        attentionItems = AttentionGuard.Compare(doc, attentionBefore, changes, out attentionNotChecked);
                         tg.Assimilate(); // merge all committed child transactions into one undo entry
                     }
                     else
@@ -945,6 +1038,7 @@ namespace VibeModel.Services.Claude
                 finally
                 {
                     RunContext.InRunGroup = false;
+                    RunContext.InBatch = false;
                     if (CreatedElementsRecorder.IsArmed)
                     {
                         var rest = CreatedElementsRecorder.DisarmChanges();
@@ -955,7 +1049,7 @@ namespace VibeModel.Services.Claude
 
             if (runControl)
             {
-                FinishRun(app, doc, req, run, changes, editsMark, ProjectJournal.BatchText(batchItems), null);
+                FinishRun(app, doc, req, run, changes, editsBefore, ProjectJournal.BatchText(batchItems), null);
                 if (!run.Keep) anyModified = false; // nothing kept: no check, no journal line
                 var line = BatchRunLine(run);
                 if (line != null) sb.AppendLine(line);
@@ -972,6 +1066,18 @@ namespace VibeModel.Services.Claude
             var quantities = kept != null ? StaticQuantityCheck.Find(doc, changes) : null;
             var recipes = kept != null ? SaveRecipes(doc, batchExecs, kept, req.Turn) : null;
             var forbiddenKept = !rolledBack ? forbidden : null;
+            // Phase 2: a kept batch is one undo entry (its group), so the undo command can take it back.
+            if (kept != null)
+            {
+                try
+                {
+                    var key = ModelChangeTracker.DocKey(doc.PathName, doc.Title);
+                    UndoLedger.Record(key, doc.Title, BuildGroupName(req.Batch),
+                        UndoLedger.SummaryOf(ProjectJournal.BatchText(batchItems), null, kept.ChangedLine()), editsBefore,
+                        ModelChangeTracker.GetTotalEdits(key), DateTime.Now, (req.Turn ?? ProjectJournal.CurrentTurn)?.Id, undoable: true);
+                }
+                catch (Exception ex) { Logger.Warn("Undo ledger: batch not recorded - " + ex.Message); }
+            }
             if (anyModified && !rolledBack)
                 Journal(app, ProjectJournal.BatchText(BatchItems(req.Batch)), null, changes, req.Turn, null,
                     forbiddenKept != null ? "forbidden " + forbiddenKept : null, recipes);
@@ -983,6 +1089,9 @@ namespace VibeModel.Services.Claude
             if (annotationLine != null) sb.AppendLine(annotationLine);
             if (layout != null) sb.AppendLine(layout.Line);
             if (kept != null) sb.AppendLine(kept.ChangedLine());
+            var attention = ShownAttention(attentionItems, attentionNotChecked, kept != null, runControl, run);
+            var attentionLine = attention?.Line;
+            if (attentionLine != null) sb.AppendLine(attentionLine);
             var quantitiesLine = StaticQuantityReport.Line(quantities);
             if (quantitiesLine != null) sb.AppendLine(quantitiesLine);
             if (run.Keep && run.Line != null) sb.AppendLine(run.Line);
@@ -1009,6 +1118,7 @@ namespace VibeModel.Services.Claude
                 AddAnnotationsJson(envelope, annotations, run);
                 if (layout != null) envelope["layout"] = layout.Json;
                 if (kept != null) envelope["changes"] = kept.ChangesJson();
+                AddAttentionJson(envelope, attention);
                 var quantitiesJson = StaticQuantityReport.Json(quantities);
                 if (quantitiesJson != null) envelope["quantities"] = quantitiesJson;
                 if (forbiddenKept != null) envelope["forbidden"] = forbiddenKept;
@@ -1129,6 +1239,23 @@ namespace VibeModel.Services.Claude
             }
         }
 
+        /// <summary>Project journal: "… · undo · took back 'VibeModel: exec …' · chat …" (phase 2).</summary>
+        private static void JournalOutcome(UIApplication app, string command, string args, IJournaledOutcome journaled, CommandResult result, ChatTurnRef turn)
+        {
+            try
+            {
+                if (!ProjectData.Enabled) return;
+                var outcome = journaled.JournalOutcome(result);
+                var doc = app.ActiveUIDocument?.Document;
+                if (doc == null || string.IsNullOrEmpty(outcome)) return;
+                ProjectJournal.Enqueue(doc.Title, doc.PathName, ProjectJournal.CommandLineNow(command, args, null, null, null, turn, null, outcome));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Journal line skipped: " + ex.Message);
+            }
+        }
+
         // Readable undo-dropdown label, e.g. "VibeModel: 3× wall, 1× floor".
         private static string BuildGroupName(IReadOnlyList<BatchCommand> batch)
         {
@@ -1210,10 +1337,14 @@ namespace VibeModel.Services.Claude
         public static RunOptions Current { get; internal set; }
 
         /// <summary>
-        /// True while the command runs inside a plan-15 run group (preview, read-only, approval):
+        /// True while the command runs inside a run group (plan 15: preview, read-only, approval; phase 2: also
+        /// every modifying exec that does not save or close):
         /// saving, closing or synchronizing is refused by Revit there, and exec explains why.
         /// </summary>
         public static bool InRunGroup { get; internal set; }
+
+        /// <summary>True while the commands of a batch run (the undo command refuses there).</summary>
+        public static bool InBatch { get; internal set; }
     }
 
     /// <summary>
