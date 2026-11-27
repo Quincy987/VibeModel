@@ -80,7 +80,8 @@ namespace VibeModel.Services.Claude.Commands
             var vps = new List<object>();
             sb.AppendLine();
             var viewports = sheet.GetAllViewports().Select(id => doc.GetElement(id)).OfType<Viewport>().ToList();
-            sb.AppendLine("VIEWPORTS (" + viewports.Count + ")");
+            sb.AppendLine("VIEWPORTS (" + viewports.Count + ")" + (viewports.Count > 0 ? "  — viewport id, #detail number, view, type, scale, paper outline mm" : ""));
+            bool anyDetail = false;
             foreach (var vp in viewports)
             {
                 var v = doc.GetElement(vp.ViewId) as View;
@@ -91,14 +92,20 @@ namespace VibeModel.Services.Claude.Commands
                 string label = "'" + (v?.Name ?? "?") + "'";
                 rects.Add(new KeyValuePair<string, MmRect>(label, r));
                 string scale = v == null ? "?" : v.Scale > 0 ? "1:" + v.Scale : "perspective";
-                sb.AppendLine("  " + vp.Id.IntegerValue + "  " + label + " [" + v?.ViewType + "] " + scale + "  " + r +
+                // The number in the view title ("3" in a callout's 3/0002); set changes it.
+                string detail = null;
+                try { detail = vp.get_Parameter(BuiltInParameter.VIEWPORT_DETAIL_NUMBER)?.AsString(); } catch { detail = null; }
+                if (!string.IsNullOrEmpty(detail)) anyDetail = true;
+                sb.AppendLine("  " + vp.Id.IntegerValue + (string.IsNullOrEmpty(detail) ? "" : "  #" + detail) + "  " + label + " [" + v?.ViewType + "] " + scale + "  " + r +
                               (title ? "" : "  (no title)") + (v != null && !(v is View3D) && SheetHelper.HasCropRegion(v) && !v.CropBoxActive ? "  (crop off)" : ""));
                 vps.Add(new Dictionary<string, object>
                 {
                     { "id", vp.Id.IntegerValue }, { "view", vp.ViewId.IntegerValue }, { "viewName", v?.Name }, { "viewType", v?.ViewType.ToString() },
-                    { "scale", v?.Scale }, { "title", title }, { "outlineMm", r.ToJson() }
+                    { "scale", v?.Scale }, { "title", title }, { "detailNumber", string.IsNullOrEmpty(detail) ? null : detail }, { "outlineMm", r.ToJson() }
                 });
             }
+            if (anyDetail)
+                sb.AppendLine("  change a detail number: set <viewport id> \"Detail Number\" <n> (unique per sheet)");
             var schedules = new FilteredElementCollector(doc, sheet.Id).OfClass(typeof(ScheduleSheetInstance)).Cast<ScheduleSheetInstance>()
                 .Where(s => !s.IsTitleblockRevisionSchedule).ToList();
             foreach (var s in schedules)

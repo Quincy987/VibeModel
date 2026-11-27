@@ -392,6 +392,14 @@ namespace VibeModel.Services.Chat
             "When the user has corrected a drawing by hand, read its positions with `annolayout` and copy that spacing in the next one. " +
             "Annotations you placed this turn you may delete and place again without asking first.";
 
+        // Plan 23 (a colleague's export): finding an example by a value looped over every parameter of every
+        // element in exec and crashed Revit twice; a close look meant temporary views (12 steps) or PNGs
+        // cropped by hand into a folder the next call could not read.
+        internal const string FindAndLookRule =
+            "To find elements by a value across categories use `filter any <param> <op> <value>` (with `--count Category`, `--ids`, `--select`), never an exec loop over every parameter of every element. " +
+            "To check a detail — a corner, an offset, an annotation, whether something matches an example — use `screenshot --at <ids>` or `screenshot --box x0 y0 x1 y1` (with `--view <view or sheet>` when the user names one; without it, the active view): " +
+            "it zooms on a temporary copy and changes nothing. Never make a temporary view or crop a PNG yourself for that.";
+
         // Plan 20: the pane's "next message as preview" — the server previews every change of
         // this turn on its own, the model only has to report it as such.
         internal const string PreviewTurnRule =
@@ -449,6 +457,7 @@ namespace VibeModel.Services.Chat
             sb.AppendLine("- " + DynamicQuantitiesRule);
             sb.AppendLine("- " + DerivedCoverageRule);
             sb.AppendLine("- " + AnnotationLayoutRule);
+            sb.AppendLine("- " + FindAndLookRule);
             sb.AppendLine("- " + DryRunRule);
             sb.AppendLine("- " + ExecFailuresRule);
             if (ProjectData.Enabled) sb.AppendLine("- " + ExecRecipeRule);

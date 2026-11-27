@@ -165,6 +165,9 @@ curl -s http://localhost:18884/activeview                    # Active view info
 curl -s http://localhost:18884/context                       # Combined info + active view + selection (one call)
 curl -s http://localhost:18884/screenshot                    # Export active view to PNG (default 1536px)
 curl -s "http://localhost:18884/screenshot?args=1024"        # Custom long-edge pixels
+curl -s "http://localhost:18884/screenshot?args=--view 1-1 --at 1561017 --margin 500"   # Close-up of elements, view unchanged
+curl -s "http://localhost:18884/screenshot?args=--view 1-1 --box 15952 -1353 19952 1647" # ...of a box in the view's frame
+curl -s "http://localhost:18884/screenshot?args=--view 0001 --box 60 360 140 420"        # ...of a paper box on a sheet
 curl -s http://localhost:18884/bbox                          # Bounding box of selected
 curl -s http://localhost:18884/geometry                      # Geometry of selected
 curl -s http://localhost:18884/familytypes                   # List available family types
@@ -195,6 +198,7 @@ curl -s "http://localhost:18884/filter?args=walls Height > 3000"         # Opera
 curl -s "http://localhost:18884/filter?args=walls --view --select"       # Only the active view; select the hits (--ids: ids only)
 curl -s "http://localhost:18884/filter?args=walls --count Mark"          # Group by a parameter value (Type, Level …: by name)
 curl -G -s "http://localhost:18884/filter" --data-urlencode 'args=foundations "Type Name" contains AZ'  # A name with spaces: quote it
+curl -G -s "http://localhost:18884/filter" --data-urlencode 'args=any "Type Name" contains AZ --count Category'  # Every category at once
 curl -s "http://localhost:18884/measure?args=12345 67890"                # Distance between two elements (also: 6 coordinates mm, or 'selected')
 curl -s "http://localhost:18884/whereused?args=67890"                    # Instances of a type per level (or: <family> <type>, loadable families)
 curl -s "http://localhost:18884/zoomto?args=12345"                       # Zoom the active view to element(s) / 'selected'
@@ -206,6 +210,29 @@ curl -s "http://localhost:18884/colorsplash?args=walls Type"             # Colou
 curl -s "http://localhost:18884/chatlog?args=10"                         # Recent messages of the chat pane
 curl -s "http://localhost:18884/chatlog?args=--export%20all"             # Export saved chats + commands per turn (md/zip)
 ```
+
+**`screenshot --at <ids|selected> [--margin mm] | --box x0 y0 x1 y1`** (plan 23, `docs/plans/23-like-this-example.md`): a
+close-up at full resolution of part of a view WITHOUT changing it — also a view on a sheet. `--box` is in the view's frame
+(plan project x,y; section along/elevation mm, as `crop --box`); `--at` = the elements' box + `--margin` (500 mm). With
+`--view <sheet>`: `--at` zooms the first view on it that shows the elements and can be cropped (perspective cannot); `--box`
+is paper mm, mapped through the viewport that holds it whole (`ZoomArgs.PickViewport`, pure; none → refused with why). Inside a
+`TransactionGroup` that is always rolled back: the view is duplicated (`WithDetailing`), the copy loses its scope box, is
+cropped (`CropCommand.CropTo`; 3D: + section box), gets the annotation crop at Revit's smallest offset and hides view markers
+not wholly inside the zone (measured: far notes and a far section marker otherwise shrank the zone to a speck), and is
+exported with no transaction open. `TemporaryWork` (scope) makes `OnDocumentChanged` return early, so nothing is counted,
+journaled, recorded or offered to `undo`; the counter is also rewound. The response keeps `Path:` and adds `Zoom: <box in the
+view frame>, <w> × <h> mm (…), on a temporary copy of the view … (nothing changed)`. Measured (demo model): view count and stamp
+unchanged; `undo` after `wall` + zoom took back the wall; works in atomic/preview batches, `?preview=1`, *Alleen lezen* and
+*Alleen opmaak*; a 4 × 3 m zone of a 1:50 section at 1536 px has every dimension legible; 280–540 ms.
+
+**`filter any <param> <op> <value>`** (plan 23): every category at once. `any` is caught before the category is resolved;
+one collector (or `--view`), only elements with a category minus `ApprovalRun.Hidden` parts; each element read for ONE
+parameter (`LookupParameter`, else its type's, cached per type) — never `elem.Parameters` per element (looping over every
+parameter of every element crashed Revit twice in a colleague's export). Revit's lookup is case-sensitive: when nobody carries
+the name as typed, the spelling comes from a sample (first element per category and per type, ≤ 300) — `Parameter: 'Comments'
+(as Revit spells it)`; none → `ERROR: no element has a parameter '…'` + closest names. Comparison shared with the per-category
+path (`FilterQuery`, pure); per category its count, ≤ 50 elements with the value; `--count`, `--ids`, `--select`. > 500 ms is
+logged. Measured: 2 803 elements in 99–177 ms (≈ 50 µs per element).
 
 ### Source Data Commands (imported DWG + point clouds)
 Read actual vector/point data from imported sources instead of guessing from screenshots.
@@ -560,7 +587,8 @@ curl -s -G "http://localhost:18884/exec" --data-urlencode "args=…" --data "tim
   views (`Legend`, `ViewLegend`, `LegendComponent`, `ViewType.Legend`), creating phases and design
   options (`Phase`, `Phase.Create`, `DesignOption`, `DesignOption.Create`), calculated schedule fields
   (`ScheduleFieldType.Formula`, `IsCalculatedField`, `AddCalculatedField` — never `AddField`/`ScheduleField`,
-  which work) — the answer carries a
+  which work), terrain (`Toposolid` is 2024+; `TopographySurface`/`.Create` from points alone spans the convex hull —
+  measured: an L of 300 m² came out at 350 m², with its facets 300 m²) — the answer carries a
   `Known gap:` block (cannot / what works, measured / the user's manual step; ≤ 12 lines; JSON
   additive `data.knownGap`): right after the first line when nothing was found, at the end of a found
   type or member. Matched on what the lookup resolved, on whole names (never a substring): a found
@@ -672,7 +700,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
   sheet is refused with that sheet's number. Schedules are placed too. `--title off` uses (or creates) a
   viewport type without a title.
 - **`sheetinfo`** grades box overlaps: a thin strip (≤ 30 mm) is `INFO` (usually empty crop margin),
-  anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields.
+  anything bigger `WARN`; office stamp patterns (`NL_META_*`, `X_1..5`) expand to the real fields. Each viewport shows its
+  detail number (`#5`, JSON `detailNumber`; plan 23). A viewport has two "Detail Number" parameters, the first read-only, so
+  `ParamWriter.Lookup` prefers a writable one of a shared name: `set <viewport> "Detail Number" 3` works (measured).
 - **`annolayout [view|sheet]`** (plan 21, read-only; `docs/plans/21-annotation-layout.md`): per annotation its paper boxes
   in the view frame (x along the view's right direction, y up, mm from the view origin, ÷ scale) — a text note's bounding
   box (with leaders: its Coord/Width/Height by alignment, since the box may take the leader in), a dimension's text per segment (estimated around `TextPosition`: characters × size × width factor × 0.72, 1.9 × size
@@ -850,7 +880,9 @@ curl -s "http://localhost:18884/export?args=ifc"                                
 - **`callout`** from a plan uses the plan's own view type (a plan callout); `--section`, and any
   callout in a section/elevation, makes a detail view. The `--box` must lie inside the parent's crop.
 - **`region`** uses `text`'s coordinate frame (plan: project mm; section: along/elevation; sheet:
-  paper mm). Line-based detail items are refused (place them with `exec`).
+  paper mm). Line-based detail items are refused (place them with `exec`). The response prints where the view sits in that
+  frame (`View in this frame: x 15343…24192, y -2525…3101 mm (crop region)`, `SheetHelper.FrameExtent`; plan 23) — a region
+  placed from an exec script's own origin landed shifted in a colleague's export.
 - **`viewport --move <id> --to <sheet>`** keeps the paper position when it lies in the target's free
   area, else centres the view there; `--at x y` overrides. The old viewport id is gone afterwards.
 - **`export`** never runs inside a transaction (an atomic batch is refused); names collide →
@@ -1232,6 +1264,8 @@ assumptions and what was skipped), `OmissionsRule` (pass on "showing N of M"), `
 and offer `undo` when something went that the user did not ask for), `DryRunRule` (a trial is `?preview=1` / `readonly=1` on the real
 script, never a switch inside it), `ExecFailuresRule` (no silent catch per item: count and print what failed), and the undo section's
 `UndoCommandRule` (take back your own last change with `undo`, never by posting Revit's Undo through exec).
+Plan 23: `FindAndLookRule` (find by a value with `filter any`, never an exec loop over every parameter; check a detail with
+`screenshot --at <ids>` / `--box`, `--view` when the user names one — never a temporary view or a self-cropped PNG).
 Every output cap words itself through `Truncation.Line` (`showing 100 of 312 — incomplete; hint`; pure, `Services/Claude/Truncation.cs`);
 a compact id list inside one line (`+N more`, the journal, `check`, `apilookup`) already states how many it left out.
 `AssumptionsFirstRule` (Ask first): on a composite build with 2+ invented values (sizes and positions, and also a phase, type or level

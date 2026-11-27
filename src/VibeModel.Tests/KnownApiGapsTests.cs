@@ -30,7 +30,7 @@ namespace VibeModel.Tests
             Assert.Contains(KnownApiGaps.Summary, description);
             foreach (var gap in KnownApiGaps.All)
                 Assert.Contains(string.IsNullOrEmpty(gap.Short) ? gap.Title : gap.Short, KnownApiGaps.Summary);
-            Assert.Equal("labels in annotation families, legend views, creating phases and design options, calculated schedule fields",
+            Assert.Equal("labels in annotation families, legend views, creating phases and design options, calculated schedule fields, concave terrain (Toposolid is 2024+)",
                 KnownApiGaps.Summary);
         }
 

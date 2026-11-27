@@ -79,11 +79,14 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Type: " + type.Name + (a.Type == null ? "  (default; --type <name> to choose)" : ""));
             sb.AppendLine("View: " + view.Name + " (" + view.ViewType + ")");
             sb.AppendLine("Outline: " + a.Points.Count + " corners, " + areaM2.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " m², " + convention);
+            var extent = SheetHelper.FrameExtent(doc, view);
+            if (extent != null) sb.AppendLine("View in this frame: " + extent + " — place by these numbers, not by a script's own origin");
             sb.AppendLine("Next: 'list regions --view' with the view active; 'screenshot --view " + view.Id.IntegerValue + "' to look at it.");
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {
                 { "created", new List<object> { region.Id.IntegerValue } },
-                { "type", type.Name }, { "view", view.Id.IntegerValue }, { "corners", a.Points.Count }, { "areaM2", Math.Round(areaM2, 3) }
+                { "type", type.Name }, { "view", view.Id.IntegerValue }, { "corners", a.Points.Count }, { "areaM2", Math.Round(areaM2, 3) },
+                { "frame", convention }, { "viewExtent", extent }
             });
         }
 
@@ -120,6 +123,8 @@ namespace VibeModel.Services.Claude.Commands
             sb.AppendLine("Type: " + Label(symbol));
             sb.AppendLine("View: " + view.Name + " (" + view.ViewType + ")");
             sb.AppendLine("At: " + Mm.F(a.At[0]) + ", " + Mm.F(a.At[1]) + " (" + convention + ")" + (Math.Abs(a.Rotate) > 1e-9 ? ", rotated " + a.Rotate + "°" : ""));
+            var extent = SheetHelper.FrameExtent(doc, view);
+            if (extent != null) sb.AppendLine("View in this frame: " + extent);
             return CommandResult.Ok(sb.ToString(), new Dictionary<string, object>
             {
                 { "created", new List<object> { fi.Id.IntegerValue } }, { "type", Label(symbol) }, { "view", view.Id.IntegerValue }, { "rotateDeg", a.Rotate }
