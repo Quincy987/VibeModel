@@ -1058,8 +1058,9 @@ namespace VibeModel.Services.Chat
             block.TryGetValue("tool_use_id", out id);
             block.TryGetValue("content", out content);
             block.TryGetValue("is_error", out isError);
+            var text = ToolCallDescriber.ResultText(content);
             ReportActivity(ChatActivityEvent.Finished(id as string,
-                ToolCallDescriber.ErrorLine(ToolCallDescriber.ResultText(content), isError is bool b && b)));
+                ToolCallDescriber.ErrorLine(text, isError is bool b && b), ToolCallDescriber.StatusLines(text)));
         }
 
         internal static string BuildPortDirective(int httpPort)

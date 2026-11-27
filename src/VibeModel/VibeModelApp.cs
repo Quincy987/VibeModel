@@ -460,12 +460,18 @@ namespace VibeModel
                 {
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted:
                         ModelChangeTracker.RecordCommit(key, e.GetTransactionNames(), RevitCommandHandler.IsProcessingCommand);
+                        // Phase 2: which undo entry a VibeModel run leaves (the undo command confirms by name).
+                        if (RevitCommandHandler.IsProcessingCommand && !doc.IsFamilyDocument)
+                            UndoLedger.NoteCommit(e.GetTransactionNames());
                         break;
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionUndone:
                     case Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone:
-                        // Undo/redo is always user-driven â€” even undoing a VibeModel edit
-                        // changes the model outside VibeModel's control.
-                        ModelChangeTracker.RecordUndoRedo(key);
+                        // Undo/redo is user-driven - even undoing a VibeModel edit changes the model
+                        // outside VibeModel's control. Except the Undo the undo command posted.
+                        bool posted = UndoLedger.IsPending(key);
+                        ModelChangeTracker.RecordUndoRedo(key, posted);
+                        UndoLedger.ObserveUndoRedo(key, e.GetTransactionNames(), ModelChangeTracker.GetTotalEdits(key),
+                            redo: e.Operation == Autodesk.Revit.DB.Events.UndoOperation.TransactionRedone);
                         break;
                     // TransactionRolledBack is deliberately not counted: a rollback restores
                     // the pre-transaction state, so there is no net model change to report.

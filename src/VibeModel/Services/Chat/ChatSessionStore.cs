@@ -294,6 +294,8 @@ namespace VibeModel.Services.Chat
                     };
                     if (!string.IsNullOrEmpty(st.Error)) d["error"] = st.Error;
                     if (st.DurationMs.HasValue) d["durationMs"] = st.DurationMs.Value;
+                    // Phase 2: what VibeModel answered (scrubbed, capped); additive, older builds ignore it.
+                    if (!string.IsNullOrEmpty(st.Status)) d["status"] = ChatExportRedaction.Scrub(st.Status);
                     steps.Add(d);
                 }
                 entry["steps"] = steps;
@@ -345,7 +347,8 @@ namespace VibeModel.Services.Chat
                     Args = d.args ?? "",
                     Ok = d.ok ?? true,
                     Error = d.error,
-                    DurationMs = d.durationMs
+                    DurationMs = d.durationMs,
+                    Status = string.IsNullOrEmpty(d.status) ? null : d.status
                 });
             }
             return steps;
@@ -415,6 +418,7 @@ namespace VibeModel.Services.Chat
             public bool? ok { get; set; }
             public string error { get; set; }
             public long? durationMs { get; set; }
+            public string status { get; set; }
         }
 
         private class UsageDto

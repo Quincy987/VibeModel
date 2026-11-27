@@ -41,6 +41,15 @@ namespace VibeModel.Services.Claude
     }
 
     /// <summary>
+    /// A command that changes no element itself yet belongs in the project journal with an outcome
+    /// of its own (phase 2: <c>undo</c> → "undo · took back 'VibeModel: exec …'"); null = no line.
+    /// </summary>
+    public interface IJournaledOutcome
+    {
+        string JournalOutcome(CommandResult result);
+    }
+
+    /// <summary>
     /// Marker for the project memory / journal commands (remember, memory, forget, journal):
     /// offered to the chat only while Settings → "Projectgeheugen en journaal bijhouden" is on,
     /// so with it off the command list in every prompt is exactly what it was before.

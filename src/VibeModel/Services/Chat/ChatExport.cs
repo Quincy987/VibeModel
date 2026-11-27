@@ -335,6 +335,19 @@ namespace VibeModel.Services.Chat
                     sb.AppendLine(fence);
                     sb.AppendLine();
                 }
+                // Phase 2: what VibeModel answered per step (status lines), for chats saved since.
+                for (var i = 0; i < rec.Steps.Count; i++)
+                {
+                    var status = Clean(rec.Steps[i].Status ?? "").Trim();
+                    if (status.Length == 0) continue;
+                    sb.AppendLine(L(Strings.ChatExportStatus, i + 1, rec.Steps[i].Command));
+                    sb.AppendLine();
+                    var fence = status.Contains("```") ? "~~~~" : "```";
+                    sb.Append(fence).AppendLine("text");
+                    sb.AppendLine(status);
+                    sb.AppendLine(fence);
+                    sb.AppendLine();
+                }
                 return;
             }
 

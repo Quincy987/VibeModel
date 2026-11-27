@@ -48,6 +48,10 @@ QUESTION_LABELS = ("**Vraag**", "**Question**")
 ANSWER_RE = re.compile(r"^\*\*(?:Antwoord|Answer)\*\*(?: \((?P<dur>[\d.]+) s\))?\s*$", re.M)
 COMMANDS_RE = re.compile(r"^\*\*Commands\*\*(?: \((?P<n>\d+)(?:, (?P<f>\d+) (?:mislukt|failed))?\))?(?P<rest>.*)$", re.M)
 FULL_ARGS_RE = re.compile(r"^(?:Volledige argumenten van stap|Full arguments of step) (\d+) \((.*?)\):\s*$")
+# Since VibeModel 1.2.23: what VibeModel answered per step (its status lines), in a fenced block.
+STATUS_RE = re.compile(r"^(?:Wat VibeModel antwoordde bij stap|What VibeModel answered at step) (\d+) \((.*?)\):\s*$")
+# "-- annotations: re-hosted …; removed 256 dimensions — reason — that referenced …, 3 tags …"
+REMOVED_COUNT_RE = re.compile(r"(\d+) (?:spot elevations?|dimensions?|tags?)\b")
 NOT_RECORDED_RE = re.compile(r"geen commands vastgelegd|no commands recorded", re.I)
 FROM_LOG_RE = re.compile(r"uit de debuglog|from the debug log", re.I)
 USAGE_RE = re.compile(r"^_(?P<tok>[\d.]+[kM]?) tokens(?P<rest>.*)_\s*$", re.M)
@@ -152,6 +156,9 @@ def json_to_md(path: str) -> str:
             lines.append("")
             for n, cmd, args in full:
                 lines += [f"Full arguments of step {n} ({cmd}):", "", "```text", args, "```", ""]
+            for n, s in enumerate(steps, 1):
+                if s.get("status"):
+                    lines += [f"What VibeModel answered at step {n} ({s.get('command') or ''}):", "", "```text", s["status"], "```", ""]
         lines += ["**Answer**", "", (a.get("content") or "").strip(), ""]
         u = a.get("usage")
         if u:
@@ -185,8 +192,8 @@ def parse_tokens(s: str) -> int:
 def table_rows(block: str) -> list[dict]:
     rows = []
     for line in block.splitlines():
-        # The table ends where the full arguments begin: a code line there may look like a row.
-        if FULL_ARGS_RE.match(line):
+        # The table ends where the full arguments (or the status blocks) begin: a code line there may look like a row.
+        if FULL_ARGS_RE.match(line) or STATUS_RE.match(line):
             break
         if not line.startswith("| ") or line.startswith("| # ") or line.startswith("|---"):
             continue
@@ -200,13 +207,13 @@ def table_rows(block: str) -> list[dict]:
     return rows
 
 
-def full_args(block: str) -> dict[int, str]:
-    """Step number -> the full arguments from the fenced blocks below the table."""
+def full_args(block: str, heading: "re.Pattern[str]" = FULL_ARGS_RE) -> dict[int, str]:
+    """Step number -> the text of the fenced block under each heading (the full arguments, or the status)."""
     out: dict[int, str] = {}
     lines = block.splitlines()
     i = 0
     while i < len(lines):
-        m = FULL_ARGS_RE.match(lines[i])
+        m = heading.match(lines[i])
         if m:
             j = i + 1
             while j < len(lines) and not lines[j].strip():
@@ -256,8 +263,10 @@ def parse_turn(block: str) -> dict:
         else:
             rows = table_rows(cmd_block)
             fulls = full_args(cmd_block)
+            statuses = full_args(cmd_block, STATUS_RE)
             for r in rows:
                 r["fullArgs"] = fulls.get(r["n"], r["args"])
+                r["status"] = statuses.get(r["n"])
             turn["steps"] = rows
     if ans:
         turn["durationS"] = float(ans.group("dur")) if ans.group("dur") else None
@@ -376,6 +385,9 @@ def score(chats: list[dict]) -> dict:
     tokens = [t["tokens"] for t in turns if t["tokens"]]
     contexts = [t["context"] for t in turns if t["context"]]
     builds = sorted({(t["build"]["ver"], t["build"]["mode"], t["build"]["pack"]) for t in turns if t["build"]})
+    # Since 1.2.23 a step keeps what VibeModel answered: what each action removed and flagged.
+    with_status = [s for s in steps if s.get("status")]
+    removed_per_step = [annotations_removed(s["status"]) for s in with_status]
 
     def share(a: int, b: int) -> float | None:
         return round(a / b, 3) if b else None
@@ -403,7 +415,25 @@ def score(chats: list[dict]) -> dict:
         "medianTokensPerTurn": int(statistics.median(tokens)) if tokens else None,
         "peakContext": max(contexts) if contexts else None,
         "builds": [{"version": v, "mode": m, "pack": p} for v, m, p in builds],
+        "stepsWithStatus": len(with_status),
+        "stepsRemovingAnnotations": sum(1 for n in removed_per_step if n > 0),
+        "annotationsRemoved": sum(removed_per_step),
+        "attentionLines": sum(1 for s in with_status for line in s["status"].splitlines() if line.startswith("-- attention:")),
     }
+
+
+def annotations_removed(status: str) -> int:
+    """The annotations a step's "-- annotations:" line says were removed (re-hosted ones not counted)."""
+    total = 0
+    for line in (status or "").splitlines():
+        if not line.startswith("-- annotations:") and not line.startswith("-- preview: annotations:"):
+            continue
+        if line.startswith("-- preview"):
+            continue   # nothing was removed in a preview
+        i = line.find("removed ")
+        if i >= 0:
+            total += sum(int(n) for n in REMOVED_COUNT_RE.findall(line[i:]))
+    return total
 
 
 def render_md(card: dict, sources: list[str]) -> str:
@@ -442,6 +472,18 @@ def render_md(card: dict, sources: list[str]) -> str:
     for k, v in card["failureClasses"].items():
         lines.append(f"{k:<28}{v}")
     lines += ["```", ""]
+    if card.get("stepsWithStatus"):
+        lines += [
+            "## Wat VibeModel meldde (sinds 1.2.23)",
+            "",
+            "```",
+            f"stappen met statusregels            {card['stepsWithStatus']}",
+            f"stappen die maatvoering verwijderden {card['stepsRemovingAnnotations']}",
+            f"maatvoering verwijderd              {card['annotationsRemoved']}",
+            f"attention-regels                    {card['attentionLines']}",
+            "```",
+            "",
+        ]
     if card["builds"]:
         lines += ["## Versie, modus, pakket", ""]
         lines += [f"- VibeModel {b['version']} · {b['mode']} · {b['pack']}" for b in card["builds"]]

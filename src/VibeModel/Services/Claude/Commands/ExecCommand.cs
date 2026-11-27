@@ -25,6 +25,20 @@ namespace VibeModel.Services.Claude.Commands
         /// </summary>
         public CommandResult ExecuteStructured(string args, UIApplication uiApp)
         {
+            // Phase 2: a posted Undo runs after this request on whatever is on top of Revit's undo list.
+            if (ExecSourceChecks.PostsUndo(args))
+                return CommandResult.Error(ExecSourceChecks.PostsUndoCode, ExecSourceChecks.PostsUndoMessage, ExecSourceChecks.PostsUndoHint);
+            var result = Structured(args, uiApp);
+            // A dry-run switch inside the script hides what the real run does: a trial is ?preview=1.
+            var dryRun = RunContext.Current != null && RunContext.Current.Preview ? null : ExecSourceChecks.DryRunSwitch(args);
+            if (dryRun == null) return result;
+            var hint = string.Format(System.Globalization.CultureInfo.InvariantCulture, ExecSourceChecks.DryRunHint, dryRun);
+            if (result.Success) return CommandResult.Legacy(result.RenderText().TrimEnd() + "\nHint: " + hint);
+            return result;
+        }
+
+        private CommandResult Structured(string args, UIApplication uiApp)
+        {
             var clock = new ExecClock(ExecDeadline.BudgetSeconds(RunContext.Current?.TimeoutSeconds));
             int recordedBefore = Standards.CreatedElementsRecorder.RecordedCount;
             string text;
